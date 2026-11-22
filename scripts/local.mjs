@@ -12,6 +12,7 @@ const flag = name => {
 const dbFile = flag("--db") || process.env.TABLE_DB || ":memory:";
 const DB = openDatabase(dbFile);
 DB.sql.prepare("DELETE FROM rooms WHERE created < ?").run(Date.now() - 8 * 60 * 60 * 1000);
+const env = { DB, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" };
 const port = Number(process.env.PORT ?? flag("--port")) || 4173;
 let lanAddresses = [];
 try {
@@ -41,7 +42,7 @@ const server = createServer(async (incoming, outgoing) => {
     const request = new Request("http://localhost" + incoming.url, {
       method: incoming.method, headers: incoming.headers, body
     });
-    const response = await worker.fetch(request, { DB });
+    const response = await worker.fetch(request, env);
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     outgoing.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) {
@@ -51,6 +52,7 @@ const server = createServer(async (incoming, outgoing) => {
 });
 server.listen(port, "0.0.0.0", () => {
   console.log("Host · http://localhost:" + port);
+  console.log("Claude suggestions · " + (env.ANTHROPIC_API_KEY ? "on (players can tap Ask Claude)" : "off (add ANTHROPIC_API_KEY to .env to enable)"));
   console.log("Storage · " + (dbFile === ":memory:" ? "in memory (cleared when this stops)" : dbFile));
   for (const address of lanAddresses) {
     console.log("Players · http://" + address.address + ":" + port);

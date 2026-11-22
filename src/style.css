@@ -61,3 +61,9 @@ fieldset{border:1px solid var(--border);border-radius:8px;margin:12px 0;padding:
 .scene-panel.fresh{animation:fresh 1.6s ease-out}
 @keyframes fresh{from{border-color:var(--accent);box-shadow:0 0 0 3px rgba(214,234,150,.25)}to{border-color:var(--border);box-shadow:none}}
 @media(prefers-reduced-motion:reduce){.scene-panel.fresh{animation:none}}
+
+#claude{margin:14px 0 4px;padding-top:12px;border-top:1px solid var(--border)}
+#claude-options{padding-left:20px;margin:6px 0 0}
+#claude-options li{margin-bottom:9px;overflow-wrap:anywhere}
+#claude-options small{display:block;color:var(--muted);font-size:.9rem}
+.fineprint{color:var(--muted);font-size:.85rem}

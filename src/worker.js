@@ -73,6 +73,95 @@ function randomToken(bytes) {
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+
+// Optional Claude suggestions. Off unless the server has ANTHROPIC_API_KEY
+// (put it in .env on the host laptop). Nothing is sent until a player taps
+// "Ask Claude"; the call carries that character's sheet and recent DM updates.
+// Raw HTTP rather than the SDK: this project installs no dependencies and the
+// worker ships as one bundled file.
+const CLAUDE_MODEL = "claude-opus-5-5";
+const aiCache = new Map();
+const aiUsage = new Map();
+const AI_ROOM_LIMIT = 200;
+const AI_COOLDOWN = 8000;
+
+const adviceSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["situation", "options", "ask_dm"],
+  properties: {
+    situation: { type: "string" },
+    options: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["action", "why"],
+        properties: { action: { type: "string" }, why: { type: "string" } }
+      }
+    },
+    ask_dm: { type: "string" }
+  }
+};
+
+const adviceSystem = [
+  "You help a player at an in-person Dungeons & Dragons table decide what their character could do next.",
+  "The player reads your answer on a phone mid-game, so be brief and concrete: each action one sentence, each reason one short sentence.",
+  "Give exactly two options. Base them on the latest DM update, using earlier updates only for context.",
+  "Only recommend abilities listed under READY on the character's sheet, or ordinary actions any adventurer could attempt (move, hide, help, talk, search, shove). Never recommend anything listed under UNCONFIRMED; if one looks relevant, put it in ask_dm as something to confirm with the DM.",
+  "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
+  "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM.",
+  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably."
+].join("\n");
+
+function sheetText(character) {
+  const lines = character.moves.split("\n").map(line => line.trim()).filter(Boolean);
+  const body = line => line.includes("|") ? line.slice(line.indexOf("|") + 1).trim() : line;
+  const ready = lines.filter(line => !/^check\s*\|/i.test(line)).map(line => "- " + body(line));
+  const check = lines.filter(line => /^check\s*\|/i.test(line)).map(line => "- " + body(line));
+  return [
+    "Character: " + character.name + (character.role ? " (" + character.role + ")" : ""),
+    "READY abilities:\n" + (ready.join("\n") || "- none recorded"),
+    "UNCONFIRMED abilities (do not recommend):\n" + (check.join("\n") || "- none")
+  ].join("\n\n");
+}
+
+async function askClaude(apiKey, character, scenes) {
+  const updates = scenes.map((scene, index) => (index === scenes.length - 1 ? "LATEST: " : "- ") + scene.text).join("\n");
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    signal: AbortSignal.timeout(45000),
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2026-10-21",
+      "anthropic-beta": "server-side-fallback-2026-07-01"
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 4000,
+      fallbacks: "default",
+      output_config: { effort: "low", format: { type: "json_schema", schema: adviceSchema } },
+      system: adviceSystem,
+      messages: [{ role: "user", content: sheetText(character) + "\n\nDM updates, oldest to newest:\n" + updates }]
+    })
+  });
+  if (!response.ok) {
+    console.error("Claude request failed", response.status, (await response.text()).slice(0, 300));
+    throw new Error(response.status === 429 ? "Claude is busy. Try again in a moment." : "Claude could not answer. Use the suggestions above.");
+  }
+  const message = await response.json();
+  if (message.stop_reason === "refusal") throw new Error("Claude declined this one. Use the suggestions above.");
+  if (message.stop_reason === "max_tokens") throw new Error("Claude ran long. Try again.");
+  const text = message.content.find(block => block.type === "text")?.text ?? "";
+  const advice = JSON.parse(text);
+  return {
+    situation: String(advice.situation).slice(0, 80),
+    options: advice.options.slice(0, 2).map(option => ({ action: String(option.action).slice(0, 400), why: String(option.why).slice(0, 300) })),
+    question: String(advice.ask_dm).slice(0, 300)
+  };
+}
+
 const endpoints = {
   async create(request, db) {
     if (request.headers.get("x-table-action") !== "create") return json({ error: "Invalid request." }, 400);
@@ -86,9 +175,38 @@ const endpoints = {
     ]);
     return json({ code, host });
   },
-  async state(db, room, code) {
+  async state(db, room, code, env) {
     const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 30").bind(code).all();
-    return json({ party: importHistory(JSON.parse(room.party)), scenes: results.reverse() });
+    return json({ party: importHistory(JSON.parse(room.party)), scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY) });
+  },
+  async advise(request, db, room, code, env) {
+    if (!env.ANTHROPIC_API_KEY) return json({ error: "Claude suggestions are off on this server." }, 404);
+    const body = await request.json();
+    const index = Number(body.character);
+    const party = importHistory(JSON.parse(room.party));
+    const character = party[index];
+    if (!Number.isInteger(index) || !character) return json({ error: "Pick a character." }, 400);
+    const { results } = await db.prepare("SELECT id, text FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 6").bind(code).all();
+    const scenes = results.reverse();
+    if (!scenes.length) return json({ error: "Wait for a scene update." }, 400);
+    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves].join("\u0000");
+    const cached = aiCache.get(key);
+    if (cached) return json({ ...(await cached), sceneId: scenes.at(-1).id });
+    const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
+    if (usage.count >= AI_ROOM_LIMIT) return json({ error: "This session has used its Claude suggestions." }, 429);
+    if (Date.now() - (usage.last.get(index) ?? 0) < AI_COOLDOWN) return json({ error: "One moment — Claude was just asked for this character." }, 429);
+    usage.count += 1;
+    usage.last.set(index, Date.now());
+    aiUsage.set(code, usage);
+    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes);
+    aiCache.set(key, pending);
+    if (aiCache.size > 500) aiCache.delete(aiCache.keys().next().value);
+    try {
+      return json({ ...(await pending), sceneId: scenes.at(-1).id });
+    } catch (error) {
+      aiCache.delete(key);
+      return json({ error: error instanceof SyntaxError ? "Claude's answer was unreadable. Try again." : error.message }, 502);
+    }
   },
   async scene(request, db, code) {
     const body = await request.json();
@@ -117,6 +235,7 @@ const endpoints = {
     return json({ ok: true });
   },
   async close(db, code) {
+    aiUsage.delete(code);
     await db.prepare("DELETE FROM rooms WHERE code = ?").bind(code).run();
     return json({ ok: true });
   }
@@ -140,13 +259,14 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
         .bind(code, Date.now() - roomAge).first();
       if (!room) return json({ error: "This room has ended or expired." }, 404);
-      if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code);
+      if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
+      if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
       if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
       if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the host can make changes." }, 403);
       if (operation === "close") return await endpoints.close(env.DB, code);

@@ -67,6 +67,54 @@ function showOptions() {
   list("check-abilities", abilities.check);
   $("character-check").hidden = !abilities.check.length;
   $("character-empty").hidden = abilities.ready.length > 0 || abilities.check.length > 0;
+  resetClaude();
+}
+
+let claudeFor = "";
+function resetClaude() {
+  const key = $("character").value + ":" + (state?.scenes.at(-1)?.id ?? "");
+  $("claude").hidden = !state?.ai || ended;
+  if (key === claudeFor) return;
+  claudeFor = "";
+  $("claude-answer").hidden = true;
+  $("claude-status").textContent = "";
+}
+
+async function askClaude() {
+  const index = $("character").value;
+  const sceneId = state?.scenes.at(-1)?.id;
+  const button = $("ask-claude");
+  button.disabled = true;
+  $("claude-status").textContent = "Asking Claude…";
+  try {
+    const advice = await call("/" + room + "/advise", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ character: Number(index) })
+    });
+    if ($("character").value !== index || state.scenes.at(-1)?.id !== sceneId) {
+      $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
+      return;
+    }
+    claudeFor = index + ":" + sceneId;
+    $("claude-situation").textContent = "Claude · " + advice.situation;
+    $("claude-options").replaceChildren(...advice.options.map(option => {
+      const item = document.createElement("li");
+      const action = document.createElement("span");
+      action.textContent = option.action;
+      const why = document.createElement("small");
+      why.textContent = option.why;
+      item.append(action, why);
+      return item;
+    }));
+    $("claude-ask").textContent = advice.question;
+    $("claude-answer").hidden = false;
+    $("claude-status").textContent = "";
+  } catch (error) {
+    $("claude-status").textContent = error.message || "Claude could not answer. Try again.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function drawRoster() {
@@ -124,6 +172,7 @@ async function sync() {
       $("options").replaceChildren();
       for (const id of ["situation", "ask-dm"]) $(id).textContent = "";
       $("coach-controls").hidden = true;
+      $("claude").hidden = true;
       $("character-library").hidden = true;
       $("host").hidden = true;
       $("party-editor").hidden = true;
@@ -307,6 +356,7 @@ $("cancel").onclick = () => {
   $("publish").textContent = "Publish update";
 };
 $("character").onchange = showOptions;
+$("ask-claude").onclick = askClaude;
 $("copy-coach").onclick = async () => {
   const character = selectedCharacter();
   if (!character || ended) return;

@@ -2,7 +2,17 @@
 
 A companion for our in-person D&D campaign. The DM speaks into one microphone on the host laptop; the host browser transcribes and publishes updates after pauses. Players join on their phones over the same Wi-Fi, pick their character, and see the current scene, earlier updates, their abilities, and two suggested actions.
 
-Suggestions come from local rules in `src/scene-options.js` — no AI model is called. They only suggest abilities recorded on the character's sheet, list `check` abilities without suggesting them, and leave outcomes to the DM. Players can copy a prompt with their character and recent scenes into their own AI chat for deeper advice.
+The two suggestions come from local rules in `src/scene-options.js`. They only suggest abilities recorded on the character's sheet, list `check` abilities without suggesting them, and leave outcomes to the DM. Players can also copy a prompt with their character and recent scenes into their own AI chat.
+
+### Optional: Ask Claude
+
+If the host laptop has an Anthropic API key, players get an **Ask Claude about this scene** button under the local suggestions. Create a `.env` file in the project folder (it is gitignored):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+The terminal shows `Claude suggestions · on` at startup. Nothing is sent until a player taps the button. Each tap sends that character's sheet and the last six DM updates (transcript text only) to Anthropic and returns two options plus a question for the DM. Claude is told to recommend only abilities that are ready on the sheet, never `check` lines, and never to decide outcomes. Answers are cached per character and update, each character can ask once every 8 seconds, and a room is capped at 200 requests. It uses `claude-opus-5-5` at low effort. Without a key, the button stays hidden and the app calls no AI model.
 
 ## Requirements
 
@@ -27,7 +37,7 @@ If phones can't load the page, the Wi-Fi may block device-to-device traffic (com
 ## Development
 
 ```bash
-npm test        # builds, then runs suggestion-rule and room API tests (node:test)
+npm test        # builds, then runs suggestion, room API, and Claude (stubbed) tests
 npm run build   # writes dist/server/index.js (worker + inlined assets)
 ```
 
@@ -35,7 +45,7 @@ npm run build   # writes dist/server/index.js (worker + inlined assets)
 | --- | --- |
 | `src/index.html`, `src/app.js`, `src/style.css` | Host and player UI (one page, role from the stored host key) |
 | `src/scene-options.js` | Situation detection, two suggestions, ability parsing, AI-chat prompt |
-| `src/worker.js` | Fetch-style server: assets + `/api/rooms` API; starter party and recap |
+| `src/worker.js` | Fetch-style server: assets + `/api/rooms` API, starter party and recap, optional Claude suggestions |
 | `drizzle/0000_rooms.sql` | Database schema (`rooms`, `scenes`) |
 | `scripts/build.mjs` | Inlines assets into `dist/server/index.js` |
 | `scripts/local.mjs`, `scripts/sqlite-db.mjs` | Local Node server and SQLite adapter |

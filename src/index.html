@@ -54,6 +54,16 @@
           <p id="situation" class="eyebrow" role="status"></p>
           <ul id="options"></ul>
           <p class="dm-question"><strong>Ask the DM</strong><br><span id="ask-dm"></span></p>
+          <div id="claude" hidden>
+            <button id="ask-claude" class="secondary" type="button">Ask Claude about this scene</button>
+            <p id="claude-status" class="notice" role="status"></p>
+            <div id="claude-answer" hidden>
+              <p class="eyebrow" id="claude-situation"></p>
+              <ul id="claude-options"></ul>
+              <p class="dm-question"><strong>Ask the DM</strong><br><span id="claude-ask"></span></p>
+              <p class="fineprint">Claude only sees this character’s sheet and the DM’s recent updates. The DM decides what actually happens.</p>
+            </div>
+          </div>
           <details id="character-library">
             <summary>Character abilities</summary>
             <p id="character-empty">This character’s abilities haven’t been entered yet.</p>
