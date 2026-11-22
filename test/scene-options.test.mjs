@@ -87,3 +87,22 @@ test("combat continues through transcript fragments", () => {
   const result = recommend(cleric, scenes(["The monster starts attacking everyone", "People eat that's purple"]));
   assert.equal(result.situation, "Combat");
 });
+
+test("the Level 10 roster: every character gets two suggestions and no check line is suggested", async () => {
+  const { party } = await import("../src/campaign.js");
+  for (const character of party) {
+    const checks = characterAbilities(character).check.map(line => line.split(" — ")[0]);
+    for (const text of ["Roll initiative.", "The door is locked.", "Logan is unconscious.", "The bartender says hello.", "Footsteps approach.", "You enter a quiet hall."]) {
+      const { options } = recommend(character, scenes([text]));
+      assert.equal(options.length, 2, character.name + ": " + text);
+      for (const name of checks) assert.ok(!options.join(" ").includes(name + " —"), character.name + " suggested " + name);
+    }
+  }
+});
+
+test("Dum Dum's fighter role gets the melee tactics", async () => {
+  const { party } = await import("../src/campaign.js");
+  const dumDum = party.find(member => member.name === "Dum Dum");
+  const { options } = recommend({ ...dumDum, moves: "" }, scenes(["The guards attack!"]));
+  assert.match(options[0], /Approach an enemy you can reach/);
+});
