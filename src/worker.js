@@ -35,8 +35,8 @@ const aiUsage = new Map();
 const AI_ROOM_LIMIT = 200;
 const AI_COOLDOWN = 8000;
 
-async function askClaude(apiKey, character, scenes) {
-  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes), signal: AbortSignal.timeout(60000) });
+async function askClaude(apiKey, character, scenes, question = "") {
+  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes, "", [], question), signal: AbortSignal.timeout(60000) });
   return readAdvice(response);
 }
 
@@ -67,7 +67,8 @@ const endpoints = {
     const { results } = await db.prepare("SELECT id, text FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 200").bind(code).all();
     const scenes = results.reverse();
     if (!scenes.length) return json({ error: "Wait for a scene update." }, 400);
-    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves].join("\u0000");
+    const question = typeof body.question === "string" ? body.question.trim().slice(0, 300) : "";
+    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves, question].join("\u0000");
     const cached = aiCache.get(key);
     if (cached) return json({ ...(await cached), sceneId: scenes.at(-1).id });
     const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
@@ -76,7 +77,7 @@ const endpoints = {
     usage.count += 1;
     usage.last.set(index, Date.now());
     aiUsage.set(code, usage);
-    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes);
+    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes, question);
     aiCache.set(key, pending);
     if (aiCache.size > 500) aiCache.delete(aiCache.keys().next().value);
     try {
