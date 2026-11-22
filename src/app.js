@@ -5,7 +5,7 @@ import { recommend, coachingPrompt, characterAbilities } from "./scene-options.j
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics } from "./rules.js";
-import { party as starterParty, recap as starterRecap } from "./campaign.js";
+import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
 const room = new URLSearchParams(location.search).get("room");
@@ -180,7 +180,86 @@ function sheetEntry(entry) {
   return item;
 }
 
+const element = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+const signed = value => (value >= 0 ? "+" : "") + value;
+
+// The full sheet (ability scores, combat stats, saves, skills, spellcasting,
+// items, routine, open questions) for characters that have one in campaign.js.
+function drawFullSheet(character) {
+  const full = sheets[character.name];
+  $("sheet-full").hidden = !full;
+  if (!full) return $("sheet-full").replaceChildren();
+  const parts = [element("p", "fineprint", full.note)];
+
+  const scores = element("div", "ability-grid");
+  for (const [label, score, modifier] of full.abilities) {
+    const box = element("div", "ability");
+    box.append(element("span", "ability-label", label), element("strong", "", signed(modifier)), element("span", "ability-score", String(score)));
+    scores.append(box);
+  }
+  parts.push(scores);
+
+  const pairList = (title, pairs) => {
+    const list = element("dl", "sheet-pairs");
+    for (const [label, value] of pairs) list.append(element("dt", "", label), element("dd", "", value));
+    const wrap = element("section", "sheet-section");
+    wrap.append(element("h3", "", title), list);
+    return wrap;
+  };
+  parts.push(pairList("Combat", full.combat));
+
+  const saves = element("section", "sheet-section");
+  const saveChips = element("div", "chips saves");
+  for (const [label, value, status] of full.saves) {
+    const chip = element("span", status ? "is-proficient" : "", label + " " + value + (status ? " ●" : ""));
+    if (status) chip.title = status;
+    saveChips.append(chip);
+  }
+  saves.append(element("h3", "", "Saving throws (● proficient)"), saveChips);
+  parts.push(saves);
+
+  const skills = element("details", "sheet-section sheet-skills");
+  skills.append(element("summary", "", "Skills (all 18)"));
+  const table = element("ul", "skill-list");
+  for (const [name, ability, value, status] of full.skills) {
+    const row = element("li", status === "proficient" ? "is-proficient" : "");
+    row.append(element("span", "", name + " "), element("small", "", ability), element("strong", "", value));
+    if (status) row.append(element("em", "", status));
+    table.append(row);
+  }
+  skills.append(table);
+  parts.push(skills);
+
+  if (full.spellcasting) parts.push(pairList("Spellcasting", full.spellcasting));
+  if (full.items?.length) {
+    const items = element("section", "sheet-section");
+    items.append(element("h3", "", "Magic items"));
+    for (const [name, text] of full.items) {
+      const item = element("p", "sheet-item");
+      item.append(element("strong", "", name), element("span", "", text));
+      items.append(item);
+    }
+    parts.push(items);
+  }
+  for (const [title, lines] of [["First-turn attack routine", full.routine], ["Open questions for the DM", full.questions], ["Identity", full.identity?.map(([label, value]) => label + ": " + value)]]) {
+    if (!lines?.length) continue;
+    const box = element("details", "sheet-section");
+    box.append(element("summary", "", title));
+    const list = element(title.startsWith("Open") ? "ol" : "ul", "sheet-lines");
+    for (const line of lines) list.append(element("li", "", line));
+    box.append(list);
+    parts.push(box);
+  }
+  $("sheet-full").replaceChildren(...parts);
+}
+
 function drawSheet(character) {
+  drawFullSheet(character);
   const sheet = organizeSheet(character);
   $("sheet-stats").replaceChildren(...sheet.stats.map(stat => {
     const chip = document.createElement("span");

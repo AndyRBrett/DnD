@@ -6,7 +6,7 @@ import { party } from "../src/campaign.js";
 // Moves that exist only at this table; they show the table's note instead of a rule.
 const tableSpecific = new Set([
   "Living-shadow swap", "Cause a distraction", "Distraction", "Lead the ambush", "Speak plainly",
-  "Current HP", "Level 10 ranger features", "Level 10 fighter features", "Note from the sheet"
+  "Current HP", "Current HP and AC", "Level 10 ranger features", "Level 10 fighter features", "Note from the sheet"
 ].map(name => name.toLowerCase()));
 
 test("every ability on the roster has a built-in rule or is a known table move", () => {
@@ -51,4 +51,21 @@ test("every rule and basic has a summary and nothing calls out to an AI", () => 
   }
   assert.ok(basics.length >= 15);
   assert.ok(basics.some(([term]) => term === "Concentration"));
+});
+
+test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async () => {
+  const { sheets } = await import("../src/campaign.js");
+  const arcturus = party.find(member => member.name === "Arcturus");
+  const full = sheets.Arcturus;
+  assert.equal(full.abilities.find(([label]) => label === "DEX")[1], 20);
+  assert.equal(full.skills.length, 18);
+  assert.deepEqual(full.skills.filter(row => row[3] === "proficient").map(row => row[0]), ["Persuasion", "Stealth"]);
+  assert.equal(full.questions.length, 6);
+  const sheet = organizeSheet(arcturus);
+  const ready = sheet.sections.flatMap(section => section.entries.map(entry => entry.name));
+  for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist"]) assert.ok(ready.includes(name), name);
+  const confirm = sheet.confirm.map(entry => entry.name);
+  for (const name of ["Hunter's Mark", "Lightning Arrow", "Hide in Plain Sight", "Tireless", "Rope Trick", "Fear", "Dagger", "Iron Mind"]) assert.ok(confirm.includes(name), name);
+  assert.ok(!ready.includes("Hunter's Mark"), "Hunter's Mark stays unconfirmed until the DM says it's known");
+  assert.match(arcturus.moves, /Longbow — \+11 to hit/);
 });
