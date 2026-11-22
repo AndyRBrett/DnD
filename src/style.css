@@ -383,3 +383,9 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .combatant .state.is-party.is-ok{color:var(--green)}
 .combatant .state.is-party.is-bloodied{color:var(--gold);border-color:var(--gold-border);background:var(--gold-dim)}
 .combatant .state.is-party.is-down{color:var(--red);border-color:var(--red-border);background:var(--red-dim)}
+.combat-stats{grid-template-columns:repeat(3,1fr)}
+.combat-stats .stat strong{font-size:1.35rem}
+.stat-line{margin:0;color:var(--muted2);font-size:.88rem}
+.hp-fields{grid-template-columns:repeat(4,1fr)}
+.hp-status:empty{display:none}
+.hp-status{margin:0;color:var(--gold);font-weight:600}

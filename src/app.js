@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -1374,6 +1374,12 @@ function drawCombat() {
       tag.className = "state is-party" + (record ? " is-" + health : "");
       tag.textContent = record ? (health === "down" ? "Down" : "HP " + record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Party";
       meta.append(tag);
+      const armor = combatStats(sheets[entry.name], record).find(stat => stat.label === "AC");
+      if (armor) {
+        const chip = document.createElement("span");
+        chip.textContent = "AC " + armor.value + (armor.unconfirmed ? "?" : "");
+        meta.append(chip);
+      }
       if (entry.initiative === null) {
         const waiting = document.createElement("span");
         waiting.textContent = "hasn't rolled";
@@ -1419,17 +1425,31 @@ async function adjustHp(index, change, status) {
   if (!record) { status.textContent = "Set max HP first."; return; }
   state.hp = { ...state.hp, [partyName(index)]: changePartyHp(record, change) };
   drawCombat();
+  const concentrating = !isHost && index === Number($("character").value) && activeConditions().Concentrating;
+  const reminder = change < 0 && concentrating
+    ? "🧠 Concentration save: DC " + concentrationDc(-change) + " Constitution — or the spell ends." : "";
   try {
     await backend.adjustHp(room, index, change);
+    status.textContent = reminder;
   } catch (error) {
     status.textContent = error.message;
   }
-  sync();
+  await sync();
+  if (reminder) {
+    for (const id of ["hp-sheet", "hp-combat"]) {
+      const note = $(id).querySelector(".hp-status");
+      if (note) note.textContent = reminder;
+    }
+  }
 }
 async function saveHp(index, values, status) {
   const max = Math.round(Number(values.max));
   if (!(max >= 1 && max <= 999)) { status.textContent = "Max HP must be 1 to 999."; return; }
+  const ac = values.ac === undefined || values.ac === "" || values.ac === null ? undefined : Math.round(Number(values.ac));
+  if (ac !== undefined && !(ac >= 1 && ac <= 40)) { status.textContent = "AC must be 1 to 40."; return; }
   const record = { max, hp: Math.max(0, Math.min(max, Math.round(Number(values.hp ?? max)))), temp: Math.max(0, Math.round(Number(values.temp) || 0)) };
+  const keptAc = ac ?? hpRecord(index)?.ac;
+  if (keptAc) record.ac = keptAc;
   state.hp = { ...state.hp, [partyName(index)]: record };
   drawCombat();
   try {
@@ -1454,6 +1474,25 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   numbers.textContent = hpText(record);
   head.append(title, numbers);
   box.append(head);
+  const stats = combatStats(sheets[partyName(index)], record);
+  if (stats.length) {
+    const strip = document.createElement(compact ? "p" : "div");
+    strip.className = compact ? "stat-line" : "stat-grid combat-stats";
+    if (compact) strip.textContent = stats.map(stat => stat.label.replace("Passive Perc.", "PP") + " " + stat.value + (stat.unconfirmed ? "?" : "")).join(" · ");
+    else {
+      strip.replaceChildren(...stats.map(stat => {
+        const tile = document.createElement("div");
+        tile.className = "stat" + (stat.unconfirmed ? " is-unconfirmed" : "");
+        const number = document.createElement("strong");
+        number.textContent = stat.value;
+        const label = document.createElement("span");
+        label.textContent = stat.label;
+        tile.append(number, label);
+        return tile;
+      }));
+    }
+    box.append(strip);
+  }
   if (record) {
     const bar = document.createElement("div");
     bar.className = "hp-bar";
@@ -1469,7 +1508,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
     }
   }
   const status = document.createElement("p");
-  status.className = "fineprint";
+  status.className = "fineprint hp-status";
   if (record) {
     const row = document.createElement("form");
     row.className = "hp-adjust";
@@ -1496,7 +1535,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
     row.onsubmit = event => { event.preventDefault(); go(-1); };
     heal.onclick = () => go(1);
     row.append(amount, damage, heal);
-    box.append(row);
+    box.append(row, status);
   } else {
     const max = sheetMaxHp(index);
     const hint = document.createElement("p");
@@ -1516,7 +1555,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   more.className = "fold";
   more.open = open || (!record && !sheetMaxHp(index));
   const summary = document.createElement("summary");
-  summary.textContent = record ? "Set HP, max, or temp" : "Set HP";
+  summary.textContent = record ? "Set HP, max, temp, or AC" : "Set HP and AC";
   const form = document.createElement("form");
   form.className = "hp-set";
   const field = (label, value) => {
@@ -1535,6 +1574,8 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   const [hpLabel, hpInput] = field("Current", record?.hp ?? fallbackMax);
   const [maxLabel, maxInput] = field("Max", fallbackMax);
   const [tempLabel, tempInput] = field("Temp", record?.temp ?? 0);
+  const sheetAc = combatStats(sheets[partyName(index)]).find(stat => stat.label === "AC")?.value;
+  const [acLabel, acInput] = field("AC", record?.ac ?? sheetAc ?? "");
   const save = document.createElement("button");
   save.type = "submit";
   save.className = "ghost";
@@ -1544,17 +1585,18 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   rest.className = "quiet";
   rest.textContent = "Full heal (long rest)";
   rest.hidden = !record;
-  rest.onclick = () => saveHp(index, { hp: record.max, max: record.max, temp: 0 }, status);
+  rest.onclick = () => saveHp(index, { hp: record.max, max: record.max, temp: 0, ac: record.ac }, status);
   form.onsubmit = event => {
     event.preventDefault();
-    saveHp(index, { hp: hpInput.value, max: maxInput.value, temp: tempInput.value }, status);
+    saveHp(index, { hp: hpInput.value, max: maxInput.value, temp: tempInput.value, ac: acInput.value }, status);
   };
   const fields = document.createElement("div");
   fields.className = "hp-fields";
-  fields.append(hpLabel, maxLabel, tempLabel);
+  fields.append(hpLabel, maxLabel, tempLabel, acLabel);
   form.append(fields, save, rest);
   more.append(summary, form);
-  box.append(more, status);
+  box.append(more);
+  if (!status.isConnected && !record) box.append(status);
   return box;
 }
 // Redraws a widget unless someone is typing in it (the poll would wipe it).

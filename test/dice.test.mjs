@@ -125,3 +125,21 @@ test("party HP: sheet max, temp HP first, heal to max", async () => {
   assert.equal(partyHpStatus({ hp: 0, max: 75 }), "down");
   assert.equal(partyHpStatus(undefined), "unknown");
 });
+
+test("combat stats come from the sheet, with a confirmed AC on top", async () => {
+  const { combatStats, concentrationDc } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const pick = (stats, label) => stats.find(stat => stat.label === label);
+  const wizard = combatStats(sheets["The White Wizard"]);
+  assert.equal(pick(wizard, "AC").value, "17");
+  assert.equal(pick(wizard, "Speed").value, "30 ft");
+  assert.equal(pick(wizard, "Passive Perc.").value, "19");
+  assert.equal(pick(wizard, "Spell DC").value, "17");
+  const dumDum = combatStats(sheets["Dum Dum"]);
+  assert.equal(pick(dumDum, "AC").unconfirmed, true);
+  assert.equal(pick(combatStats(sheets["Dum Dum"], { ac: 20 }), "AC").value, "20");
+  assert.equal(pick(combatStats(sheets["Dum Dum"], { ac: 20 }), "AC").unconfirmed, false);
+  assert.equal(pick(combatStats(sheets["Logan Ninefingers"]), "Initiative").value, "+2 adv.");
+  assert.equal(concentrationDc(7), 10);
+  assert.equal(concentrationDc(31), 15);
+});
