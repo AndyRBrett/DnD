@@ -4,6 +4,7 @@ import { recommend, coachingPrompt, characterAbilities } from "./scene-options.j
 // opening line out of view.
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
+import { organizeSheet, basics } from "./rules.js";
 import { party as starterParty, recap as starterRecap } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -49,12 +50,7 @@ function showOptions() {
   $("responding-to").textContent = line ? "Responding to: “" + (line.length > 140 ? line.slice(0, 140) + "…" : line) + "”" : "";
   list("options", advice.options);
   $("ask-dm").textContent = advice.question;
-  const abilities = characterAbilities(character);
-  list("character-abilities", abilities.ready);
-  list("check-abilities", abilities.check);
-  $("character-check").hidden = !abilities.check.length;
-  $("character-empty").hidden = abilities.ready.length > 0 || abilities.check.length > 0;
-  explainButtons();
+  drawSheet(character);
   resetClaude();
 }
 
@@ -154,25 +150,63 @@ $("question-form").onsubmit = event => {
   if (question) askClaude(question);
 };
 
-// Each ability gets an Explain button that asks Claude about that move.
-function explainButtons() {
-  if (!state?.ai) return;
-  const character = selectedCharacter();
-  for (const item of [...$("character-abilities").children, ...$("check-abilities").children]) {
-    const name = item.textContent.split(" — ")[0].trim();
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "link explain";
-    button.textContent = "Explain";
-    button.onclick = () => {
-      const question = "Explain " + name + " for " + character.name + ": how does it work, what does it cost, and when is it a good idea right now?";
-      $("question-text").value = question;
-      $("claude").scrollIntoView({ behavior: "smooth", block: "start" });
-      askClaude(question);
-    };
-    item.append(" ", button);
+// ── Character sheet: stats, then Attacks / Spells by level / Features /
+// Skills / Table moves, each entry tappable for the built-in rule. No AI call.
+function sheetEntry(entry) {
+  const item = document.createElement("details");
+  item.className = "sheet-entry";
+  const summary = document.createElement("summary");
+  const name = document.createElement("span");
+  name.className = "entry-name";
+  name.textContent = entry.name;
+  summary.append(name);
+  if (entry.rule?.meta) {
+    const meta = document.createElement("small");
+    meta.textContent = entry.rule.meta;
+    summary.append(meta);
   }
+  item.append(summary);
+  const rule = document.createElement("p");
+  rule.textContent = entry.rule?.text ?? "A move specific to your table. Its details are in the note below; ask the DM about limits.";
+  item.append(rule);
+  for (const note of entry.notes) {
+    const tableNote = document.createElement("p");
+    tableNote.className = "table-note";
+    const label = document.createElement("strong");
+    label.textContent = "At your table: ";
+    tableNote.append(label, note);
+    item.append(tableNote);
+  }
+  return item;
 }
+
+function drawSheet(character) {
+  const sheet = organizeSheet(character);
+  $("sheet-stats").replaceChildren(...sheet.stats.map(stat => {
+    const chip = document.createElement("span");
+    chip.textContent = stat;
+    return chip;
+  }));
+  $("sheet-sections").replaceChildren(...sheet.sections.map(section => {
+    const wrap = document.createElement("section");
+    wrap.className = "sheet-section";
+    const title = document.createElement("h3");
+    title.textContent = section.title;
+    wrap.append(title, ...section.entries.map(sheetEntry));
+    return wrap;
+  }));
+  $("sheet-confirm").hidden = !sheet.confirm.length;
+  $("sheet-confirm-list").replaceChildren(...sheet.confirm.map(sheetEntry));
+  $("character-empty").hidden = sheet.sections.length > 0 || sheet.confirm.length > 0;
+}
+
+$("basics-list").replaceChildren(...basics.flatMap(([term, text]) => {
+  const dt = document.createElement("dt");
+  dt.textContent = term;
+  const dd = document.createElement("dd");
+  dd.textContent = text;
+  return [dt, dd];
+}));
 
 function drawRoster() {
   const stored = $("character").value || storage.get("dnd-character");

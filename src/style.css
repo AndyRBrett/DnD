@@ -123,3 +123,24 @@ button.link{background:none;border:0;padding:0;min-height:0;color:var(--accent);
 .declare textarea{margin:0;font-size:.95rem}
 .declare button{align-self:flex-start}
 button.explain{font-size:.85rem;margin-left:4px}
+
+/* Character sheet */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.chips span{border:1px solid var(--border);border-radius:999px;padding:3px 10px;font:600 .82rem/1.4 var(--mono);color:var(--accent)}
+.sheet-section{margin-top:12px}
+.sheet-section h3{font:600 .8rem/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 4px;border-bottom:1px solid var(--border);padding-bottom:3px}
+.sheet-entry{border-bottom:1px solid #2a332d}
+.sheet-entry>summary{list-style:none;display:flex;flex-direction:column;padding:7px 0;color:var(--copy);font-weight:600}
+.sheet-entry>summary::-webkit-details-marker{display:none}
+.sheet-entry>summary::after{content:"+";position:absolute;right:0;color:var(--accent)}
+.sheet-entry{position:relative}
+.sheet-entry[open]>summary::after{content:"–"}
+.sheet-entry>summary small{color:var(--muted);font-weight:400;font-size:.82rem;padding-right:18px}
+.sheet-entry p{margin:2px 0 8px;font-size:.95rem}
+.sheet-entry .table-note{color:var(--muted);font-size:.9rem}
+.sheet-entry .table-note strong{color:var(--copy);font-weight:600}
+#sheet-confirm>summary{color:var(--muted)}
+#rules-basics{margin:6px 0 10px}
+#basics-list{margin:8px 0 0}
+#basics-list dt{font-weight:650;margin-top:8px}
+#basics-list dd{margin:2px 0 0;color:var(--muted);font-size:.95rem}

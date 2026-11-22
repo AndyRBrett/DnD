@@ -1,0 +1,227 @@
+// Built-in rules reference: plain-language summaries of the spells, features,
+// weapons, skills, and basic actions this party uses, so players can read how
+// a move works without an AI call. Written for this app from the D&D 5th
+// edition rules (2014 Player's Handbook; much of it is in the SRD 5.1, CC BY
+// 4.0). Tables house-rule things: the sheet's own note is shown beside each
+// rule, and the DM's ruling wins.
+
+const spell = (level, meta, text, aliases = []) => ({ section: "spells", level, meta, text, aliases });
+const attack = (meta, text, aliases = []) => ({ section: "attacks", meta, text, aliases });
+const feature = (meta, text, aliases = []) => ({ section: "features", meta, text, aliases });
+const skill = (ability, text, aliases = []) => ({ section: "skills", meta: "Ability check · d20 + " + ability, text, aliases });
+
+export const rules = {
+  // ── Cantrips ──
+  "Sacred Flame": spell(0, "Cantrip · Action · 60 ft · Dex save",
+    "A creature you can see makes a Dexterity saving throw. On a fail it takes radiant damage (2d8 at levels 5–10, 3d8 from 11). Cover doesn't help it. No spell slot."),
+  "Guidance": spell(0, "Cantrip · Action · Touch · Concentration (1 min)",
+    "A willing creature adds 1d4 to one ability check of its choice, before or after rolling. Cast it before the check happens. No spell slot."),
+  "Light": spell(0, "Cantrip · Action · Touch · 1 hour",
+    "An object you touch sheds bright light for 20 feet and dim light 20 feet beyond. Useful in the dark, but it makes you easy to see. No spell slot."),
+
+  // ── Leveled spells ──
+  "Bless": spell(1, "1st-level · Action · 30 ft · Concentration (1 min)",
+    "Up to three creatures add 1d4 to their attack rolls and saving throws while it lasts. One more target for each slot above 1st."),
+  "Healing Word": spell(1, "1st-level · Bonus action · 60 ft",
+    "A creature you can see regains 1d4 + your spellcasting modifier hit points. Best for picking up a downed ally from a distance. If you cast a bonus-action spell, any other spell that turn must be a cantrip."),
+  "Command": spell(1, "1st-level · Action · 60 ft · Wis save",
+    "Speak a one-word command (approach, drop, flee, grovel, halt). On a failed Wisdom save the creature obeys on its next turn. It must understand your language; undead are immune."),
+  "Detect Magic": spell(1, "1st-level · Action or 10-min ritual · Concentration (10 min)",
+    "You sense magic within 30 feet and can use your action to see a faint aura and learn its school of magic. Cast as a ritual, it takes 10 minutes and no spell slot."),
+  "Disguise Self": spell(1, "1st-level · Action · Self · 1 hour",
+    "You change how you look, clothes and gear included. It's visual only: touch gives it away, and a suspicious creature can use its action on an Intelligence (Investigation) check against your spell save DC to see through it."),
+  "Cure Wounds": spell(1, "1st-level · Action · Touch",
+    "A creature you touch regains 1d8 + your spellcasting modifier hit points. Extra 1d8 for each slot above 1st."),
+  "Hunter's Mark": spell(1, "1st-level · Bonus action · 90 ft · Concentration (1 hour)",
+    "Mark a creature: your weapon hits on it deal an extra 1d6 damage, and you have advantage on Perception and Survival checks to find it. If it drops to 0 HP, move the mark with a bonus action."),
+  "Ensnaring Strike": spell(1, "1st-level · Bonus action · Concentration (1 min) · Str save",
+    "Your next weapon hit makes vines grab the target: Strength save or it's restrained and takes 1d6 piercing at the start of each of its turns. Large or bigger creatures save with advantage."),
+  "Hail of Thorns": spell(1, "1st-level · Bonus action · Concentration (1 min) · Dex save",
+    "Your next ranged weapon hit bursts into thorns: the target and everything within 5 feet make a Dexterity save, taking 1d10 piercing (half on a success)."),
+  "Absorb Elements": spell(1, "1st-level · Reaction · Self",
+    "When you take acid, cold, fire, lightning, or thunder damage, you resist it until your next turn, and your first melee hit next turn deals an extra 1d6 of that type."),
+  "Spiritual Weapon": spell(2, "2nd-level · Bonus action · 60 ft · 1 min (no concentration)",
+    "A floating spectral weapon appears and makes a melee spell attack: 1d8 + your spellcasting modifier force damage. On later turns, a bonus action moves it 20 feet and attacks again."),
+  "Silence": spell(2, "2nd-level · Action · 120 ft · Concentration (10 min)",
+    "No sound in a 20-foot-radius sphere. Creatures inside are deafened and can't cast spells that need speech. Great for stopping a shout for help, but it blocks your allies' spoken spells too."),
+  "Enhance Ability": spell(2, "2nd-level · Action · Touch · Concentration (1 hour)",
+    "Pick one ability boon. Eagle's Splendor gives advantage on Charisma checks; Bull's Strength on Strength checks; Cat's Grace on Dexterity checks; Owl's Wisdom on Wisdom checks; Fox's Cunning on Intelligence checks; Bear's Endurance gives advantage on Constitution checks plus 2d6 temporary HP."),
+  "Locate Object": spell(2, "2nd-level · Action · Self · Concentration (10 min)",
+    "You sense the direction of a familiar object, or the nearest object of a kind you name, within 1,000 feet. Lead blocks it."),
+  "Pass Without Trace": spell(2, "2nd-level · Action · 30-ft aura · Concentration (1 hour)",
+    "You and allies within 30 feet get +10 to Dexterity (Stealth) checks and can't be tracked except by magic."),
+  "Fireball": spell(3, "3rd-level · Action · 150 ft · Dex save",
+    "A 20-foot-radius explosion: everyone inside makes a Dexterity save, taking 8d6 fire on a fail or half on a success. Allies in the blast get hit too, and it lights unattended flammable objects. Every creature takes the full roll; it isn't split."),
+  "Spirit Guardians": spell(3, "3rd-level · Action · 15-ft aura · Concentration (10 min) · Wis save",
+    "Spirits surround you. Enemies in the area move at half speed, and when one enters it or starts its turn there, it makes a Wisdom save, taking 3d8 radiant on a fail or half on a success. You choose who's safe."),
+  "Dispel Magic": spell(3, "3rd-level · Action · 120 ft",
+    "End spells on a creature, object, or magical effect. Spells of 3rd level or lower end automatically; for higher ones you roll a spellcasting ability check against DC 10 + the spell's level."),
+  "Lightning Arrow": spell(3, "3rd-level · Bonus action · Concentration (1 min)",
+    "Your next ranged weapon attack turns into lightning: 4d8 lightning on a hit (half on a miss), and creatures within 10 feet of the target make a Dexterity save or take 2d8 lightning."),
+  "Wall of Fire": spell(4, "4th-level · Action · 120 ft · Concentration (1 min) · Dex save",
+    "A wall of flame up to 60 feet long (or a 20-foot ring). Creatures in it when it appears take 5d8 fire on a failed Dexterity save, half on a success. One side burns anyone who ends a turn within 10 feet of it. It blocks sight."),
+  "Flame Strike": spell(5, "5th-level · Action · 60 ft · Dex save",
+    "A 10-foot-radius column of divine fire: 4d6 fire + 4d6 radiant on a failed Dexterity save, half on a success."),
+  "Scrying": spell(5, "5th-level · 10 minutes to cast · Concentration (10 min) · Wis save",
+    "See and hear a specific creature on the same plane through an invisible sensor. The target makes a Wisdom save, which is easier for it the less you know about it. Needs a costly focus (1,000 gp)."),
+
+  // ── Attacks and weapons ──
+  "Greataxe": attack("Martial melee weapon · Two-handed, heavy · 1d12 slashing",
+    "Roll d20 + attack bonus against the target's AC; on a hit, roll 1d12 + Strength modifier. Raging adds Rage damage."),
+  "Longbow": attack("Martial ranged weapon · Two-handed · 150 / 600 ft · 1d8 piercing",
+    "Roll d20 + attack bonus against the target's AC; on a hit, roll 1d8 + Dexterity modifier. Beyond 150 feet you have disadvantage."),
+  "Shortsword": attack("Martial melee weapon · Finesse, light · 1d6 piercing",
+    "Use Strength or Dexterity for the attack and damage. Light means it can be used for two-weapon fighting."),
+  "Weapon attack": attack("Action (Attack)",
+    "Roll d20 + your attack bonus against the target's Armor Class. On a hit, roll the weapon's damage. A natural 20 is a critical hit: roll the damage dice twice."),
+  "Extra Attack": attack("Part of the Attack action",
+    "When you take the Attack action on your turn, you attack twice instead of once. Each attack can go at a different target."),
+  "Reckless Attack": attack("Barbarian · Choose on your first attack",
+    "You get advantage on Strength melee attack rolls this turn, but attack rolls against you have advantage until your next turn."),
+  "Great Weapon Master": attack("Feat · Heavy weapons",
+    "Before attacking with a heavy weapon, you can take −5 to hit for +10 damage. When you score a critical hit or drop a creature to 0 HP with a melee weapon, you can make one melee attack as a bonus action."),
+  "Sharpshooter": attack("Feat · Ranged weapons",
+    "Long range doesn't give you disadvantage, and your ranged attacks ignore half and three-quarters cover. You can take −5 to hit for +10 damage. Your table limits this feat, so check the note."),
+  "Dread Ambusher": attack("Gloom Stalker ranger · First turn of combat",
+    "Add your Wisdom modifier to initiative. On your first turn you get +10 feet of speed, and if you take the Attack action you make one extra weapon attack that deals an extra 1d8 on a hit."),
+  "Brutal Critical": attack("Barbarian · Critical hits",
+    "When you score a critical hit with a melee weapon, roll one extra weapon damage die."),
+  "Battle Master maneuvers": attack("Fighter · Superiority dice (d10 at level 10, regain on a short rest)",
+    "Spend a superiority die to add a maneuver to an attack. Trip Attack: on a hit, add the die to damage, and a Large or smaller target makes a Strength save or falls prone. Others include Precision Attack (add the die to an attack roll) and Riposte (counterattack with your reaction).",
+    ["Trip Attack", "superiority dice", "maneuvers"]),
+
+  // ── Features and traits ──
+  "Rage": feature("Barbarian · Bonus action · 1 minute · 4 uses per long rest at level 10",
+    "While raging: advantage on Strength checks and saves, +3 damage on Strength melee attacks, and resistance to bludgeoning, piercing, and slashing damage. You can't cast or concentrate on spells. It ends early if you neither attacked nor took damage since your last turn."),
+  "Frenzy": feature("Berserker barbarian · While raging",
+    "When you rage you can frenzy: each turn of that rage you can make one melee weapon attack as a bonus action. When the rage ends you gain a level of exhaustion."),
+  "Intimidating Presence": feature("Berserker barbarian (level 10) · Action · 30 ft · Wis save",
+    "Frighten a creature that can see or hear you. You can use your action on later turns to keep it frightened.",
+    ["Level 10 Berserker features"]),
+  "Umbral Sight": feature("Gloom Stalker ranger · Always on",
+    "You have darkvision out to 60 feet. In darkness you're invisible to any creature that relies on darkvision to see you."),
+  "Iron Mind": feature("Gloom Stalker ranger",
+    "You're proficient in Wisdom saving throws (or Intelligence or Charisma if you already were)."),
+  "Defensive Duelist": feature("Feat · Reaction",
+    "When a melee attack would hit you while you hold a finesse weapon you're proficient with, add your proficiency bonus to your AC for that attack.",
+    ["Ring of Dragon Champion / Defensive Duelist"]),
+  "Warding Flare": feature("Light Domain cleric · Reaction · 30 ft",
+    "When a creature you can see attacks you, flash light to give that attack disadvantage. Uses equal your Wisdom modifier per long rest. From level 6 you can protect an ally the same way."),
+  "Divine Intervention": feature("Cleric (level 10) · Action",
+    "Call on your god: roll d100, and if you roll 10 or lower (your cleric level) the god intervenes however the DM decides. If it works you wait 7 days to try again; if not, you can try after a long rest."),
+  "Action Surge": feature("Fighter · Once per short or long rest",
+    "Take one additional action on your turn, such as a second Attack action."),
+  "Second Wind": feature("Fighter · Bonus action · Once per short or long rest",
+    "Regain 1d10 + your fighter level in hit points."),
+  "Indomitable": feature("Fighter (level 9) · Once per long rest",
+    "Reroll a saving throw you failed. You must use the new roll."),
+
+  // ── Skills ──
+  "Intimidation": skill("Charisma", "Pressure or frighten someone into talking or backing down. The DM sets the difficulty and decides how they react."),
+  "Persuasion": skill("Charisma", "Convince someone honestly: ask, bargain, or reassure. The DM sets the difficulty."),
+  "Deception": skill("Charisma", "Lie convincingly, keep a disguise's story straight, or mislead with words."),
+  "Perception": skill("Wisdom", "Notice things: spot a hidden figure, hear footsteps, catch a signal."),
+  "Investigation": skill("Intelligence", "Search and reason: find a hidden door, examine a lock, piece together clues."),
+  "Athletics": skill("Strength", "Climb, jump, swim, grapple, or break free of a grab.", ["Break free"]),
+  "Stealth": skill("Dexterity", "Move quietly or stay hidden. The DM compares it to the searchers' Perception."),
+  "Insight": skill("Wisdom", "Read a person: are they lying, nervous, or hiding something?")
+};
+
+// What every character can do on their turn, plus the terms that come up most.
+export const basics = [
+  ["Your turn", "Move up to your speed, take one action, and possibly one bonus action (only if a spell or feature gives you one). Between turns you get one reaction per round."],
+  ["Attack", "Make one weapon attack (more with Extra Attack). Roll d20 + attack bonus against the target's AC."],
+  ["Cast a Spell", "Most spells take an action; some take a bonus action or a reaction. Leveled spells use a spell slot; cantrips don't."],
+  ["Dash", "Double your movement this turn."],
+  ["Disengage", "Your movement doesn't provoke opportunity attacks this turn."],
+  ["Dodge", "Until your next turn, attacks against you have disadvantage and you have advantage on Dexterity saves."],
+  ["Help", "Give an ally advantage on their next ability check, or on their next attack against a creature within 5 feet of you."],
+  ["Hide", "Make a Dexterity (Stealth) check while out of sight."],
+  ["Ready", "Pick a trigger and an action (\"if the guard opens the door, I shoot\"). When the trigger happens, you use your reaction to do it."],
+  ["Search", "Look for something with a Wisdom (Perception) or Intelligence (Investigation) check."],
+  ["Grapple", "Instead of one attack, grab a creature: your Strength (Athletics) against its Athletics or Acrobatics. Its speed becomes 0. To escape, it repeats the contest as its action."],
+  ["Shove", "Instead of one attack, push a creature 5 feet or knock it prone: Strength (Athletics) against its Athletics or Acrobatics."],
+  ["Opportunity attack", "When an enemy you can reach moves out of your reach, you can use your reaction for one melee attack."],
+  ["Advantage / disadvantage", "Roll two d20s and take the higher (advantage) or lower (disadvantage)."],
+  ["Saving throw", "Roll d20 + the named ability modifier (+ proficiency if proficient) to resist an effect, against the caster's spell save DC."],
+  ["Concentration", "You can concentrate on only one spell at a time. When you take damage, make a Constitution save (DC 10 or half the damage, whichever is higher) or lose the spell."],
+  ["Bonus action", "Only available when something specific grants it, like Healing Word, Rage, or Spiritual Weapon. One per turn."],
+  ["Reaction", "One per round, used off your turn, like an opportunity attack, Warding Flare, or Absorb Elements."],
+  ["Critical hit", "A natural 20 on an attack always hits, and you roll the damage dice twice."],
+  ["Death saves", "At 0 HP you fall unconscious. Each turn roll a d20: 10 or higher is a success, 9 or lower a failure. Three successes stabilize you, three failures and you die. Any healing brings you back up."],
+  ["Short and long rest", "A short rest (1 hour) lets you spend Hit Dice to heal and restores some features. A long rest (8 hours) restores HP, spell slots, and most features."]
+];
+
+const norm = text => text.toLowerCase().replace(/[’']/g, "").replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9/ ]+/g, " ").replace(/\s+/g, " ").trim();
+const index = new Map();
+for (const [name, rule] of Object.entries(rules)) {
+  for (const key of [name, ...rule.aliases]) index.set(norm(key), name);
+}
+
+export function lookupRule(name) {
+  const found = index.get(norm(name));
+  return found ? { name: found, ...rules[found] } : null;
+}
+
+// "Flame Strike, Scrying" → two names; "Brutal Critical and Level 10
+// Berserker features" → two; "Battle Master maneuvers (Trip Attack and
+// others) and superiority dice" stays one rule via its aliases.
+function splitNames(label) {
+  const whole = lookupRule(label);
+  if (whole) return [label];
+  const withoutAsides = label.replace(/\([^)]*\)/g, "");
+  const parts = withoutAsides.split(/,|\band\b/).map(part => part.trim()).filter(Boolean);
+  // Only a list if some piece is a known rule; otherwise it's a sentence.
+  return parts.length > 1 && parts.some(part => lookupRule(part)) ? parts : [label];
+}
+
+const ordinal = level => ["1st", "2nd", "3rd"][level - 1] ?? level + "th";
+const spellLevelTitle = level => level === 0 ? "Cantrips" : ordinal(level) + "-level spells";
+
+// Lays a character out like a sheet: stats from the role line, then Attacks,
+// Spells (by level), Features & traits, Skills, Table moves, and a separate
+// "Confirm with the DM first" group for check lines. Each entry carries the
+// built-in rule (if known) and the table's own note from the sheet.
+export function organizeSheet(character) {
+  const stats = String(character.role ?? "").split("·").map(part => part.trim()).filter(Boolean);
+  const ready = [];
+  const confirm = [];
+  for (const raw of String(character.moves ?? "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const bar = line.indexOf("|");
+    const tag = bar < 0 ? "any" : line.slice(0, bar).trim().toLowerCase();
+    const body = bar < 0 ? line : line.slice(bar + 1).trim();
+    const dash = body.indexOf(" — ");
+    let label = dash < 0 ? body : body.slice(0, dash).trim();
+    let note = dash < 0 ? "" : body.slice(dash + 3).trim();
+    if (dash < 0 && label.length > 40) [label, note] = ["Note from the sheet", body];
+    const target = tag === "check" ? confirm : ready;
+    for (const name of splitNames(label)) {
+      const rule = lookupRule(name);
+      const shownName = rule?.name ?? name;
+      const existing = target.find(entry => entry.name === shownName);
+      if (existing) {
+        if (note && !existing.notes.includes(note)) existing.notes.push(note);
+        continue;
+      }
+      target.push({ name: shownName, rule, notes: note ? [note] : [], tag });
+    }
+  }
+
+  const groups = new Map();
+  const add = (title, order, entry) => {
+    if (!groups.has(title)) groups.set(title, { title, order, entries: [] });
+    groups.get(title).entries.push(entry);
+  };
+  for (const entry of ready) {
+    const rule = entry.rule;
+    if (!rule) add("Table moves", 90, entry);
+    else if (rule.section === "spells") add(spellLevelTitle(rule.level), 20 + rule.level, entry);
+    else if (rule.section === "attacks") add("Attacks", 10, entry);
+    else if (rule.section === "features") add("Features & traits", 40, entry);
+    else add("Skills", 50, entry);
+  }
+  const sections = [...groups.values()].sort((a, b) => a.order - b.order);
+  return { stats, sections, confirm };
+}
