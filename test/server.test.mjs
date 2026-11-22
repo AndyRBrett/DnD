@@ -101,4 +101,8 @@ test("party HP: anyone at the table sets and adjusts it, temp HP first", async (
   assert.equal((await post(room + "/hp-adjust", { character: 0, change: 100 })).status, 200);
   assert.equal((await call(room)).body.hp["The White Wizard"].hp, 75);
   assert.equal((await post(room + "/hp", { character: 0, hp: 10, max: 0 })).status, 400);
+  assert.equal((await post(room + "/hp", { character: 0, hp: 75, max: 75, ac: 19 })).status, 200);
+  assert.equal((await post(room + "/hp", { character: 0, hp: 60, max: 75 })).status, 200); // AC kept
+  assert.deepEqual((await call(room)).body.hp["The White Wizard"], { hp: 60, max: 75, temp: 0, ac: 19 });
+  assert.equal((await post(room + "/hp", { character: 0, hp: 60, max: 75, ac: 99 })).status, 400);
 });

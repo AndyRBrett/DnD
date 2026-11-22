@@ -57,9 +57,9 @@ const endpoints = {
     const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 30").bind(code).all();
     const combat = await db.prepare("SELECT round, turn, enemies, party_init FROM combats WHERE code = ?").bind(code).first();
     const party = importHistory(JSON.parse(room.party));
-    const { results: hpRows } = await db.prepare("SELECT name, hp, max_hp, temp FROM party_hp").all();
+    const { results: hpRows } = await db.prepare("SELECT name, hp, max_hp, temp, ac FROM party_hp").all();
     const names = new Set(party.map(member => member.name));
-    const hp = Object.fromEntries(hpRows.filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp }]));
+    const hp = Object.fromEntries(hpRows.filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp, ...(row.ac ? { ac: row.ac } : {}) }]));
     return json({
       party, hp, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
@@ -152,7 +152,10 @@ const endpoints = {
     if (!(max >= 1 && max <= 999)) return json({ error: "Max HP must be 1 to 999." }, 400);
     const hp = Math.max(0, Math.min(max, Number.isFinite(whole(body.hp)) ? whole(body.hp) : max));
     const temp = Math.max(0, Math.min(999, whole(body.temp) || 0));
-    await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp) VALUES (?, ?, ?, ?)").bind(name, hp, max, temp).run();
+    const ac = body.ac === undefined || body.ac === null || body.ac === "" ? null : whole(body.ac);
+    if (ac !== null && !(ac >= 1 && ac <= 40)) return json({ error: "AC must be 1 to 40." }, 400);
+    const kept = (await db.prepare("SELECT ac FROM party_hp WHERE name = ?").bind(name).first())?.ac ?? null;
+    await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp, ac) VALUES (?, ?, ?, ?, ?)").bind(name, hp, max, temp, ac ?? kept).run();
     return json({ ok: true });
   },
   async scene(request, db, code) {

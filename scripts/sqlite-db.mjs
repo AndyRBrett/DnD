@@ -11,6 +11,7 @@ export function openDatabase(file = ":memory:") {
   }
   sql.exec(readFileSync(new URL("../drizzle/0001_combat.sql", import.meta.url), "utf8"));
   sql.exec(readFileSync(new URL("../drizzle/0002_party_hp.sql", import.meta.url), "utf8"));
+  if (!sql.prepare("SELECT 1 FROM pragma_table_info('party_hp') WHERE name = 'ac'").get()) sql.exec("ALTER TABLE party_hp ADD COLUMN ac INTEGER");
 
   function wrap(statement, bindings = []) {
     return {

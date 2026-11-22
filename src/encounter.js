@@ -159,3 +159,28 @@ export function partyHpStatus(record) {
   if (record.hp <= record.max / 2) return "bloodied";
   return "ok";
 }
+
+// The combat numbers a player needs at a glance, read from their sheet
+// (combat: [[label, text]], rolls: [[label, value]]). A confirmed AC saved
+// with their HP replaces the sheet's.
+export function combatStats(sheet, record) {
+  const combat = Object.fromEntries(sheet?.combat ?? []);
+  const rolls = Object.fromEntries(sheet?.rolls ?? []);
+  const first = text => String(text ?? "").match(/[+-]?\d+/)?.[0] ?? null;
+  const sheetAc = first(combat.AC);
+  const unsure = /\bor\b|–|-\d|\bif\b|unconfirmed|TBD|\?/i.test(combat.AC ?? "") || /\*/.test(rolls.AC ?? "");
+  const passive = String(combat.Passive ?? combat["Passive Perception"] ?? "").match(/(?:Perception\s*)?(\d+)/)?.[1] ?? null;
+  const dcLabel = Object.keys(rolls).find(label => /\bDC\b/.test(label));
+  const stats = [
+    ["AC", record?.ac ? String(record.ac) : sheetAc, !record?.ac && unsure],
+    ["Initiative", rolls.Initiative ?? combat.Initiative ?? null, false],
+    ["Speed", first(combat.Speed) ? first(combat.Speed) + " ft" : null, false],
+    ["Passive Perc.", passive, /if/i.test(combat["Passive Perception"] ?? "")],
+    [dcLabel ? dcLabel.replace(/^Spell save DC$/, "Spell DC") : "Save DC", dcLabel ? rolls[dcLabel] : null, false],
+    ["Proficiency", combat.Proficiency ?? null, false]
+  ];
+  return stats.filter(([, value]) => value).map(([label, value, unconfirmed]) => ({ label, value: String(value).replace(/\*$/, ""), unconfirmed }));
+}
+
+// 5e concentration save after damage: DC 10 or half the damage, if higher.
+export const concentrationDc = damage => Math.max(10, Math.floor(damage / 2));
