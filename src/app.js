@@ -5,6 +5,8 @@ import { recommend, coachingPrompt, characterAbilities } from "./scene-options.j
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics } from "./rules.js";
+import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -43,8 +45,14 @@ function showOptions() {
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
   $("quick-roll-chips").replaceChildren(...rolls.map(([label, value]) => {
-    const tile = document.createElement("div");
-    tile.className = "stat" + (value.endsWith("*") ? " is-unconfirmed" : "");
+    const expression = rollableFrom(value);
+    const tile = document.createElement(expression ? "button" : "div");
+    tile.className = "stat" + (value.endsWith("*") ? " is-unconfirmed" : "") + (expression ? " is-rollable" : "");
+    if (expression) {
+      tile.type = "button";
+      tile.setAttribute("aria-label", "Roll " + label + " (" + expression + ")");
+      tile.onclick = () => openDice(expression, label);
+    }
     const number = document.createElement("strong");
     number.textContent = value.replace(/\*$/, "");
     const name = document.createElement("span");
@@ -873,12 +881,286 @@ $("action-form").onsubmit = async event => {
   }
 };
 
+// ── Dice ──
+const dice = { pool: {}, modifier: 0, mode: "normal", label: "", log: [] };
+function syncDiceExpression() {
+  $("dice-expression").value = poolExpression(dice.pool, dice.modifier);
+  $("mod-value").textContent = (dice.modifier >= 0 ? "+" : "−") + Math.abs(dice.modifier);
+}
+function openDice(expression = "", label = "") {
+  dice.pool = {};
+  dice.modifier = 0;
+  dice.label = label;
+  $("mod-value").textContent = "+0";
+  $("dice-expression").value = expression;
+  $("dice-label").textContent = label ? label + " · " + expression : "";
+  $("dice-result").hidden = true;
+  $("dice-status").textContent = "";
+  const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended;
+  $("dice-share-wrap").hidden = !canShare;
+  $("dice-tray").hidden = false;
+  document.body.classList.add("no-scroll");
+}
+function closeDice() {
+  $("dice-tray").hidden = true;
+  document.body.classList.remove("no-scroll");
+}
+$("dice-fab").onclick = () => openDice();
+$("dice-close").onclick = closeDice;
+$("dice-tray").onclick = event => { if (event.target === $("dice-tray")) closeDice(); };
+document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("dice-tray").hidden) closeDice(); });
+for (const button of $("dice-buttons").children) {
+  button.onclick = () => {
+    const sides = button.dataset.sides;
+    if (!Object.keys(dice.pool).length && $("dice-expression").value && !dice.label) dice.pool = {};
+    dice.label = "";
+    $("dice-label").textContent = "";
+    dice.pool[sides] = (dice.pool[sides] ?? 0) + 1;
+    syncDiceExpression();
+  };
+}
+$("mod-minus").onclick = () => { dice.modifier -= 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
+$("mod-plus").onclick = () => { dice.modifier += 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
+$("dice-expression").oninput = () => { dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0"; };
+for (const button of $("dice-mode").children) {
+  button.onclick = () => {
+    dice.mode = button.dataset.mode;
+    for (const other of $("dice-mode").children) other.classList.toggle("is-active", other === button);
+  };
+}
+$("dice-clear").onclick = () => openDice();
+$("dice-roll").onclick = async () => {
+  const expression = $("dice-expression").value.trim() || "d20";
+  const result = roll(expression, { mode: dice.mode });
+  if (!result) {
+    $("dice-status").textContent = "Try something like d20+5, 2d6+3, or 1d12+7.";
+    return;
+  }
+  $("dice-status").textContent = "";
+  $("dice-total").textContent = String(result.total);
+  $("dice-tag").textContent = result.critical ? "NATURAL 20" : result.fumble ? "NATURAL 1" : result.mode !== "normal" ? result.mode.toUpperCase() : "";
+  $("dice-result").className = "dice-result" + (result.critical ? " is-crit" : result.fumble ? " is-fumble" : "");
+  $("dice-breakdown").textContent = result.expression + " → " + result.breakdown;
+  $("dice-result").hidden = false;
+  $("dice-result").animate?.([{ transform: "scale(.92)", opacity: .4 }, { transform: "scale(1)", opacity: 1 }], { duration: 220, easing: "ease-out" });
+  const name = dice.label || result.expression;
+  dice.log.unshift(name + ": " + result.total + " (" + result.breakdown + ")");
+  dice.log = dice.log.slice(0, 8);
+  list("dice-log", dice.log);
+  if (!$("dice-share-wrap").hidden && $("dice-share").checked) {
+    const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, 300);
+    try {
+      await backend.postAction(room, Number($("character").value), text);
+      $("dice-status").textContent = "Shared with the table.";
+      sync();
+    } catch (error) {
+      $("dice-status").textContent = error.message;
+    }
+  }
+};
+
+// ── Encounter tracker (DM only, kept on this device) ──
+const TEMPLATE_KEY = "dnd-enemy-templates";
+const encounterKey = () => "dnd-encounter:" + room;
+const readJson = (key, fallback) => { try { return JSON.parse(storage.get(key) ?? "null") ?? fallback; } catch { return fallback; } };
+let enemies = [];
+let encounterLoaded = false;
+const savedTemplates = () => readJson(TEMPLATE_KEY, []);
+function saveEncounter() { storage.set(encounterKey(), JSON.stringify(enemies)); }
+
+function drawTemplateOptions() {
+  const custom = savedTemplates();
+  $("enemy-template").replaceChildren(
+    new Option("Blank", ""),
+    ...custom.map((template, index) => new Option("★ " + template.name + " (yours)", "custom:" + index)),
+    ...enemyTemplates.map((template, index) => new Option(template.name + " · AC " + template.ac + " · HP " + template.hp, "srd:" + index))
+  );
+}
+function fillEnemyForm(template) {
+  const attacks = template?.attacks ?? [];
+  $("enemy-name").value = template?.name ?? "";
+  $("enemy-ac").value = template?.ac ?? 12;
+  $("enemy-hp").value = template?.hp ?? "2d8+2";
+  $("enemy-init").value = template?.init ?? 0;
+  $("enemy-speed").value = template?.speed ?? 30;
+  for (const n of [1, 2]) {
+    const [name, hit, damage] = attacks[n - 1] ?? ["", "", ""];
+    $("atk" + n + "-name").value = name;
+    $("atk" + n + "-hit").value = hit === "" ? "" : hit;
+    $("atk" + n + "-dmg").value = damage;
+  }
+  $("enemy-abilities").value = template?.abilities ?? "";
+}
+function enemyFormStats() {
+  return {
+    name: $("enemy-name").value.trim() || "Enemy",
+    ac: Number($("enemy-ac").value) || 10,
+    hp: $("enemy-hp").value.trim() || "1",
+    init: Number($("enemy-init").value) || 0,
+    speed: Number($("enemy-speed").value) || 30,
+    attacks: [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name),
+    abilities: $("enemy-abilities").value.trim()
+  };
+}
+$("enemy-template").onchange = () => {
+  const [kind, index] = $("enemy-template").value.split(":");
+  fillEnemyForm(kind === "srd" ? enemyTemplates[index] : kind === "custom" ? savedTemplates()[index] : null);
+};
+$("enemy-form").onsubmit = event => {
+  event.preventDefault();
+  const stats = enemyFormStats();
+  if (!/^\d+$/.test(stats.hp) && !parseDice(stats.hp)) {
+    $("enemy-status").textContent = "HP should be a number or dice like 2d8+2.";
+    return;
+  }
+  const added = createEnemies(stats, $("enemy-count").value);
+  enemies = [...enemies, ...added];
+  saveEncounter();
+  drawEncounter();
+  $("enemy-status").textContent = "Added " + added.length + " × " + stats.name + " (HP " + added.map(enemy => enemy.maxHp).join(", ") + ").";
+};
+$("enemy-save-template").onclick = () => {
+  const stats = enemyFormStats();
+  const custom = savedTemplates().filter(template => template.name !== stats.name);
+  storage.set(TEMPLATE_KEY, JSON.stringify([stats, ...custom].slice(0, 30)));
+  drawTemplateOptions();
+  $("enemy-status").textContent = "Saved “" + stats.name + "” to your templates on this device.";
+};
+$("enc-init").onclick = () => {
+  enemies = rollInitiative(enemies);
+  saveEncounter();
+  drawEncounter();
+};
+$("enc-clear").onclick = () => {
+  if (!window.confirm("Remove every enemy from this encounter?")) return;
+  enemies = [];
+  saveEncounter();
+  drawEncounter();
+};
+
+function enemyCard(enemy) {
+  const card = document.createElement("article");
+  const state = enemyStatus(enemy);
+  card.className = "enemy is-" + state;
+  const head = document.createElement("div");
+  head.className = "enemy-head";
+  const name = document.createElement("strong");
+  name.textContent = enemy.name;
+  const tags = document.createElement("div");
+  tags.className = "chips";
+  for (const text of ["AC " + enemy.ac, (enemy.init >= 0 ? "Init +" : "Init ") + enemy.init + (enemy.initiative !== null ? " → " + enemy.initiative : ""), enemy.speed + " ft"]) {
+    const chip = document.createElement("span");
+    chip.textContent = text;
+    tags.append(chip);
+  }
+  if (state !== "ok") {
+    const chip = document.createElement("span");
+    chip.className = "state";
+    chip.textContent = state === "down" ? "DOWN" : "BLOODIED";
+    tags.append(chip);
+  }
+  head.append(name, tags);
+
+  const bar = document.createElement("div");
+  bar.className = "hp-bar";
+  const fill = document.createElement("i");
+  fill.style.width = Math.round((enemy.hp / enemy.maxHp) * 100) + "%";
+  bar.append(fill);
+  const hpText = document.createElement("p");
+  hpText.className = "hp-text";
+  hpText.textContent = "HP " + enemy.hp + " / " + enemy.maxHp;
+
+  const adjust = document.createElement("div");
+  adjust.className = "action-row hp-adjust";
+  const amount = document.createElement("input");
+  amount.type = "number";
+  amount.min = "0";
+  amount.inputMode = "numeric";
+  amount.placeholder = "Amount";
+  amount.setAttribute("aria-label", "HP amount for " + enemy.name);
+  const update = sign => {
+    const value = Math.abs(Number(amount.value) || 0);
+    if (!value) return amount.focus();
+    enemies = enemies.map(other => other.id === enemy.id ? applyHp(other, sign * value) : other);
+    saveEncounter();
+    drawEncounter();
+  };
+  const hurt = document.createElement("button");
+  hurt.type = "button";
+  hurt.className = "danger-soft";
+  hurt.textContent = "Damage";
+  hurt.onclick = () => update(-1);
+  const heal = document.createElement("button");
+  heal.type = "button";
+  heal.className = "ghost";
+  heal.textContent = "Heal";
+  heal.onclick = () => update(1);
+  adjust.append(amount, hurt, heal);
+
+  const result = document.createElement("p");
+  result.className = "enemy-roll";
+  result.hidden = true;
+  const attacks = document.createElement("div");
+  attacks.className = "attack-buttons";
+  for (const [label, hit, damage] of enemy.attacks) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.textContent = label + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "");
+    button.onclick = () => {
+      const toHit = roll("d20" + (hit >= 0 ? "+" : "") + hit);
+      const harm = damage ? roll(damage) : null;
+      const critDamage = harm && toHit.critical ? roll(damage.replace(/(\d*)d(\d+)/g, (_, count, sides) => (Number(count || 1) * 2) + "d" + sides)) : null;
+      const shown = critDamage ?? harm;
+      result.textContent = label + ": " + toHit.total + " to hit" + (toHit.critical ? " (CRIT)" : toHit.fumble ? " (nat 1)" : "")
+        + " [" + toHit.breakdown + "]" + (shown ? " · " + shown.total + " damage [" + shown.breakdown + "]" : "");
+      result.hidden = false;
+    };
+    attacks.append(button);
+  }
+
+  card.append(head, bar, hpText, adjust, attacks, result);
+  if (enemy.abilities) {
+    const more = document.createElement("details");
+    more.className = "fold";
+    const summary = document.createElement("summary");
+    summary.textContent = "Abilities and notes";
+    const text = document.createElement("p");
+    text.textContent = enemy.abilities;
+    more.append(summary, text);
+    card.append(more);
+  }
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "quiet";
+  remove.textContent = "Remove";
+  remove.onclick = () => { enemies = enemies.filter(other => other.id !== enemy.id); saveEncounter(); drawEncounter(); };
+  card.append(remove);
+  return card;
+}
+
+function drawEncounter() {
+  if (!encounterLoaded) {
+    enemies = readJson(encounterKey(), []);
+    encounterLoaded = true;
+    drawTemplateOptions();
+  }
+  const total = enemies.length;
+  const up = standing(enemies);
+  $("encounter-count").textContent = total ? up + " of " + total + " standing" : "No enemies yet";
+  $("encounter-controls").hidden = !total;
+  $("enemy-builder").open = !total || $("enemy-builder").open;
+  $("enemy-list").replaceChildren(...enemies.map(enemyCard));
+}
+
 function setHost(value) {
   isHost = value;
   $("table").classList.toggle("player-room", !isHost);
   for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !isHost;
   $("history-editor").hidden = !isHost || !backend.saveHistory;
   $("tab-dm").hidden = !isHost;
+  $("encounter").hidden = !isHost;
+  if (isHost) drawEncounter();
   if (!isHost && currentTab === "dm") showTab("scene");
   if (isHost && storage.get(TAB_KEY) === "dm" && currentTab !== "dm") showTab("dm");
   if (!isHost) stopMic();
@@ -904,6 +1186,7 @@ const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
 function enterRoom() {
   $("tabbar").hidden = false;
   $("copy").hidden = false;
+  $("dice-fab").hidden = false;
   document.body.classList.add("in-table");
   showTab(storage.get(TAB_KEY) ?? "scene");
   $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + (isPractice() ? " · PRACTICE" : "");
@@ -945,6 +1228,7 @@ async function showLobby(message = "") {
   $("account-cards").hidden = $("account").hidden;
   $("tabbar").hidden = true;
   $("copy").hidden = true;
+  $("dice-fab").hidden = true;
   document.body.classList.remove("in-table");
   $("account-line").hidden = !backend.hosted;
   $("join").hidden = !room;

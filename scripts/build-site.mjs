@@ -5,7 +5,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
-const files = ["index.html", "app.js", "backend.js", "campaign.js", "config.js", "rules.js", "scene-options.js", "style.css"];
+const files = ["index.html", "app.js", "backend.js", "campaign.js", "config.js", "dice.js", "encounter.js", "rules.js", "scene-options.js", "style.css"];
 let version = process.env.GITHUB_SHA?.slice(0, 10);
 if (!version) {
   try { version = execFileSync("git", ["rev-parse", "--short=10", "HEAD"], { encoding: "utf8" }).trim(); } catch {}
