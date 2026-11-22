@@ -2,7 +2,14 @@ import { recommend, coachingPrompt, characterAbilities } from "/scene-options.js
 
 const $ = id => document.getElementById(id);
 const room = new URLSearchParams(location.search).get("room");
-const hostKey = room ? sessionStorage.getItem("host:" + room) : null;
+// The host key lives in localStorage so the DM can close the tab or reopen the
+// browser on the host laptop and keep control of the room.
+const storage = {
+  get(key) { try { return localStorage.getItem(key) ?? sessionStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+  remove(key) { try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch {} }
+};
+const hostKey = room ? storage.get("host:" + room) : null;
 let state;
 let editId;
 let syncing = false;
@@ -47,7 +54,7 @@ function selectedCharacter() {
 function showOptions() {
   const character = selectedCharacter();
   if (!character) return;
-  localStorage.setItem("dnd-character", $("character").value);
+  storage.set("dnd-character", $("character").value);
   const recent = state.scenes;
   const advice = recommend(character, recent);
   const latest = recent.at(-1);
@@ -63,7 +70,7 @@ function showOptions() {
 }
 
 function drawRoster() {
-  const stored = $("character").value || localStorage.getItem("dnd-character");
+  const stored = $("character").value || storage.get("dnd-character");
   $("character").replaceChildren(...state.party.map(({name}, index) => new Option(name, index)));
   if (state.party[Number(stored)]) $("character").value = stored ?? "0";
   if (!hostKey) return;
@@ -97,9 +104,11 @@ async function sync() {
     const fresh = await call("/" + room);
     const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
     const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes);
+    const previous = state;
     state = fresh;
     if (rosterChanged) drawRoster();
     if (scenesChanged) {
+      if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
       $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
       list("history", state.scenes.slice(0, -1).reverse().map(scene => scene.text));
     }
@@ -128,6 +137,13 @@ async function sync() {
   } finally {
     syncing = false;
   }
+}
+
+function flashScene() {
+  const panel = document.querySelector(".scene-panel");
+  panel.classList.remove("fresh");
+  void panel.offsetWidth;
+  panel.classList.add("fresh");
 }
 
 function setDraft(value) {
@@ -343,7 +359,7 @@ $("close").onclick = async () => {
   stopMic();
   try {
     await update("close", {});
-    sessionStorage.removeItem("host:" + room);
+    storage.remove("host:" + room);
     location.href = "/";
   } catch (error) {
     $("notice").textContent = error.message;
@@ -353,7 +369,7 @@ $("create").onclick = async () => {
   $("create").disabled = true;
   try {
     const { code, host } = await call("", { method: "POST", headers: { "x-table-action": "create" } });
-    sessionStorage.setItem("host:" + code, host);
+    storage.set("host:" + code, host);
     location.href = "/?room=" + code;
   } catch (error) {
     $("lobby-status").textContent = error.message;

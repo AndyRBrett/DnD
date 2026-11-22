@@ -1,13 +1,44 @@
 # D&D Table Live
 
-The DM speaks into one microphone. A pause publishes the transcript to the room, and players see the update and two suggestions for their selected character. Suggestions match the latest scene to common situations and favor the abilities you enter. The host can pause, type an update, or correct the latest transcript.
+A companion for our in-person D&D campaign. The DM speaks into one microphone on the host laptop; the host browser transcribes and publishes updates after pauses. Players join on their phones over the same Wi-Fi, pick their character, and see the current scene, earlier updates, their abilities, and two suggested actions.
 
-## Run on your own Wi-Fi
+Suggestions come from local rules in `src/scene-options.js` — no AI model is called. They only suggest abilities recorded on the character's sheet, list `check` abilities without suggesting them, and leave outcomes to the DM. Players can copy a prompt with their character and recent scenes into their own AI chat for deeper advice.
 
-1. Extract this ZIP on the host laptop. Have Node.js 22.13 or newer and Chrome installed. Open a terminal in the extracted folder and run `npm run dev`. There are no packages to install.
-2. Set the clip-on receiver as the laptop's input in sound settings. In Chrome on that laptop, open `http://localhost:4173`, select **Start a table**, then **Start listening**. Allow the microphone and keep the host tab open. With the table's agreement, say a test line into the mic and check that the words appear under **Current scene**.
-3. On the same Wi-Fi, send players the **Copy player link** URL. The link uses the laptop's local address. If the laptop has multiple connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part of the link. Players select their characters on their phones.
-4. Open **Character sheets and abilities** to enter what the five characters can actually use. Use `combat | Sacred Flame — action, one visible creature in range, no spell slot.` as a format example. The starter roster and recap reflect the Onyx Jewel campaign.
-5. Use **End room and delete session** when finished. Rooms stop accepting requests eight hours after creation. By default, the local runner keeps transcript text in memory and clears it when it stops.
+## Requirements
 
-The host uses the browser's speech-recognition service. Internet access and microphone permission are needed. The app shares transcript text with the room and does not retain an audio file. Player phones need no microphone permission. If phones cannot load the page, check that their Wi-Fi allows device-to-device connections and that the host laptop's firewall allows the local server on the private network.
+- Node.js **22.13+** (uses built-in `node:sqlite`). No `npm install` needed.
+- Chrome on the host laptop. Speech recognition needs internet access and microphone permission. Transcript text is shared with the room; no audio is recorded or stored.
+
+## Run a session
+
+```bash
+npm run dev     # rooms in memory, cleared when the server stops
+npm run table   # rooms saved to table.sqlite, so a restart mid-session keeps the room
+```
+
+1. Set the DM's mic as the laptop's input. In Chrome on the laptop, open `http://localhost:4173`, choose **Start a table**, then **Start listening**. Allow the mic and say a test line; it should appear under **Current scene**.
+2. Send players the **Copy player link** URL. It uses the laptop's LAN address; if the laptop has several connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part.
+3. Use **Character sheets and abilities** to edit the five profiles (The White Wizard, Arcturus, Logan Ninefingers, Dum Dum, Roan the Last Shadow). One ability per line: `tag | Name — cost, limits`. Tags: `combat`, `danger`, `explore`, `social`, `aid`, `any`, or `check` for anything not yet confirmed.
+4. Host controls: pause listening, type an update, correct the latest transcript, or turn off auto-publish. Host control survives closing and reopening the tab on the host laptop.
+5. **End room and delete session** when finished. Rooms expire eight hours after creation either way.
+
+If phones can't load the page, the Wi-Fi may block device-to-device traffic (common on guest networks), or the laptop firewall may be blocking the server on the private network.
+
+## Development
+
+```bash
+npm test        # builds, then runs suggestion-rule and room API tests (node:test)
+npm run build   # writes dist/server/index.js (worker + inlined assets)
+```
+
+| Path | Role |
+| --- | --- |
+| `src/index.html`, `src/app.js`, `src/style.css` | Host and player UI (one page, role from the stored host key) |
+| `src/scene-options.js` | Situation detection, two suggestions, ability parsing, AI-chat prompt |
+| `src/worker.js` | Fetch-style server: assets + `/api/rooms` API; starter party and recap |
+| `drizzle/0000_rooms.sql` | Database schema (`rooms`, `scenes`) |
+| `scripts/build.mjs` | Inlines assets into `dist/server/index.js` |
+| `scripts/local.mjs`, `scripts/sqlite-db.mjs` | Local Node server and SQLite adapter |
+| `test/` | `node:test` suites |
+
+See `AGENTS.md` for repo rules shared by Codex and Claude Code.

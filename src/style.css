@@ -57,3 +57,7 @@ fieldset{border:1px solid var(--border);border-radius:8px;margin:12px 0;padding:
 #character-library{margin-bottom:10px}
 #character-check,#character-empty{margin-top:10px}
 #character-library li{margin:0 0 7px}
+
+.scene-panel.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{from{border-color:var(--accent);box-shadow:0 0 0 3px rgba(214,234,150,.25)}to{border-color:var(--border);box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.scene-panel.fresh{animation:none}}

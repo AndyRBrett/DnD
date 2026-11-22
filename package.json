@@ -1,1 +1,14 @@
-{"name":"dnd-table-live","private":true,"type":"module","scripts":{"dev":"node scripts/build.mjs && node scripts/local.mjs","build":"node scripts/build.mjs"},"engines":{"node":">=22.13"}}
+{
+  "name": "dnd-table-live",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.mjs && node scripts/local.mjs",
+    "table": "node scripts/build.mjs && node scripts/local.mjs --db table.sqlite",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --test --disable-warning=ExperimentalWarning \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
