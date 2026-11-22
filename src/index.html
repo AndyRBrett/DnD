@@ -115,10 +115,16 @@
             </div>
           </div>
           <details id="character-library">
-            <summary>Character abilities</summary>
+            <summary>Character sheet</summary>
+            <div id="sheet-stats" class="chips"></div>
             <p id="character-empty">This character’s abilities haven’t been entered yet.</p>
-            <ul id="character-abilities"></ul>
-            <div id="character-check" hidden><strong>Check your sheet or ask the DM</strong><ul id="check-abilities"></ul></div>
+            <div id="sheet-sections"></div>
+            <details id="sheet-confirm" class="sheet-section" hidden><summary>Confirm with the DM first</summary><div id="sheet-confirm-list"></div></details>
+            <p class="fineprint">Tap any entry for how it works. Rules are standard 5th edition summaries; your table’s note is shown under each, and the DM’s ruling wins.</p>
+          </details>
+          <details id="rules-basics">
+            <summary>D&amp;D basics: what you can do on your turn</summary>
+            <dl id="basics-list"></dl>
           </details>
           <details id="coach-controls">
             <summary>Bring this to the D&amp;D chat</summary>
