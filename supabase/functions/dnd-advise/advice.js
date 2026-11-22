@@ -37,6 +37,7 @@ export const adviceSystem = [
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM, ideally one that would clarify the bigger picture or the immediate options.",
   "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context.",
+  "Player actions are what the players said their characters are doing; the DM has not necessarily resolved them. Build on what this character already declared instead of repeating it, and account for what the others are doing.",
   "The campaign history is the group's own notes and may mention stats or abilities; those never count as available unless the character's sheet lists them as READY."
 ].join("\n");
 
@@ -66,14 +67,24 @@ export function sessionWindow(scenes) {
   return kept;
 }
 
-// scenes: this table's updates, oldest to newest (the whole session).
-// history: the campaign's notes so far (may be empty). The history and the
-// session-so-far come first with cache breakpoints, so every character asking
-// about the same moment reuses them; only the sheet and latest update vary.
-export function claudeRequest(apiKey, character, scenes, history = "") {
+// scenes: this table's DM updates, oldest to newest (the whole session),
+// each { text, created? (ms) }. actions: what players said their characters
+// do, each { name, text, created (ms) }, woven in by time. history: the
+// campaign's notes so far (may be empty). The history and the session so far
+// come first with cache breakpoints, so every character asking about the same
+// moment reuses them; only the sheet, latest update, and newest actions vary.
+export function claudeRequest(apiKey, character, scenes, history = "", actions = []) {
   const session = sessionWindow(scenes);
   const latest = session.at(-1);
   const earlier = session.slice(0, -1);
+  const latestAt = Number(latest?.created ?? Infinity);
+  const firstAt = Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity);
+  const timeline = [
+    ...earlier.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
+    ...actions.filter(action => action.created < latestAt && action.created >= firstAt)
+      .map(action => ({ at: action.created, line: action.name + " (player): " + action.text }))
+  ].sort((a, b) => a.at - b.at);
+  const newest = actions.filter(action => action.created >= latestAt);
   const content = [];
   if (history.trim()) {
     content.push({
@@ -82,14 +93,15 @@ export function claudeRequest(apiKey, character, scenes, history = "") {
       cache_control: { type: "ephemeral", ttl: "1h" }
     });
   }
-  if (earlier.length) {
+  if (timeline.length) {
     content.push({
       type: "text",
-      text: "THIS SESSION SO FAR (DM updates, oldest first" + (session.length < scenes.length ? "; the earliest were trimmed" : "") + "):\n" + earlier.map(scene => "- " + scene.text).join("\n"),
+      text: "THIS SESSION SO FAR (DM updates and what players said their characters did, oldest first" + (session.length < scenes.length ? "; the earliest were trimmed" : "") + "):\n" + timeline.map(entry => "- " + entry.line).join("\n"),
       cache_control: { type: "ephemeral" }
     });
   }
-  content.push({ type: "text", text: sheetText(character) + "\n\nLATEST DM UPDATE:\n" + (latest?.text ?? "(none yet)") });
+  content.push({ type: "text", text: sheetText(character) + "\n\nLATEST DM UPDATE:\n" + (latest?.text ?? "(none yet)")
+    + (newest.length ? "\n\nPLAYER ACTIONS SINCE THAT UPDATE (declared, not yet resolved by the DM):\n" + newest.map(action => "- " + action.name + ": " + action.text).join("\n") : "") });
   return {
     method: "POST",
     headers: {

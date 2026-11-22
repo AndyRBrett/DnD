@@ -74,6 +74,7 @@
           <p class="eyebrow">SHARED BY THE DM</p>
           <h2 id="scene-title">Current scene</h2>
           <p id="scene">Waiting for an update.</p>
+          <div id="since-wrap" hidden><p class="eyebrow">SINCE THEN</p><ul id="since-actions"></ul></div>
           <button id="edit" class="quiet" type="button" hidden>Edit latest update</button>
           <details><summary>Earlier updates</summary><ol id="history"></ol></details>
         </section>
@@ -87,6 +88,11 @@
           <p id="responding-to" class="fineprint"></p>
           <ul id="options"></ul>
           <p class="dm-question"><strong>Ask the DM</strong><br><span id="ask-dm"></span></p>
+          <form id="action-form" hidden>
+            <label for="action-text" id="action-label">What is your character doing?</label>
+            <div class="action-row"><input id="action-text" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. looks around the tavern for anyone watching us"><button type="submit">Add to story</button></div>
+            <p id="action-status" class="fineprint"></p>
+          </form>
           <div id="claude" hidden>
             <button id="ask-claude" class="secondary" type="button">Ask Claude about this scene</button>
             <p id="claude-status" class="notice" role="status"></p>

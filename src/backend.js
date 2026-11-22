@@ -127,12 +127,13 @@ function hostedBackend({ url, anonKey }) {
       if (access) fetch(url + "/auth/v1/logout", { method: "POST", headers: { apikey: anonKey, Authorization: "Bearer " + access } }).catch(() => {});
     },
     createRoom: (party, recap) => rpc("dnd_create_room", { p_party: party, p_recap: recap }),
-    room: code => rpc("dnd_room", { p_code: code }),
+    room: code => rpc("dnd_room_v2", { p_code: code }),
+    postAction: (code, character, text) => rpc("dnd_post_action", { p_code: code, p_character: character, p_text: text }),
     myRooms: () => rpc("dnd_my_rooms"),
     postScene: (code, text, id) => rpc("dnd_post_scene", { p_code: code, p_text: text, p_id: id ?? null }),
     saveParty: (code, party) => rpc("dnd_save_party", { p_code: code, p_party: party }),
-    closeRoom: code => rpc("dnd_end_table", { p_code: code, p_save_history: false }),
-    endTable: (code, saveHistory) => rpc("dnd_end_table", { p_code: code, p_save_history: saveHistory }),
+    closeRoom: code => rpc("dnd_end_table_v2", { p_code: code, p_save_history: false }),
+    endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
     async advise(code, character) {

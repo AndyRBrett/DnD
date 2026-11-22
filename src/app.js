@@ -39,6 +39,7 @@ function showOptions() {
   if (!character) return;
   storage.set("dnd-character", $("character").value);
   $("character-role").textContent = character.role;
+  $("action-label").textContent = "What is " + character.name + " doing?";
   const recent = state.scenes;
   const advice = recommend(character, recent);
   const latest = recent.at(-1);
@@ -136,7 +137,8 @@ async function sync() {
     const fresh = await backend.room(room);
     const hostChanged = fresh.isHost !== isHost;
     const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
-    const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes);
+    const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes)
+      || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
     const previous = state;
     state = fresh;
     if (hostChanged) setHost(fresh.isHost);
@@ -145,8 +147,9 @@ async function sync() {
     if (scenesChanged) {
       if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
       $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
-      list("history", state.scenes.slice(0, -1).reverse().map(scene => scene.text));
+      drawStory();
     }
+    $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
     if (rosterChanged || scenesChanged) showOptions();
     if (isPractice()) {
       $("practice-banner").hidden = false;
@@ -161,6 +164,7 @@ async function sync() {
       $("notice").textContent = error.message;
       $("scene").textContent = "Session ended.";
       $("history").replaceChildren();
+      $("action-form").hidden = true;
       $("options").replaceChildren();
       for (const id of ["situation", "ask-dm"]) $(id).textContent = "";
       $("coach-controls").hidden = true;
@@ -540,6 +544,44 @@ $("history-save").onclick = async () => {
     $("history-size").textContent = "· " + describeSize(chars);
   } catch (error) {
     $("history-count").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+
+// ── The story: DM updates plus what players say their characters do ──
+function drawStory() {
+  const latest = state.scenes.at(-1);
+  const actions = state.actions ?? [];
+  const since = actions.filter(action => !latest || action.created >= latest.created);
+  list("since-actions", since.map(action => action.name + ": " + action.text));
+  $("since-wrap").hidden = !since.length;
+  const earlier = [
+    ...state.scenes.slice(0, -1).map(scene => ({ at: scene.created, text: scene.text })),
+    ...actions.filter(action => latest && action.created < latest.created)
+      .map(action => ({ at: action.created, text: action.name + ": " + action.text, action: true }))
+  ].sort((a, b) => b.at - a.at);
+  $("history").replaceChildren(...earlier.map(entry => {
+    const item = document.createElement("li");
+    item.textContent = entry.text;
+    if (entry.action) item.className = "player-action";
+    return item;
+  }));
+}
+
+$("action-form").onsubmit = async event => {
+  event.preventDefault();
+  const text = $("action-text").value.trim();
+  if (!text || !state) return;
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await backend.postAction(room, Number($("character").value), text);
+    $("action-text").value = "";
+    $("action-status").textContent = "Added to the story.";
+    await sync();
+  } catch (error) {
+    $("action-status").textContent = error.message;
   } finally {
     button.disabled = false;
   }
