@@ -983,9 +983,90 @@ function conditionRollNotes() {
 
 // ── Dice ──
 const dice = { pool: {}, modifier: 0, mode: "normal", label: "", log: [] };
+// Spinning dice: one shape per die type, tumbling before they land.
+const DIE_SHAPES = {
+  4: '<polygon points="50,6 95,88 5,88"/>',
+  6: '<rect x="10" y="10" width="80" height="80" rx="12"/>',
+  8: '<polygon points="50,4 94,50 50,96 6,50"/><path d="M6 50h88"/>',
+  10: '<polygon points="50,4 93,44 50,96 7,44"/><path d="M7 44 50 60 93 44M50 60v36"/>',
+  12: '<polygon points="50,4 96,37 78,93 22,93 4,37"/><polygon class="inner" points="50,24 73,41 64,69 36,69 27,41"/>',
+  20: '<polygon points="50,3 93,27 93,73 50,97 7,73 7,27"/><polygon class="inner" points="50,22 76,66 24,66"/>'
+};
+DIE_SHAPES[100] = DIE_SHAPES[10];
+const MAX_SHOWN = 8;
+const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+function dieElement(sides, text) {
+  const die = document.createElement("div");
+  die.className = "die";
+  die.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true">' + (DIE_SHAPES[sides] ?? '<circle cx="50" cy="50" r="44"/>') + "</svg>";
+  const face = document.createElement("span");
+  face.textContent = text;
+  const label = document.createElement("small");
+  label.textContent = "d" + sides;
+  die.append(face, label);
+  return die;
+}
+function stageDice(faces, idle) {
+  const shown = faces.slice(0, MAX_SHOWN).map(face => {
+    const die = dieElement(face.sides, idle ? String(face.sides) : "");
+    if (idle) die.classList.add("is-idle");
+    return die;
+  });
+  const extra = faces.length - MAX_SHOWN;
+  const more = [];
+  if (extra > 0) {
+    const chip = document.createElement("span");
+    chip.className = "dice-more";
+    chip.textContent = "+" + extra + " more";
+    more.push(chip);
+  }
+  $("dice-stage").replaceChildren(...shown, ...more);
+  $("dice-stage").hidden = !faces.length;
+  return shown;
+}
+function previewDice() {
+  const parsed = parseDice($("dice-expression").value.trim() || "d20");
+  if (!parsed) return stageDice([], true);
+  const faces = parsed.dice.flatMap(die => Array.from({ length: die.count }, () => ({ sides: die.sides })));
+  const single20 = faces.length === 1 && faces[0].sides === 20 && parsed.dice[0].sign === 1;
+  if (single20 && dice.mode !== "normal") faces.push({ sides: 20 });
+  stageDice(faces, true);
+}
+async function spinDice(result) {
+  const faces = result.groups.flatMap(group => group.results.map(value => ({ sides: group.sides, value })));
+  if (result.dropped !== null) faces.push({ sides: 20, value: result.dropped, dropped: true });
+  const dies = stageDice(faces, false);
+  const land = () => dies.forEach((die, index) => {
+    const face = faces[index];
+    die.classList.remove("is-rolling");
+    die.classList.add("is-landed");
+    die.querySelector("span").textContent = String(face.value);
+    if (face.dropped) die.classList.add("is-dropped");
+    else if (face.sides === 20 && face.value === 20) die.classList.add("is-crit");
+    else if (face.sides === 20 && face.value === 1) die.classList.add("is-fumble");
+  });
+  if (reduceMotion()) return land();
+  dies.forEach(die => {
+    die.style.setProperty("--spin", (Math.random() < .5 ? -1 : 1) * 360 * (Math.random() < .5 ? 2 : 3) + "deg");
+    die.style.setProperty("--delay", Math.floor(Math.random() * 90) + "ms");
+    die.classList.add("is-rolling");
+  });
+  const started = performance.now();
+  await new Promise(resolve => {
+    const tick = () => {
+      dies.forEach((die, index) => { die.querySelector("span").textContent = String(1 + Math.floor(Math.random() * faces[index].sides)); });
+      if (performance.now() - started < 820) setTimeout(tick, 60);
+      else resolve();
+    };
+    tick();
+  });
+  land();
+}
+
 function syncDiceExpression() {
   $("dice-expression").value = poolExpression(dice.pool, dice.modifier);
   $("mod-value").textContent = (dice.modifier >= 0 ? "+" : "−") + Math.abs(dice.modifier);
+  previewDice();
 }
 function openDice(expression = "", label = "") {
   dice.pool = {};
@@ -1002,6 +1083,7 @@ function openDice(expression = "", label = "") {
   $("dice-conditions").hidden = !notes.length;
   $("dice-conditions").textContent = notes.join(" ");
   $("dice-tray").hidden = false;
+  previewDice();
   document.body.classList.add("no-scroll");
 }
 function closeDice() {
@@ -1024,11 +1106,12 @@ for (const button of $("dice-buttons").children) {
 }
 $("mod-minus").onclick = () => { dice.modifier -= 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
 $("mod-plus").onclick = () => { dice.modifier += 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
-$("dice-expression").oninput = () => { dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0"; };
+$("dice-expression").oninput = () => { dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0"; previewDice(); };
 for (const button of $("dice-mode").children) {
   button.onclick = () => {
     dice.mode = button.dataset.mode;
     for (const other of $("dice-mode").children) other.classList.toggle("is-active", other === button);
+    previewDice();
   };
 }
 $("dice-clear").onclick = () => openDice();
@@ -1040,6 +1123,13 @@ $("dice-roll").onclick = async () => {
     return;
   }
   $("dice-status").textContent = "";
+  $("dice-result").hidden = true;
+  $("dice-roll").disabled = true;
+  try {
+    await spinDice(result);
+  } finally {
+    $("dice-roll").disabled = false;
+  }
   $("dice-total").textContent = String(result.total);
   $("dice-tag").textContent = result.critical ? "NATURAL 20" : result.fumble ? "NATURAL 1" : result.mode !== "normal" ? result.mode.toUpperCase() : "";
   $("dice-result").className = "dice-result" + (result.critical ? " is-crit" : result.fumble ? " is-fumble" : "");

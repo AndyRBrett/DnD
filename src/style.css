@@ -300,3 +300,35 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 #dice-conditions{margin:0;font-size:.92rem}
 .enemy-condition{min-height:0;padding:3px 9px;border-radius:99px;font-size:.8rem;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold)}
 .enemy-condition-select{width:auto;min-height:40px;font-size:.9rem}
+
+/* ── Spinning dice ── */
+.dice-stage{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:26px 8px;min-height:96px;padding:6px 0 18px;perspective:600px}
+.die{position:relative;width:78px;height:78px;display:grid;place-items:center;transform-style:preserve-3d}
+.dice-stage:has(.die:nth-child(3)) .die{width:62px;height:62px}
+.dice-stage:has(.die:nth-child(5)) .die{width:48px;height:48px}
+.die svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.die svg>*{fill:var(--card2);stroke:var(--red);stroke-width:4;stroke-linejoin:round}
+.die svg path,.die svg .inner{fill:none;stroke-width:2;opacity:.45}
+.die span{position:relative;font:700 1.7rem/1 var(--font-display);color:#fff;font-variant-numeric:tabular-nums}
+.dice-stage:has(.die:nth-child(3)) .die span{font-size:1.35rem}
+.dice-stage:has(.die:nth-child(5)) .die span{font-size:1.1rem}
+.die small{position:absolute;bottom:-16px;font:700 .62rem var(--font-display);letter-spacing:.12em;color:var(--muted)}
+.die.is-idle span{color:var(--muted);font-size:1.2rem}
+.die.is-idle svg>*{stroke:var(--border2)}
+.die.is-rolling{animation:die-tumble .82s cubic-bezier(.2,.7,.3,1) var(--delay,0ms) both}
+.die.is-rolling span{opacity:.75}
+.die.is-landed{animation:die-land .28s ease-out}
+.die.is-dropped{opacity:.35}
+.die.is-crit svg>*:first-child{fill:var(--gold-dim);stroke:var(--gold)}
+.die.is-crit span{color:var(--gold)}
+.die.is-fumble svg>*:first-child{fill:var(--red-dim)}
+.die.is-fumble span{color:var(--red)}
+.dice-more{font:700 .9rem var(--font-display);color:var(--muted);letter-spacing:.06em}
+@keyframes die-tumble{
+  0%{transform:translateY(-28px) rotate(0) rotateX(0) scale(.7)}
+  35%{transform:translateY(6px) rotate(calc(var(--spin) * .55)) rotateX(180deg) scale(1.05)}
+  60%{transform:translateY(-8px) rotate(calc(var(--spin) * .85)) rotateX(300deg) scale(.95)}
+  100%{transform:translateY(0) rotate(var(--spin)) rotateX(360deg) scale(1)}
+}
+@keyframes die-land{0%{transform:scale(1.18)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.die.is-rolling,.die.is-landed{animation:none}}

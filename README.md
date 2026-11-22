@@ -26,7 +26,7 @@ The app uses the UFC Picked Fight visual system: near-black cards, red primary a
 
 Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
 
-**Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
+**Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Each die is drawn in its own shape and tumbles before landing on the result (no animation when the phone asks for reduced motion). Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
 
 **Conditions** (Scene tab): each player marks what's affecting their character (Poisoned, Prone, Frightened, Exhaustion levels, Concentrating, and the rest of the 5e conditions). The card explains each one in plain words, badges show under the character chips on every tab, the dice tray reminds you when a condition changes your roll, and each change is posted to *Since then* so the DM sees it. Conditions are kept on the player's phone.
 
