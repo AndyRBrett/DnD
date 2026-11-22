@@ -80,6 +80,7 @@
       <div class="char-bar" id="char-bar">
         <select id="character" class="sr-only" aria-label="Your character"></select>
         <div id="char-chips" class="chip-row" role="group" aria-label="Your character"></div>
+        <div id="condition-badges" class="badge-row" hidden></div>
       </div>
 
       <!-- Scene -->
@@ -91,6 +92,18 @@
           <div id="since-wrap" hidden><p class="eyebrow">SINCE THEN · NEWEST FIRST</p><ul id="since-actions" class="feed"></ul></div>
           <button id="edit" class="quiet" type="button" hidden>Edit latest update</button>
           <details class="fold"><summary>Earlier updates</summary><ol id="history" class="feed"></ol></details>
+        </section>
+        <section id="conditions" class="card stack" aria-labelledby="conditions-title">
+          <div class="card-summary">
+            <h2 id="conditions-title" class="display xs">Conditions</h2>
+            <span id="conditions-count" class="pill-label">None</span>
+          </div>
+          <ul id="condition-active" class="condition-list"></ul>
+          <details id="condition-picker" class="fold">
+            <summary>Add or remove a condition</summary>
+            <div id="condition-grid" class="condition-grid" role="group" aria-label="Conditions"></div>
+          </details>
+          <p id="condition-status" class="fineprint"></p>
         </section>
         <form id="action-form" class="card stack" hidden>
           <label for="action-text" id="action-label" class="display xs">What is your character doing?</label>
@@ -236,6 +249,7 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dice-title">
       <div class="sheet-head"><h2 id="dice-title" class="display sm">Roll dice</h2><button id="dice-close" class="icon-btn" type="button" aria-label="Close">✕</button></div>
       <p id="dice-label" class="eyebrow red"></p>
+      <p id="dice-conditions" class="callout" hidden></p>
       <div id="dice-result" class="dice-result" hidden><strong id="dice-total"></strong><span id="dice-tag"></span><p id="dice-breakdown"></p></div>
       <div class="dice-row" id="dice-buttons">
         <button type="button" data-sides="4">d4</button><button type="button" data-sides="6">d6</button><button type="button" data-sides="8">d8</button><button type="button" data-sides="10">d10</button><button type="button" data-sides="12">d12</button><button type="button" data-sides="20">d20</button><button type="button" data-sides="100">d100</button>

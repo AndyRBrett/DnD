@@ -217,6 +217,43 @@ export const rules = {
   "Insight": skill("Wisdom", "Read a person: are they lying, nervous, or hiding something?")
 };
 
+// Conditions (5e), in plain words. roll: how it changes your own d20 rolls,
+// shown in the dice tray. The DM's ruling wins.
+export const conditions = [
+  { name: "Poisoned", icon: "🤢", roll: "Disadvantage on attack rolls and ability checks.",
+    text: "You have disadvantage on attack rolls and ability checks. Saving throws are not affected." },
+  { name: "Prone", icon: "⤵️", roll: "Disadvantage on your attack rolls.",
+    text: "You can only crawl (each foot costs an extra foot) until you spend half your speed to stand up. Your attacks have disadvantage. Attacks against you have advantage from within 5 ft, disadvantage from farther away." },
+  { name: "Frightened", icon: "😱", roll: "Disadvantage on attacks and checks while you can see the source.",
+    text: "While you can see the source of your fear, you have disadvantage on ability checks and attack rolls, and you can't willingly move closer to it." },
+  { name: "Grappled", icon: "🤼", roll: null,
+    text: "Your speed is 0. It ends if the grappler is incapacitated or you're moved out of its reach. Escape by using your action: Athletics or Acrobatics against the grappler's Athletics." },
+  { name: "Restrained", icon: "⛓️", roll: "Disadvantage on attack rolls and Dexterity saves.",
+    text: "Your speed is 0. Your attacks have disadvantage, attacks against you have advantage, and you have disadvantage on Dexterity saving throws." },
+  { name: "Blinded", icon: "🙈", roll: "Disadvantage on attack rolls; sight-based checks fail.",
+    text: "You can't see and automatically fail checks that need sight. Your attacks have disadvantage; attacks against you have advantage." },
+  { name: "Deafened", icon: "🔇", roll: null,
+    text: "You can't hear and automatically fail checks that need hearing. Spells with a verbal part still work unless the DM rules otherwise." },
+  { name: "Charmed", icon: "💞", roll: null,
+    text: "You can't attack the charmer or target it with harmful abilities or spells. The charmer has advantage on checks to interact socially with you." },
+  { name: "Invisible", icon: "👻", roll: "Advantage on your attack rolls.",
+    text: "You can't be seen without magic or a special sense; you count as heavily obscured for hiding. Your attacks have advantage; attacks against you have disadvantage." },
+  { name: "Incapacitated", icon: "💫", roll: null,
+    text: "You can't take actions or reactions (you can still move unless another condition stops you). Concentration on a spell ends." },
+  { name: "Stunned", icon: "⚡", roll: "You automatically fail Strength and Dexterity saves.",
+    text: "Incapacitated, can't move, and can speak only falteringly. You automatically fail Strength and Dexterity saves, and attacks against you have advantage." },
+  { name: "Paralyzed", icon: "🧊", roll: "You automatically fail Strength and Dexterity saves.",
+    text: "Incapacitated and can't move or speak. You automatically fail Strength and Dexterity saves. Attacks against you have advantage, and any hit from within 5 ft is a critical hit." },
+  { name: "Petrified", icon: "🗿", roll: "You automatically fail Strength and Dexterity saves.",
+    text: "Turned to stone: incapacitated, can't move or speak, unaware of your surroundings. Attacks against you have advantage; you auto-fail Strength and Dexterity saves, resist all damage, and are immune to poison and disease (already present ones are suspended)." },
+  { name: "Unconscious", icon: "💤", roll: "You automatically fail Strength and Dexterity saves.",
+    text: "Incapacitated, can't move or speak, and unaware; you drop what you hold and fall prone. You auto-fail Strength and Dexterity saves. Attacks against you have advantage, and a hit from within 5 ft is a critical hit. At 0 HP, roll death saves." },
+  { name: "Exhaustion", icon: "🥵", roll: "Level 1+: disadvantage on ability checks. Level 3+: also on attacks and saves.",
+    text: "Comes in six levels that stack: 1 disadvantage on ability checks; 2 speed halved; 3 disadvantage on attacks and saves; 4 HP maximum halved; 5 speed 0; 6 death. A long rest with food and drink removes one level." },
+  { name: "Concentrating", icon: "🧠", roll: "Taking damage: Con save, DC 10 or half the damage (whichever is higher).",
+    text: "Not a condition, but worth tracking: you're holding a concentration spell. Casting another concentration spell, being incapacitated, or failing a Con save after damage ends it." }
+];
+
 // What every character can do on their turn, plus the terms that come up most.
 export const basics = [
   ["Your turn", "Move up to your speed, take one action, and possibly one bonus action (only if a spell or feature gives you one). Between turns you get one reaction per round."],
