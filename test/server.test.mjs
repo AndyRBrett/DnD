@@ -90,3 +90,15 @@ test("the host can edit and delete any story update", async () => {
   assert.equal((await post(room + "/scene", { id: opening.id, delete: true }, { "x-table-host": host })).status, 200);
   assert.deepEqual((await call(room)).body.scenes.map(scene => scene.text), ["The vault door groans open.", second.text]);
 });
+
+test("party HP: anyone at the table sets and adjusts it, temp HP first", async () => {
+  const { code } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  assert.equal((await post(room + "/hp-adjust", { character: 0, change: -5 })).status, 400); // no max yet
+  assert.equal((await post(room + "/hp", { character: 0, hp: 63, max: 75, temp: 5 })).status, 200);
+  assert.equal((await post(room + "/hp-adjust", { character: 0, change: -12 })).status, 200);
+  assert.deepEqual((await call(room)).body.hp["The White Wizard"], { hp: 56, max: 75, temp: 0 });
+  assert.equal((await post(room + "/hp-adjust", { character: 0, change: 100 })).status, 200);
+  assert.equal((await call(room)).body.hp["The White Wizard"].hp, 75);
+  assert.equal((await post(room + "/hp", { character: 0, hp: 10, max: 0 })).status, 400);
+});

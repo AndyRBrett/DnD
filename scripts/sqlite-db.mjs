@@ -10,6 +10,7 @@ export function openDatabase(file = ":memory:") {
     sql.exec(readFileSync(new URL("../drizzle/0000_rooms.sql", import.meta.url), "utf8"));
   }
   sql.exec(readFileSync(new URL("../drizzle/0001_combat.sql", import.meta.url), "utf8"));
+  sql.exec(readFileSync(new URL("../drizzle/0002_party_hp.sql", import.meta.url), "utf8"));
 
   function wrap(statement, bindings = []) {
     return {

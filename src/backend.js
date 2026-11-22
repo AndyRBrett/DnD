@@ -53,6 +53,8 @@ function localBackend() {
     },
     advise: (code, character, question = "") => post(code, "advise", { character, question }, false),
     deleteScene: (code, id) => post(code, "scene", { id, delete: true }),
+    setHp: (code, character, { hp, max, temp }) => post(code, "hp", { character, hp, max, temp }, false),
+    adjustHp: (code, character, change) => post(code, "hp-adjust", { character, change }, false),
     combatSet: (code, combat) => post(code, "combat", combat),
     combatEnd: code => post(code, "combat", { end: true }),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
@@ -66,7 +68,7 @@ function hostedBackend({ url, anonKey }) {
   let session = null;
   try { session = JSON.parse(storage.get(SESSION_KEY) ?? "null"); } catch {}
   let refreshing;
-  let combatMissing = false;
+  let roomVersion = 4;
 
   function save(raw) {
     session = raw ? {
@@ -134,17 +136,22 @@ function hostedBackend({ url, anonKey }) {
     createRoom: (party, recap) => rpc("dnd_create_room", { p_party: party, p_recap: recap }),
     // dnd_room_v3 adds combat (supabase/migrations/0004). Until that migration
     // runs, fall back to dnd_room_v2 and combat stays unavailable.
+    // Newest room function first: v4 adds party HP (migration 0006), v3 adds
+    // combat (0004). Until a migration runs, fall back to the one before.
     async room(code) {
-      if (!combatMissing) {
+      while (roomVersion > 2) {
         try {
-          return await rpc("dnd_room_v3", { p_code: code });
+          const data = await rpc("dnd_room_v" + roomVersion, { p_code: code });
+          return { ...data, hpUnavailable: roomVersion < 4 };
         } catch (error) {
           if (error.status !== 404 && !/could not find the function/i.test(error.message)) throw error;
-          combatMissing = true;
+          roomVersion -= 1;
         }
       }
-      return { ...await rpc("dnd_room_v2", { p_code: code }), combatUnavailable: true };
+      return { ...await rpc("dnd_room_v2", { p_code: code }), combatUnavailable: true, hpUnavailable: true };
     },
+    setHp: (code, character, { hp, max, temp }) => rpc("dnd_hp_set", { p_code: code, p_character: character, p_hp: hp, p_max: max, p_temp: temp ?? 0 }),
+    adjustHp: (code, character, change) => rpc("dnd_hp_adjust", { p_code: code, p_character: character, p_change: change }),
     combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
     combatEnd: code => rpc("dnd_combat_end", { p_code: code }),
     deleteScene: (code, id) => rpc("dnd_delete_scene", { p_code: code, p_id: id }),

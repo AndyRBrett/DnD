@@ -107,3 +107,21 @@ test("3D dice are real polyhedra with every number once", async () => {
   assert.deepEqual(percentileLabels(100), { tens: "00", units: "0" });
   assert.deepEqual(percentileLabels(7), { tens: "00", units: "7" });
 });
+
+test("party HP: sheet max, temp HP first, heal to max", async () => {
+  const { maxHpFromSheet, changePartyHp, partyHpStatus } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const hpLine = name => Object.fromEntries(sheets[name].combat)["HP"];
+  assert.equal(maxHpFromSheet(hpLine("The White Wizard")), 75);
+  assert.equal(maxHpFromSheet(hpLine("Dum Dum")), 94);
+  assert.equal(maxHpFromSheet(hpLine("Logan Ninefingers")), 115);
+  assert.equal(maxHpFromSheet("current unknown"), null);
+  const wizard = { hp: 63, max: 75, temp: 5 };
+  assert.deepEqual(changePartyHp(wizard, -12), { hp: 56, max: 75, temp: 0 });
+  assert.deepEqual(changePartyHp(wizard, -3), { hp: 63, max: 75, temp: 2 });
+  assert.deepEqual(changePartyHp(wizard, 50), { hp: 75, max: 75, temp: 5 });
+  assert.deepEqual(changePartyHp(wizard, -500), { hp: 0, max: 75, temp: 0 });
+  assert.equal(partyHpStatus({ hp: 30, max: 75 }), "bloodied");
+  assert.equal(partyHpStatus({ hp: 0, max: 75 }), "down");
+  assert.equal(partyHpStatus(undefined), "unknown");
+});
