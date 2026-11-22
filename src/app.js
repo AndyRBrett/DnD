@@ -1,15 +1,10 @@
-import { recommend, coachingPrompt, characterAbilities } from "/scene-options.js";
+import { recommend, coachingPrompt, characterAbilities } from "./scene-options.js";
+import { backend, storage } from "./backend.js";
+import { party as starterParty, recap as starterRecap } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
 const room = new URLSearchParams(location.search).get("room");
-// The host key lives in localStorage so the DM can close the tab or reopen the
-// browser on the host laptop and keep control of the room.
-const storage = {
-  get(key) { try { return localStorage.getItem(key) ?? sessionStorage.getItem(key); } catch { return null; } },
-  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
-  remove(key) { try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch {} }
-};
-const hostKey = room ? storage.get("host:" + room) : null;
+let isHost = false;
 let state;
 let editId;
 let syncing = false;
@@ -22,22 +17,6 @@ let writing = false;
 let pendingSpeech = "";
 let lastFinal = 0;
 let ended = false;
-
-
-async function call(path, options) {
-  const result = await fetch("/api/rooms" + path, { cache: "no-store", ...options });
-  const data = await result.json();
-  if (!result.ok) throw Object.assign(new Error(data.error), { status: result.status });
-  return data;
-}
-
-function update(path, payload) {
-  return call("/" + room + "/" + path, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-table-host": hostKey },
-    body: JSON.stringify(payload)
-  });
-}
 
 function list(id, values) {
   $(id).replaceChildren(...values.map(value => {
@@ -87,11 +66,7 @@ async function askClaude() {
   button.disabled = true;
   $("claude-status").textContent = "Asking Claude…";
   try {
-    const advice = await call("/" + room + "/advise", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ character: Number(index) })
-    });
+    const advice = await backend.advise(room, Number(index));
     if ($("character").value !== index || state.scenes.at(-1)?.id !== sceneId) {
       $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
       return;
@@ -121,7 +96,7 @@ function drawRoster() {
   const stored = $("character").value || storage.get("dnd-character");
   $("character").replaceChildren(...state.party.map(({name}, index) => new Option(name, index)));
   if (state.party[Number(stored)]) $("character").value = stored ?? "0";
-  if (!hostKey) return;
+  if (!isHost) return;
   $("roster").replaceChildren(...state.party.map(({name, role, moves}, index) => {
     const box = document.createElement("fieldset");
     const legend = document.createElement("legend");
@@ -146,22 +121,24 @@ function drawRoster() {
 }
 
 async function sync() {
-  if (syncing || ended) return;
+  if (!room || syncing || ended || $("table").hidden) return;
   syncing = true;
   try {
-    const fresh = await call("/" + room);
+    const fresh = await backend.room(room);
+    const hostChanged = fresh.isHost !== isHost;
     const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
     const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes);
     const previous = state;
     state = fresh;
-    if (rosterChanged) drawRoster();
+    if (hostChanged) setHost(fresh.isHost);
+    if (rosterChanged || hostChanged) drawRoster();
     if (scenesChanged) {
       if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
       $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
       list("history", state.scenes.slice(0, -1).reverse().map(scene => scene.text));
     }
     if (rosterChanged || scenesChanged) showOptions();
-    $("connection").textContent = hostKey ? "HOST" : "PLAYER";
+    $("connection").textContent = isHost ? "HOST" : "PLAYER";
   } catch (error) {
     if (error.status === 404) {
       ended = true;
@@ -180,6 +157,11 @@ async function sync() {
       $("copy").hidden = true;
       $("edit").hidden = true;
       $("connection").textContent = "ENDED";
+    } else if (error.status === 401) {
+      clearInterval(poll);
+      poll = undefined;
+      stopMic();
+      showLobby("Sign in to join the table.");
     } else {
       $("connection").textContent = "RECONNECTING";
     }
@@ -230,7 +212,7 @@ async function publish(automatic = false) {
   writing = true;
   $("publish").disabled = true;
   try {
-    await update("scene", { text, id });
+    await backend.postScene(room, text, id);
     if ($("draft").value.trim() === text) setDraft("");
     else if (!id && $("draft").value.startsWith(text + " ")) setDraft($("draft").value.slice(text.length + 1));
     editId = undefined;
@@ -403,7 +385,7 @@ $("copy").onclick = async () => {
     }
     return true;
   };
-  const link = new URL("/?room=" + room, location.href);
+  const link = new URL("?room=" + room, location.href);
   if (["localhost", "127.0.0.1"].includes(link.hostname)) {
     try {
       const { origin } = await fetch("/api/local-player-origin").then(response => response.json());
@@ -430,7 +412,7 @@ $("party-form").onsubmit = async event => {
     const party = Array.from({length: 5}, (_, index) => Object.fromEntries(
       ["name", "role", "moves"].map(key => [key, data.get(key + index)])
     ));
-    await update("party", { party });
+    await backend.saveParty(room, party);
     $("notice").textContent = "Character sheets updated.";
     await sync();
   } catch (error) {
@@ -443,45 +425,133 @@ $("close").onclick = async () => {
   if (!window.confirm("End this room and delete the session transcript and character entries?")) return;
   stopMic();
   try {
-    await update("close", {});
-    storage.remove("host:" + room);
-    location.href = "/";
+    await backend.closeRoom(room);
+    location.href = "./";
   } catch (error) {
     $("notice").textContent = error.message;
   }
 };
+function setHost(value) {
+  isHost = value;
+  $("table").classList.toggle("player-room", !isHost);
+  for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !isHost;
+  if (!isHost) stopMic();
+}
+
+let poll;
+function enterRoom() {
+  $("lobby").hidden = true;
+  $("table").hidden = false;
+  setHost(false);
+  sync();
+  poll ??= setInterval(sync, 1500);
+}
+
+// ── Lobby and sign-in (hosted mode uses the UFC app's email-code login) ──
+let pendingEmail = "";
+async function showLobby(message = "") {
+  $("lobby").hidden = false;
+  $("table").hidden = true;
+  $("lobby-status").textContent = message;
+  const user = backend.user();
+  $("signin").hidden = !backend.hosted || Boolean(user);
+  $("account").hidden = backend.hosted && !user;
+  $("account-line").hidden = !backend.hosted;
+  $("create").textContent = room ? "Start a new table" : "Start a table";
+  $("join").hidden = !room;
+  if (!user) return;
+  $("account-email").textContent = user.email;
+  try {
+    const rooms = await backend.myRooms();
+    $("my-rooms").hidden = !rooms.length;
+    $("my-room-list").replaceChildren(...rooms.map(({ code, created }) => {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = "?room=" + code;
+      link.textContent = "Table started " + new Date(created).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+      item.append(link);
+      return item;
+    }));
+  } catch (error) {
+    if (error.status === 401) showLobby("Sign in again to continue.");
+  }
+}
+
+$("email-form").onsubmit = async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  const email = $("email").value.trim().toLowerCase();
+  button.disabled = true;
+  $("lobby-status").textContent = "";
+  try {
+    await backend.sendCode(email);
+    pendingEmail = email;
+    $("code-email").textContent = email;
+    $("email-form").hidden = true;
+    $("code-form").hidden = false;
+    $("code").value = "";
+    $("code").focus();
+  } catch (error) {
+    $("lobby-status").textContent = error.status === 429
+      ? "Too many codes requested. Wait a minute and try again."
+      : "Couldn't send the code. Check the email address and try again.";
+  } finally {
+    button.disabled = false;
+  }
+};
+$("code-form").onsubmit = async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await backend.verifyCode(pendingEmail, $("code").value.replace(/\s/g, ""));
+    $("code-form").hidden = true;
+    $("email-form").hidden = false;
+    if (room) enterRoom();
+    else showLobby();
+  } catch {
+    $("lobby-status").textContent = "Wrong or expired code. Try again, or request a new one.";
+  } finally {
+    button.disabled = false;
+  }
+};
+$("code-back").onclick = () => {
+  $("code-form").hidden = true;
+  $("email-form").hidden = false;
+  $("lobby-status").textContent = "";
+};
+$("signout").onclick = async () => {
+  await backend.signOut();
+  showLobby();
+};
+$("join").onclick = () => enterRoom();
 $("create").onclick = async () => {
   $("create").disabled = true;
   try {
-    const { code, host } = await call("", { method: "POST", headers: { "x-table-action": "create" } });
-    storage.set("host:" + code, host);
-    location.href = "/?room=" + code;
+    const code = await backend.createRoom(starterParty, starterRecap);
+    location.href = "?room=" + code;
   } catch (error) {
     $("lobby-status").textContent = error.message;
     $("create").disabled = false;
+    if (error.status === 401) showLobby("Sign in again to continue.");
   }
 };
-if (room) {
-  $("lobby").hidden = true;
-  $("table").hidden = false;
-  $("table").classList.toggle("player-room", !hostKey);
-  for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !hostKey;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (listening) {
+      resumeOnReturn = true;
+      stopMic();
+      $("mic-status").textContent = "Listening paused while the screen was off or another app was open.";
+    }
+    return;
+  }
   sync();
-  setInterval(sync, 1500);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      if (listening) {
-        resumeOnReturn = true;
-        stopMic();
-        $("mic-status").textContent = "Listening paused while the screen was off or another app was open.";
-      }
-      return;
-    }
-    sync();
-    if (resumeOnReturn && !ended) {
-      resumeOnReturn = false;
-      startMic();
-    }
-  });
-  window.addEventListener("pageshow", sync);
-}
+  if (resumeOnReturn && !ended) {
+    resumeOnReturn = false;
+    startMic();
+  }
+});
+window.addEventListener("pageshow", sync);
+
+if (room && (!backend.hosted || backend.user())) enterRoom();
+else showLobby(room ? "Sign in to join the table." : "");

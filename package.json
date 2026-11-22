@@ -6,7 +6,8 @@
     "dev": "node scripts/build.mjs && node --env-file-if-exists=.env scripts/local.mjs",
     "table": "node scripts/build.mjs && node --env-file-if-exists=.env scripts/local.mjs --db table.sqlite",
     "build": "node scripts/build.mjs",
-    "test": "node scripts/build.mjs && node --test --disable-warning=ExperimentalWarning \"test/*.test.mjs\""
+    "test": "node scripts/build.mjs && node --test --disable-warning=ExperimentalWarning \"test/*.test.mjs\"",
+    "build:site": "node scripts/build-site.mjs"
   },
   "engines": {
     "node": ">=22.13"
