@@ -1,0 +1,10 @@
+dist/
+*.sqlite*
+.env*
+*.db
+*.db-*
+.openai/
+.wrangler/
+node_modules/
+*.pem
+*.key

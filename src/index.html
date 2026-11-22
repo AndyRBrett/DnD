@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#141816">
+  <title>D&D Table Live</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <header class="masthead"><p class="mark">D&D TABLE LIVE</p><span id="connection" aria-live="polite"></span></header>
+    <section id="lobby">
+      <div class="hero">
+        <h1>One table.<br>Five adventurers.</h1>
+        <p>Capture the DM’s narration once and give every player a view of the scene and their character’s options.</p>
+        <button id="create" type="button">Start a table</button>
+        <p id="lobby-status" class="notice" role="status"></p>
+      </div>
+    </section>
+    <div id="table" hidden>
+      <div class="room-header">
+        <div><p class="eyebrow">CAMPAIGN SESSION</p><h1>The Onyx Jewel</h1></div>
+        <button id="copy" class="secondary" type="button">Copy player link</button>
+      </div>
+      <p id="notice" class="notice" role="status"></p>
+      <section id="host" class="panel capture" hidden aria-labelledby="host-title">
+        <div class="section-header">
+          <div><p class="eyebrow">HOST CONTROLS</p><h2 id="host-title">DM microphone</h2></div>
+          <button id="mic" type="button">Start listening</button>
+        </div>
+        <p id="mic-status" role="status">Connect the DM’s mic before starting. Keep this tab open while listening.</p>
+        <details id="manual-controls">
+          <summary>Transcript and manual updates</summary>
+          <label class="check"><input type="checkbox" id="auto" checked> Publish automatically</label>
+          <textarea id="draft" rows="2" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
+          <div class="controls"><button id="publish" class="secondary" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
+        </details>
+      </section>
+      <div class="columns">
+        <section class="panel scene-panel" aria-labelledby="scene-title">
+          <p class="eyebrow">SHARED BY THE DM</p>
+          <h2 id="scene-title">Current scene</h2>
+          <p id="scene">Waiting for an update.</p>
+          <button id="edit" class="quiet" type="button" hidden>Edit latest update</button>
+          <details><summary>Earlier updates</summary><ol id="history"></ol></details>
+        </section>
+        <section class="panel options-panel" aria-labelledby="options-title">
+          <div class="player-heading">
+            <h2 id="options-title">What can I do?</h2>
+            <select id="character" aria-label="Your character"></select>
+          </div>
+          <p id="situation" class="eyebrow" role="status"></p>
+          <ul id="options"></ul>
+          <p class="dm-question"><strong>Ask the DM</strong><br><span id="ask-dm"></span></p>
+          <details id="character-library">
+            <summary>Character abilities</summary>
+            <p id="character-empty">This character’s abilities haven’t been entered yet.</p>
+            <ul id="character-abilities"></ul>
+            <div id="character-check" hidden><strong>Check your sheet or ask the DM</strong><ul id="check-abilities"></ul></div>
+          </details>
+          <details id="coach-controls">
+            <summary>Bring this to the D&amp;D chat</summary>
+            <button id="copy-coach" class="secondary" type="button">Copy character and scene</button>
+            <p id="coach-status" class="notice" role="status"></p>
+          </details>
+        </section>
+      </div>
+      <details id="party-editor" class="panel" hidden>
+        <summary>Character sheets and abilities</summary>
+        <p>Add usable abilities one per line. Start a line with <code>combat</code>, <code>danger</code>, <code>explore</code>, <code>social</code>, <code>aid</code>, or <code>any</code>, followed by <code>|</code>. Include any cost or limit. Use <code>check</code> for unverified abilities to display them without suggesting them during play. Example <code>combat | Sacred Flame — action, visible creature in range, no spell slot.</code></p>
+        <form id="party-form"><div id="roster"></div><button type="submit">Save characters</button></form>
+      </details>
+      <div id="close-wrap" hidden><button id="close" class="quiet" type="button">End room and delete session</button></div>
+    </div>
+  </main>
+</body>
+</html>
