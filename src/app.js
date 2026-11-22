@@ -6,7 +6,7 @@ const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -45,7 +45,24 @@ function showOptions() {
   drawConditions();
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
-  $("quick-roll-chips").replaceChildren(...rolls.map(([label, value]) => {
+  $("quick-roll-chips").replaceChildren(...rollTiles(rolls));
+  $("combat-rolls").replaceChildren(...rollTiles(rolls));
+  $("combat-rolls-card").hidden = !rolls.length || isHost;
+  drawCombat();
+  updateChips();
+  $("action-label").textContent = "What is " + character.name + " doing?";
+  const recent = state.scenes;
+  const advice = recommend(character, recent);
+  const latest = recent.at(-1);
+  $("situation").textContent = advice.situation + (latest ? " · Updated " +
+    new Date(latest.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "");
+  const line = latest?.text ?? "";
+  $("responding-to").textContent = line ? "Responding to: “" + (line.length > 140 ? line.slice(0, 140) + "…" : line) + "”" : "";
+  showAdvice(advice, character);
+}
+
+function rollTiles(rolls) {
+  return rolls.map(([label, value]) => {
     const expression = rollableFrom(value);
     const tile = document.createElement(expression ? "button" : "div");
     tile.className = "stat" + (value.endsWith("*") ? " is-unconfirmed" : "") + (expression ? " is-rollable" : "");
@@ -60,16 +77,10 @@ function showOptions() {
     name.textContent = label;
     tile.append(number, name);
     return tile;
-  }));
-  updateChips();
-  $("action-label").textContent = "What is " + character.name + " doing?";
-  const recent = state.scenes;
-  const advice = recommend(character, recent);
-  const latest = recent.at(-1);
-  $("situation").textContent = advice.situation + (latest ? " · Updated " +
-    new Date(latest.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "");
-  const line = latest?.text ?? "";
-  $("responding-to").textContent = line ? "Responding to: “" + (line.length > 140 ? line.slice(0, 140) + "…" : line) + "”" : "";
+  });
+}
+
+function showAdvice(advice, character) {
   list("options", advice.options);
   $("ask-dm").textContent = advice.question;
   drawSheet(character);
@@ -395,6 +406,7 @@ async function sync() {
       || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
     const previous = state;
     state = fresh;
+    if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     if (hostChanged) setHost(fresh.isHost);
     if (!previous) rememberTable(room);
     if (rosterChanged || hostChanged) drawRoster();
@@ -1068,7 +1080,8 @@ function syncDiceExpression() {
   $("mod-value").textContent = (dice.modifier >= 0 ? "+" : "−") + Math.abs(dice.modifier);
   previewDice();
 }
-function openDice(expression = "", label = "") {
+function openDice(expression = "", label = "", onResult = null) {
+  dice.onResult = onResult;
   dice.pool = {};
   dice.modifier = 0;
   dice.label = label;
@@ -1077,7 +1090,7 @@ function openDice(expression = "", label = "") {
   $("dice-label").textContent = label ? label + " · " + expression : "";
   $("dice-result").hidden = true;
   $("dice-status").textContent = "";
-  const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended;
+  const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended && !onResult;
   $("dice-share-wrap").hidden = !canShare;
   const notes = conditionRollNotes();
   $("dice-conditions").hidden = !notes.length;
@@ -1140,6 +1153,10 @@ $("dice-roll").onclick = async () => {
   dice.log.unshift(name + ": " + result.total + " (" + result.breakdown + ")");
   dice.log = dice.log.slice(0, 8);
   list("dice-log", dice.log);
+  if (dice.onResult) {
+    await dice.onResult(result.total);
+    return;
+  }
   if (!$("dice-share-wrap").hidden && $("dice-share").checked) {
     const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, 300);
     try {
@@ -1152,6 +1169,227 @@ $("dice-roll").onclick = async () => {
   }
 };
 
+// ── Combat mode: the DM starts it from the encounter tracker; every phone
+// sees the initiative order, whose turn it is, and enemies as Healthy,
+// Bloodied, or Down (never their HP). ──
+const STATUS_TEXT = { ok: "Healthy", bloodied: "Bloodied", down: "Down" };
+let combatTimer;
+function myIndex() { return isHost ? null : Number($("character").value); }
+function liveOrder() {
+  if (!state?.combat) return [];
+  // The DM's phone uses its own (freshest) enemies.
+  const combat = isHost && encounterLoaded ? { ...state.combat, enemies: publicEnemies(enemies) } : state.combat;
+  return combatOrder(combat, state.party);
+}
+function initiativeExpression() {
+  const name = selectedCharacter()?.name;
+  const entry = (sheets[name]?.rolls ?? []).find(([label]) => /initiative/i.test(label));
+  return (entry && rollableFrom(entry[1])) || "d20";
+}
+function combatChanged(previous) {
+  const before = previous?.combat;
+  const now = state.combat;
+  drawCombat();
+  if (!before && now) {
+    if (!isHost) showTab("combat");
+    $("tab-combat").classList.toggle("has-news", currentTab !== "combat");
+  }
+  if (before && !now) {
+    if (currentTab === "combat") showTab("scene");
+    $("notice").textContent = "Combat ended.";
+    setTimeout(() => { if ($("notice").textContent === "Combat ended.") $("notice").textContent = ""; }, 6000);
+  }
+  const mine = "pc:" + myIndex();
+  if (now && !isHost && now.turn === mine && before?.turn !== mine) {
+    navigator.vibrate?.([120, 60, 120]);
+    if (currentTab !== "combat") $("tab-combat").classList.add("has-news");
+  }
+}
+async function publishCombat(changes = {}) {
+  clearTimeout(combatTimer);
+  const current = state?.combat ?? { round: 1, turn: null };
+  const payload = {
+    round: changes.round ?? current.round,
+    turn: "turn" in changes ? changes.turn : current.turn,
+    enemies: publicEnemies(enemies),
+    reset: Boolean(changes.reset)
+  };
+  await backend.combatSet(room, payload);
+  state.combat = { ...current, ...payload, party: changes.reset ? {} : current.party ?? {} };
+  delete state.combat.reset;
+  drawCombat();
+}
+function schedulePublish() {
+  clearTimeout(combatTimer);
+  combatTimer = setTimeout(() => publishCombat().catch(error => { $("enc-combat-status").textContent = error.message; }), 350);
+}
+
+function drawCombat() {
+  const combat = state?.combat;
+  const available = Boolean(backend.combatSet) && !ended;
+  $("tab-combat").hidden = !combat;
+  if (!combat && currentTab === "combat") showTab("scene");
+  if (isHost) {
+    $("enc-combat").hidden = !available || (!combat && !enemies.length);
+    $("enc-combat").textContent = combat ? "End combat" : "Start combat";
+    $("enc-combat").className = combat ? "danger-soft" : "cta";
+    if (combat) $("enc-combat-status").textContent = "Combat is live. Players see names, initiative, and Healthy / Bloodied / Down — never HP or AC.";
+  }
+  if (!combat) return;
+
+  const order = liveOrder();
+  const me = myIndex();
+  const myKey = me === null ? null : "pc:" + me;
+  const current = order.find(entry => entry.key === combat.turn);
+  const nextKey = upNext(order, combat.turn);
+  const next = order.find(entry => entry.key === nextKey);
+  $("combat-round").textContent = String(combat.round);
+  $("combat-head").classList.toggle("is-my-turn", Boolean(current && current.key === myKey));
+  $("combat-turn").textContent = !current ? (isHost ? "Ready when you are" : "Roll initiative")
+    : current.key === myKey ? "Your turn!" : current.name + (current.kind === "enemy" ? " acts" : "'s turn");
+  $("combat-next").textContent = !current ? (isHost ? "Tap Next turn to start round 1. Players can still add their initiative." : "The DM starts the first turn once everyone has rolled.")
+    : next ? (next.key === myKey ? "You're up next — get ready." : "Up next: " + next.name) : "";
+  const foes = order.filter(entry => entry.kind === "enemy");
+  const up = foes.filter(entry => entry.status !== "down").length;
+  $("combat-foes").textContent = foes.length ? up + " of " + foes.length + " enemies standing" : "No enemies yet";
+  $("combat-dm").hidden = !isHost;
+
+  const mine = me === null ? undefined : combat.party?.[me];
+  $("combat-init").hidden = isHost;
+  $("init-title").textContent = Number.isFinite(mine) ? "Your initiative: " + mine : "Your initiative";
+  $("init-roll").textContent = "Roll " + initiativeExpression();
+  $("combat-hint").hidden = isHost;
+
+  const local = isHost && encounterLoaded ? Object.fromEntries(enemies.map(enemy => ["en:" + enemy.id, enemy])) : {};
+  $("combat-order").replaceChildren(...order.map(entry => {
+    const item = document.createElement("li");
+    item.className = "combatant is-" + entry.kind + (entry.status === "down" ? " is-down" : "")
+      + (entry.key === combat.turn ? " is-turn" : "") + (entry.key === myKey ? " is-me" : "");
+    const score = document.createElement("b");
+    score.className = "init";
+    score.textContent = entry.initiative ?? "–";
+    const body = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = entry.name + (entry.key === myKey ? " (you)" : "");
+    const meta = document.createElement("div");
+    meta.className = "chips";
+    const tag = document.createElement("span");
+    if (entry.kind === "enemy") {
+      tag.className = "state is-" + entry.status;
+      tag.textContent = STATUS_TEXT[entry.status] ?? "Healthy";
+      meta.append(tag);
+      const own = local[entry.key];
+      if (own) {
+        const hp = document.createElement("span");
+        hp.textContent = "HP " + own.hp + "/" + own.maxHp + " · AC " + own.ac;
+        meta.append(hp);
+      }
+      for (const condition of entry.conditions) {
+        const chip = document.createElement("span");
+        chip.className = "cond";
+        chip.textContent = (conditionByName[condition]?.icon ?? "") + " " + condition;
+        meta.append(chip);
+      }
+    } else {
+      tag.className = "state is-party";
+      tag.textContent = "Party";
+      meta.append(tag);
+      if (entry.initiative === null) {
+        const waiting = document.createElement("span");
+        waiting.textContent = "hasn't rolled";
+        meta.append(waiting);
+      }
+    }
+    body.append(name, meta);
+    item.append(score, body);
+    if (entry.key === combat.turn) {
+      const now = document.createElement("em");
+      now.textContent = "NOW";
+      item.append(now);
+    }
+    if (isHost && entry.kind === "pc") {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.inputMode = "numeric";
+      input.className = "init-input";
+      input.placeholder = "Init";
+      input.value = entry.initiative ?? "";
+      input.setAttribute("aria-label", "Initiative for " + entry.name);
+      input.onchange = () => setInitiative(entry.character, input.value, $("combat-status"));
+      item.append(input);
+    }
+    return item;
+  }));
+}
+
+async function setInitiative(character, value, status) {
+  const number = Math.round(Number(value));
+  if (String(value).trim() === "" || !Number.isFinite(number)) {
+    status.textContent = "Enter your initiative total.";
+    return;
+  }
+  try {
+    await backend.combatInitiative(room, character, number);
+    state.combat = { ...state.combat, party: { ...state.combat.party, [character]: number } };
+    status.textContent = "Initiative " + number + " recorded.";
+    drawCombat();
+    sync();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+$("init-roll").onclick = () => openDice(initiativeExpression(), "Initiative", async total => {
+  await setInitiative(myIndex(), total, $("dice-status"));
+});
+$("combat-init").onsubmit = event => {
+  event.preventDefault();
+  setInitiative(myIndex(), $("init-value").value, $("init-status"));
+  $("init-value").value = "";
+};
+async function stepTurn(direction) {
+  const { turn, round } = nextTurn(liveOrder(), state.combat.turn, state.combat.round, direction);
+  for (const id of ["combat-advance", "combat-prev"]) $(id).disabled = true;
+  try {
+    await publishCombat({ turn, round });
+    $("combat-status").textContent = "";
+  } catch (error) {
+    $("combat-status").textContent = error.message;
+  } finally {
+    for (const id of ["combat-advance", "combat-prev"]) $(id).disabled = false;
+  }
+}
+$("combat-advance").onclick = () => stepTurn(1);
+$("combat-prev").onclick = () => stepTurn(-1);
+$("enc-combat").onclick = async () => {
+  if (state?.combatUnavailable) {
+    $("enc-combat-status").textContent = "Combat needs a one-time database update: run supabase/migrations/0004_dnd_combat.sql in the Supabase SQL editor.";
+    return;
+  }
+  $("enc-combat").disabled = true;
+  try {
+    if (state.combat) {
+      if (!window.confirm("End combat for everyone? Your encounter stays here.")) return;
+      await backend.combatEnd(room);
+      state.combat = null;
+      $("enc-combat-status").textContent = "Combat ended.";
+      drawCombat();
+    } else {
+      // Enemies who haven't rolled get initiative now.
+      enemies = enemies.map(enemy => enemy.initiative === null
+        ? { ...enemy, initiative: roll("d20" + (enemy.init >= 0 ? "+" : "") + enemy.init).total } : enemy);
+      storage.set(encounterKey(), JSON.stringify(enemies));
+      await publishCombat({ round: 1, turn: null, reset: true });
+      drawEncounter();
+      showTab("combat");
+    }
+    sync();
+  } catch (error) {
+    $("enc-combat-status").textContent = error.message;
+  } finally {
+    $("enc-combat").disabled = false;
+  }
+};
+
 // ── Encounter tracker (DM only, kept on this device) ──
 const TEMPLATE_KEY = "dnd-enemy-templates";
 const encounterKey = () => "dnd-encounter:" + room;
@@ -1159,7 +1397,10 @@ const readJson = (key, fallback) => { try { return JSON.parse(storage.get(key) ?
 let enemies = [];
 let encounterLoaded = false;
 const savedTemplates = () => readJson(TEMPLATE_KEY, []);
-function saveEncounter() { storage.set(encounterKey(), JSON.stringify(enemies)); }
+function saveEncounter() {
+  storage.set(encounterKey(), JSON.stringify(enemies));
+  if (isHost && state?.combat) schedulePublish();
+}
 
 function drawTemplateOptions() {
   const custom = savedTemplates();
@@ -1374,6 +1615,7 @@ function drawEncounter() {
   $("encounter-controls").hidden = !total;
   $("enemy-builder").open = !total || $("enemy-builder").open;
   $("enemy-list").replaceChildren(...enemies.map(enemyCard));
+  drawCombat();
 }
 
 function setHost(value) {
@@ -1384,6 +1626,7 @@ function setHost(value) {
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;
   if (isHost) drawEncounter();
+  drawCombat();
   if (!isHost && currentTab === "dm") showTab("scene");
   if (isHost && storage.get(TAB_KEY) === "dm" && currentTab !== "dm") showTab("dm");
   if (!isHost) stopMic();

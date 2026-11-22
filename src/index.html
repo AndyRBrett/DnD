@@ -113,6 +113,40 @@
         </form>
       </section>
 
+      <!-- Combat (shown to everyone while the DM runs a fight) -->
+      <section class="tab-panel" data-panel="combat" hidden>
+        <section id="combat-head" class="card combat-head" aria-live="polite">
+          <p class="eyebrow red">COMBAT · ROUND <span id="combat-round">1</span></p>
+          <h2 id="combat-turn" class="display sm">Roll initiative</h2>
+          <p id="combat-next" class="fineprint"></p>
+          <p id="combat-foes" class="pill-label"></p>
+          <div id="combat-dm" class="action-row" hidden>
+            <button id="combat-prev" class="ghost" type="button">◀ Back</button>
+            <button id="combat-advance" class="cta" type="button">Next turn ▶</button>
+          </div>
+          <p id="combat-status" class="fineprint"></p>
+        </section>
+        <form id="combat-init" class="card stack" hidden>
+          <h3 class="display xs" id="init-title">Your initiative</h3>
+          <p class="fineprint">Roll it here, or type the total you rolled at the table.</p>
+          <div class="init-row">
+            <button id="init-roll" class="cta" type="button">Roll</button>
+            <input id="init-value" type="number" inputmode="numeric" min="-10" max="60" placeholder="Total" aria-label="Initiative total">
+            <button class="ghost" type="submit">Set</button>
+          </div>
+          <p id="init-status" class="fineprint"></p>
+        </form>
+        <section class="card">
+          <h3 class="display xs">Initiative order</h3>
+          <ol id="combat-order" class="combat-order"></ol>
+          <p class="fineprint" id="combat-hint">Enemies show as Healthy, Bloodied (half HP or less), or Down.</p>
+        </section>
+        <section class="card" id="combat-rolls-card">
+          <h3 class="display xs">Your rolls</h3>
+          <div class="stat-grid" id="combat-rolls"></div>
+        </section>
+      </section>
+
       <!-- Moves -->
       <section class="tab-panel" data-panel="moves" hidden>
         <section class="card options-panel" aria-labelledby="options-title">
@@ -198,6 +232,8 @@
         <section id="encounter" class="card" hidden aria-labelledby="encounter-count">
           <p class="eyebrow red">ENCOUNTER · ONLY YOU SEE THIS</p>
           <h2 id="encounter-count" class="display sm">No enemies yet</h2>
+          <button id="enc-combat" class="cta" type="button" hidden>Start combat</button>
+          <p id="enc-combat-status" class="fineprint"></p>
           <div class="controls" id="encounter-controls" hidden><button id="enc-init" class="ghost" type="button">Roll initiative</button><button id="enc-clear" class="quiet" type="button">Clear encounter</button></div>
           <div id="enemy-list"></div>
           <details id="enemy-builder" class="fold">
@@ -272,6 +308,7 @@
 
   <nav class="tabbar" id="tabbar" aria-label="Table" hidden>
     <button class="tab-btn" id="tab-scene" data-tab="scene" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Scene</span><i class="dot" aria-hidden="true"></i></button>
+    <button class="tab-btn" id="tab-combat" data-tab="combat" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l10 10M4 4h4M4 4v4M20 4L10 14M20 4h-4M20 4v4"/><path d="M12 16l-3 3M6 15l3 3M12 16l3 3M18 15l-3 3M5 20l1-1M19 20l-1-1"/></svg><span>Combat</span><i class="dot" aria-hidden="true"></i></button>
     <button class="tab-btn" id="tab-moves" data-tab="moves" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5L9 20H4v-5z"/><path d="M12 7l5 5"/></svg><span>Moves</span></button>
     <button class="tab-btn" id="tab-claude" data-tab="claude" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg><span>Claude</span></button>
     <button class="tab-btn" id="tab-sheet" data-tab="sheet" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Sheet</span></button>

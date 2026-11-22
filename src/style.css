@@ -332,3 +332,33 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 }
 @keyframes die-land{0%{transform:scale(1.18)}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.die.is-rolling,.die.is-landed{animation:none}}
+
+/* ── Combat ── */
+.combat-head{border-color:var(--red-border);background:linear-gradient(180deg,var(--red-dim),var(--card) 70%)}
+.combat-head .display{margin:2px 0 4px}
+.combat-head.is-my-turn{border-color:var(--gold-border);background:linear-gradient(180deg,var(--gold-dim),var(--card) 70%);animation:my-turn 1.6s ease-in-out infinite}
+.combat-head.is-my-turn .display{color:var(--gold)}
+@keyframes my-turn{50%{box-shadow:0 0 0 3px var(--gold-border)}}
+@media (prefers-reduced-motion:reduce){.combat-head.is-my-turn{animation:none}}
+#combat-dm{margin-top:10px}
+#combat-dm .cta{flex:2}
+.init-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px}
+.combat-order{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.combatant{display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:10px 12px;position:relative}
+.combatant>div{flex:1;min-width:0}
+.combatant strong{display:block;font:700 1.1rem var(--font-display);text-transform:uppercase;letter-spacing:.02em}
+.combatant .chips{margin:4px 0 0}
+.combatant .init{min-width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#0f1114;font:700 1.2rem var(--font-display);color:var(--muted2)}
+.combatant.is-turn{border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.combatant.is-turn .init{background:var(--red);color:#fff}
+.combatant.is-me strong{color:var(--gold)}
+.combatant.is-down{opacity:.45}
+.combatant.is-down strong{text-decoration:line-through}
+.combatant em{font:700 .7rem var(--font-display);letter-spacing:.14em;color:var(--red);font-style:normal}
+.combatant .state.is-ok{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent)}
+.combatant .state.is-bloodied{color:var(--gold);border-color:var(--gold-border);background:var(--gold-dim)}
+.combatant .state.is-down{color:var(--red);border-color:var(--red-border);background:var(--red-dim)}
+.combatant .state.is-party{color:var(--muted2)}
+.combatant .cond{color:var(--gold)}
+.combatant input.init-input{width:64px;flex:0 0 64px;min-height:40px;padding:0 6px;text-align:center}
+#enc-combat{width:100%;margin:6px 0 2px}

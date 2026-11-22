@@ -73,3 +73,22 @@ test("encounter: damage, healing, status, count, initiative order", () => {
   const order = rollInitiative(createEnemies({ name: "B", hp: "5", init: 2 }, 3), faces(20, 3, 18, 10));
   assert.deepEqual(order.map(enemy => enemy.initiative), [20, 12, 5]);
 });
+
+test("combat order, turns, and what players may see", async () => {
+  const { publicEnemies, combatOrder, nextTurn, upNext, createEnemies, applyHp } = await import("../src/encounter.js");
+  const [guard] = createEnemies({ name: "Guard", ac: 16, hp: "12", attacks: [["Spear", 3, "1d6+1"]] }, 1);
+  const hurt = { ...applyHp(guard, -7), initiative: 15, conditions: ["Prone"] };
+  const shown = publicEnemies([hurt])[0];
+  assert.deepEqual(Object.keys(shown).sort(), ["conditions", "id", "initiative", "name", "status"]);
+  assert.equal(shown.status, "bloodied");
+
+  const party = [{ name: "Logan" }, { name: "Dum Dum" }, { name: "Arcturus" }];
+  const combat = { round: 1, turn: null, party: { 0: 15, 2: 20 }, enemies: [shown, { id: "x", name: "Wolf", initiative: 8, status: "down", conditions: [] }] };
+  const order = combatOrder(combat, party);
+  assert.deepEqual(order.map(entry => entry.key), ["pc:2", "pc:0", "en:" + guard.id, "en:x", "pc:1"]);
+  assert.deepEqual(nextTurn(order, null, 1), { turn: "pc:2", round: 1 });
+  assert.deepEqual(nextTurn(order, "en:" + guard.id, 1), { turn: "pc:1", round: 1 }); // skips the downed wolf
+  assert.deepEqual(nextTurn(order, "pc:1", 1), { turn: "pc:2", round: 2 });
+  assert.deepEqual(nextTurn(order, "pc:2", 2, -1), { turn: "pc:1", round: 1 });
+  assert.equal(upNext(order, "pc:0"), "en:" + guard.id);
+});

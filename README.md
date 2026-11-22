@@ -22,6 +22,7 @@ The app uses the UFC Picked Fight visual system: near-black cards, red primary a
 - **Moves:** quick keyword suggestions and a question for the DM.
 - **Claude:** Ask Claude about the scene or ask a question (hidden when Claude isn't available).
 - **Sheet:** roll tiles (tap one to roll it), the full character sheet, D&D basics, and copy-to-AI-chat.
+- **Combat** (only during a fight): initiative order, whose turn it is, and enemies as Healthy, Bloodied, or Down.
 - **DM** (host only): microphone, manual updates, the encounter tracker, actions for each character, character sheet editor, campaign history, and end table.
 
 Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
@@ -29,6 +30,8 @@ Character chips under the header switch characters. A red dot on Scene means the
 **Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Each die is drawn in its own shape and tumbles before landing on the result (no animation when the phone asks for reduced motion). Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
 
 **Conditions** (Scene tab): each player marks what's affecting their character (Poisoned, Prone, Frightened, Exhaustion levels, Concentrating, and the rest of the 5e conditions). The card explains each one in plain words, badges show under the character chips on every tab, the dice tray reminds you when a condition changes your roll, and each change is posted to *Since then* so the DM sees it. Conditions are kept on the player's phone.
+
+**Combat** (`supabase/migrations/0004_dnd_combat.sql`): when the DM taps **Start combat** in the encounter tracker, a Combat tab opens on every phone. It shows the round, whose turn it is, who's up next, and one initiative order with the party and the enemies. Players roll initiative there (with their sheet bonus) or type what they rolled at the table; the DM can fill one in for anyone. The DM moves the turn with **Next turn** and **Back** (downed enemies are skipped, and a new round starts at the top). Players see enemies only as Healthy, Bloodied, or Down, plus their conditions. Exact HP, AC, and attacks never leave the DM's phone: the database function keeps only those public fields. The player whose turn it is gets a gold "Your turn!" banner and a vibration.
 
 **Encounter tracker** (`src/encounter.js`, DM tab): add enemies from standard 5e stat blocks or your own (name, how many, AC, HP as a number or dice rolled per enemy, initiative, speed, two attacks, abilities), and save your own as templates. It shows how many are still standing, HP bars with damage and heal (bloodied at half, down at 0), attack buttons that roll to-hit and damage (dice doubled on a natural 20), initiative order, and conditions on each enemy. The encounter lives only on the DM's phone (localStorage); nothing is stored in the database or shown to players.
 

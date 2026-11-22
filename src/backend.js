@@ -51,7 +51,10 @@ function localBackend() {
       await post(code, "close", {});
       storage.remove("host:" + code);
     },
-    advise: (code, character, question = "") => post(code, "advise", { character, question }, false)
+    advise: (code, character, question = "") => post(code, "advise", { character, question }, false),
+    combatSet: (code, combat) => post(code, "combat", combat),
+    combatEnd: code => post(code, "combat", { end: true }),
+    combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
   };
 }
 
@@ -62,6 +65,7 @@ function hostedBackend({ url, anonKey }) {
   let session = null;
   try { session = JSON.parse(storage.get(SESSION_KEY) ?? "null"); } catch {}
   let refreshing;
+  let combatMissing = false;
 
   function save(raw) {
     session = raw ? {
@@ -127,7 +131,22 @@ function hostedBackend({ url, anonKey }) {
       if (access) fetch(url + "/auth/v1/logout", { method: "POST", headers: { apikey: anonKey, Authorization: "Bearer " + access } }).catch(() => {});
     },
     createRoom: (party, recap) => rpc("dnd_create_room", { p_party: party, p_recap: recap }),
-    room: code => rpc("dnd_room_v2", { p_code: code }),
+    // dnd_room_v3 adds combat (supabase/migrations/0004). Until that migration
+    // runs, fall back to dnd_room_v2 and combat stays unavailable.
+    async room(code) {
+      if (!combatMissing) {
+        try {
+          return await rpc("dnd_room_v3", { p_code: code });
+        } catch (error) {
+          if (error.status !== 404) throw error;
+          combatMissing = true;
+        }
+      }
+      return { ...await rpc("dnd_room_v2", { p_code: code }), combatUnavailable: true };
+    },
+    combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
+    combatEnd: code => rpc("dnd_combat_end", { p_code: code }),
+    combatInitiative: (code, character, value) => rpc("dnd_combat_initiative", { p_code: code, p_character: character, p_value: value }),
     postAction: (code, character, text) => rpc("dnd_post_action", { p_code: code, p_character: character, p_text: text }),
     myRooms: () => rpc("dnd_my_rooms"),
     postScene: (code, text, id) => rpc("dnd_post_scene", { p_code: code, p_text: text, p_id: id ?? null }),

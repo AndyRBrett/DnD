@@ -61,3 +61,21 @@ test("room lifecycle: create, read, publish, correct, edit party, close", async 
 test("rejects malformed room links", async () => {
   assert.equal((await call("/api/rooms/not-a-room")).status, 404);
 });
+
+test("combat: host starts it, players add initiative, enemy HP never stored", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  assert.equal((await call(room)).body.combat, null);
+  assert.equal((await post(room + "/initiative", { character: 1, value: 12 })).status, 400); // not started
+  const enemies = [{ id: "g1", name: "Guard 1", initiative: 14, status: "bloodied", hp: 3, maxHp: 13, ac: 16, conditions: ["Prone"] }];
+  assert.equal((await post(room + "/combat", { round: 1, turn: null, enemies, reset: true })).status, 403);
+  assert.equal((await post(room + "/combat", { round: 1, turn: null, enemies, reset: true }, { "x-table-host": host })).status, 200);
+  assert.equal((await post(room + "/initiative", { character: 1, value: 17 })).status, 200);
+  assert.equal((await post(room + "/initiative", { character: 1, value: 99 })).status, 400);
+  assert.equal((await post(room + "/combat", { round: 2, turn: "pc:1", enemies }, { "x-table-host": host })).status, 200);
+  const { combat } = (await call(room)).body;
+  assert.deepEqual(combat, { round: 2, turn: "pc:1", party: { 1: 17 },
+    enemies: [{ id: "g1", name: "Guard 1", initiative: 14, status: "bloodied", conditions: ["Prone"] }] });
+  assert.equal((await post(room + "/combat", { end: true }, { "x-table-host": host })).status, 200);
+  assert.equal((await call(room)).body.combat, null);
+});
