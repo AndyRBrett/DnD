@@ -2,7 +2,7 @@
 // with src/config.js pointing at Supabase. Every asset URL and module import
 // gets ?v=<version> so phones load a new release immediately instead of
 // reusing cached files (GitHub Pages lets browsers cache for 10 minutes).
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
 const files = ["index.html", "app.js", "backend.js", "campaign.js", "config.js", "rules.js", "scene-options.js", "style.css"];
@@ -19,6 +19,7 @@ const stamp = text => text
 await rm("site", { recursive: true, force: true });
 await mkdir("site", { recursive: true });
 await Promise.all(files.map(async name => writeFile("site/" + name, stamp(await readFile("src/" + name, "utf8")))));
+await cp("src/fonts", "site/fonts", { recursive: true });
 await writeFile("site/.nojekyll", "");
 await writeFile("site/version.txt", version + "\n");
 console.log("Built site/ (" + files.length + " files, version " + version + ")");

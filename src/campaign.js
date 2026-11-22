@@ -105,7 +105,7 @@ export const recap = "Last time: the party reached the casino’s upper secure a
 // lives in the app rather than the table's editable sheet.
 export const sheets = {
   "The White Wizard": {
-    rolls: ["Spell attack +9", "Spell save DC 17", "Sacred Flame 2d8+5", "AC 17", "Initiative +1", "WIS save +9", "Perception +9*", "Intimidation +2"],
+    rolls: [["Spell attack", "+9"], ["Spell save DC", "17"], ["Sacred Flame", "2d8+5"], ["AC", "17"], ["Initiative", "+1"], ["WIS save", "+9"], ["Perception", "+9*"], ["Intimidation", "+2"]],
     title: "The White Wizard — Light Domain Cleric",
     note: "Proposed Level 10 build from prior chats (2014 rules), not a DM-approved sheet. Wisdom 20 is assumed; if the DM didn't approve it, use DC 16, +8, and Wisdom-based values 1 lower.",
     identity: [
@@ -178,7 +178,7 @@ export const sheets = {
     ]
   },
   "Logan Ninefingers": {
-    rolls: ["Greataxe +8", "1d12+7 raging", "AC 16", "Initiative +2 (adv.)", "STR save +8", "CON save +8", "Athletics +8*", "Perception +5*"],
+    rolls: [["Greataxe", "+8"], ["Raging hit", "1d12+7"], ["AC", "16"], ["Initiative", "+2 adv."], ["STR save", "+8"], ["CON save", "+8"], ["Athletics", "+8*"], ["Perception", "+5*"]],
     title: "Logan Ninefingers — Berserker Barbarian",
     note: "Proposed build leveled to 10 (2014 rules), played by Derek. Not a DM-approved sheet.",
     identity: [
@@ -227,7 +227,7 @@ export const sheets = {
     ]
   },
   "Dum Dum": {
-    rolls: ["Attack +8", "1d8+4", "Maneuver DC 16", "Superiority 5 × d10", "AC 18–20*", "Initiative +1", "STR save +8", "Athletics +8*"],
+    rolls: [["Attack", "+8"], ["Damage", "1d8+4"], ["Maneuver DC", "16"], ["Superiority", "5 × d10"], ["AC", "18–20*"], ["Initiative", "+1"], ["STR save", "+8"], ["Athletics", "+8*"]],
     title: "Dum Dum the Gladiator — Battle Master Fighter",
     note: "Proposed Level 9 build leveled to 10 (2014 rules), not a DM-approved sheet. Race, armor, weapon, fighting style, and most maneuvers are unconfirmed.",
     identity: [
@@ -279,7 +279,7 @@ export const sheets = {
     ]
   },
   "Arcturus": {
-    rolls: ["Longbow +11", "1d8+5", "Initiative +7", "Stealth +9", "Perception +6*", "Spell DC 14", "DEX save +9", "AC 16–17*"],
+    rolls: [["Longbow", "+11"], ["Damage", "1d8+5"], ["Initiative", "+7"], ["Stealth", "+9"], ["Perception", "+6*"], ["Spell DC", "14"], ["DEX save", "+9"], ["AC", "16–17*"]],
     title: "Arcturus — The Exiled Star",
     note: "Reconstructed from campaign chat, not a verified official sheet. Level 10 under a mix of legacy (2014) Gloom Stalker rules and DM house rules.",
     identity: [

@@ -14,6 +14,18 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 The terminal shows `Claude suggestions · on` at startup. Nothing is sent until a player taps the button. Each tap sends that character's sheet and the last six DM updates (transcript text only) to Anthropic and returns two options plus a question for the DM. Claude is told to recommend only abilities that are ready on the sheet, never `check` lines, and never to decide outcomes. Answers are cached per character and update, each character can ask once every 8 seconds, and a room is capped at 200 requests. It uses `claude-opus-5-5` at low effort. Without a key, the button stays hidden and the app calls no AI model.
 
+## Layout
+
+The app uses the UFC Picked Fight visual system: near-black cards, red primary and gold secondary, Barlow and Barlow Condensed type (SIL OFL, `src/fonts/`), and a fixed bottom tab bar. Inside a table:
+
+- **Scene:** the DM's current scene, *Since then* (players' actions, newest first), earlier updates, and *What is <character> doing?*.
+- **Moves:** quick keyword suggestions and a question for the DM.
+- **Claude:** Ask Claude about the scene or ask a question (hidden when Claude isn't available).
+- **Sheet:** roll tiles, the full character sheet, D&D basics, and copy-to-AI-chat.
+- **DM** (host only): microphone, manual updates, actions for each character, character sheet editor, campaign history, and end table.
+
+Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
+
 ## Hosted version (how the group uses it)
 
 **https://andyrbrett.github.io/DnD/**: open it on any phone, sign in with your email, and play. No laptop or shared Wi-Fi needed.

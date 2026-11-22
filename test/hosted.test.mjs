@@ -66,3 +66,18 @@ test("every full sheet has a quick-rolls strip", async () => {
   const { sheets } = await import("../src/campaign.js");
   for (const [name, sheet] of Object.entries(sheets)) assert.ok(sheet.rolls?.length >= 5, name);
 });
+
+test("the site ships its fonts with their license", async () => {
+  execFileSync(process.execPath, ["scripts/build-site.mjs"], { cwd: new URL("..", import.meta.url) });
+  const fonts = new Set(await readdir(new URL("../site/fonts", import.meta.url)));
+  const css = await read("src/style.css");
+  for (const [, file] of css.matchAll(/url\('fonts\/([\w-]+\.woff2)'\)/g)) assert.ok(fonts.has(file), file);
+  assert.ok(fonts.has("OFL.txt"));
+});
+
+test("every tab panel and tab button pair up", async () => {
+  const html = await read("src/index.html");
+  const panels = [...html.matchAll(/data-panel="(\w+)"/g)].map(match => match[1]);
+  const tabs = [...html.matchAll(/data-tab="(\w+)"/g)].map(match => match[1]);
+  assert.deepEqual(panels.sort(), tabs.sort());
+});
