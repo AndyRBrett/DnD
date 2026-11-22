@@ -44,6 +44,8 @@ function showOptions() {
   const latest = recent.at(-1);
   $("situation").textContent = advice.situation + (latest ? " · Updated " +
     new Date(latest.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "");
+  const line = latest?.text ?? "";
+  $("responding-to").textContent = line ? "Responding to: “" + (line.length > 140 ? line.slice(0, 140) + "…" : line) + "”" : "";
   list("options", advice.options);
   $("ask-dm").textContent = advice.question;
   const abilities = characterAbilities(character);

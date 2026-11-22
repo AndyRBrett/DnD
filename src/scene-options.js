@@ -68,6 +68,20 @@ const situations = [
     question: "What appears to trigger it, and what can I inspect from where I'm standing?"
   },
   {
+    name: "Looking for someone", tag: "social",
+    match: /\b(?:look(?:s|ing)? for|search(?:es|ing)? for|track(?:s|ing)? (?:down|them)|find (?:a|an|the|someone|somebody)|shady|suspicious|stranger|hooded|cloaked|informant|contact|individual|lookout)\b/i,
+    moves: {
+      cleric: "Take a seat where you can see the room and watch for someone avoiding eye contact. Ask the barkeep who doesn't belong here.",
+      ranger: "Scan the room from a corner: who keeps watching the door, who is alone, who left in a hurry? Point them out quietly to the party.",
+      barbarian: "Stay near the door so no one slips out, and let a smoother talker approach first.",
+      brawler: "Back up whoever makes contact. Stand close enough to step in if the meeting turns rough.",
+      rogue: "Drift through the crowd and listen for the person everyone else is avoiding."
+    },
+    fallback: "Watch the room for someone who seems out of place, and agree with the party who makes contact and who keeps watch.",
+    alt: "Ask a server or barkeep, casually, who might fit the description. Offer a coin or a drink for a name.",
+    question: "Who stands out in the room, and does anyone seem to be watching us?"
+  },
+  {
     name: "Someone can be questioned", tag: "social",
     match: /\b(?:says?|asks?|speaks?|bartender|parley|negotia\w*|persua\w*|offers?|demands?|knows?|refus\w*)\b/i,
     moves: {
@@ -82,6 +96,21 @@ const situations = [
     question: "What does this person seem to want, and is there anything I can tell about their reaction?"
   }
 ];
+
+situations.push({
+  name: "On the move", tag: "explore",
+  match: /\b(?:take(?:s)? the party|head(?:s|ing)? (?:to|out|over|into|for)|across the (?:way|street|square|road)|travel\w*|leav(?:e|es|ing) the|arriv\w*|walk(?:s|ing)? (?:to|into|over|out)|go(?:es|ing)? (?:to|into|over)|tavern|inn|alley|street|market|docks|city gate)\b/i,
+  moves: {
+    cleric: "Before you go, check on anyone who is hurt and decide whether a quick heal now is worth a slot.",
+    ranger: "Move ahead or at the back and watch whether anyone follows you out.",
+    barbarian: "Walk at the front where trouble would hit first, and stay close enough to the party to help.",
+    brawler: "Stay beside the most vulnerable party member while you move.",
+    rogue: "Watch for tails and note exits at the new location as you arrive."
+  },
+  fallback: "Agree on the plan before you arrive: who talks, who watches the exits, and what you are looking for.",
+  alt: "Ask the DM what you notice on the way and whether anyone is following.",
+  question: "What do we see on the way and when we arrive, and is anyone following us?"
+});
 
 const exploration = {
   name: "Exploration", tag: "explore",
@@ -150,8 +179,9 @@ function pickAbility(candidates, sceneText, seed) {
   const scene = words(sceneText);
   const scored = candidates.map(move => ({ move, score: [...words(move)].filter(word => scene.has(word)).length }));
   const best = Math.max(...scored.map(item => item.score));
-  const top = scored.filter(item => item.score === best);
-  // Rotate through equally relevant abilities as new updates arrive.
+  // One shared word ("casino") isn't evidence; only a stronger match wins
+  // outright. Otherwise rotate through the abilities as new updates arrive.
+  const top = best >= 2 ? scored.filter(item => item.score === best) : scored;
   return top[seed % top.length].move;
 }
 

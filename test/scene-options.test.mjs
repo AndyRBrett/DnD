@@ -108,3 +108,25 @@ test("Dum Dum's fighter role gets the melee tactics", async () => {
   const { options } = recommend({ ...dumDum, moves: "" }, scenes(["The guards attack!"]));
   assert.match(options[0], /Approach an enemy you can reach/);
 });
+
+test("live session 2: moving to the tavern and hunting a shady figure change the suggestions", async () => {
+  const { party } = await import("../src/campaign.js");
+  const lines = [
+    "take the party out of the casino and across the way to the tavern",
+    "have them look for a shady looking individual",
+    "take the party out of Casino across the way to the tavern have them look for a shady individual"
+  ];
+  const results = lines.map((_, index) => recommend(party[0], scenes(lines.slice(0, index + 1))));
+  assert.deepEqual(results.map(result => result.situation), ["On the move", "Looking for someone", "Looking for someone"]);
+  assert.notDeepEqual(results[0].options, results[1].options);
+});
+
+test("a single shared word doesn't pin the same sheet ability every update", async () => {
+  const { party } = await import("../src/campaign.js");
+  const seen = new Set();
+  for (let id = 1; id <= 6; id++) {
+    const { options } = recommend(party[0], [{ id, text: "You look around the casino.", created: 0 }]);
+    seen.add(options[0]);
+  }
+  assert.ok(seen.size > 1);
+});
