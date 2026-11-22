@@ -79,3 +79,14 @@ test("combat: host starts it, players add initiative, enemy HP never stored", as
   assert.equal((await post(room + "/combat", { end: true }, { "x-table-host": host })).status, 200);
   assert.equal((await call(room)).body.combat, null);
 });
+
+test("the host can edit and delete any story update", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  for (const text of ["The vault door creaks.", "A guard shouts."]) await post(room + "/scene", { text }, { "x-table-host": host });
+  const [opening, first, second] = (await call(room)).body.scenes;
+  assert.equal((await post(room + "/scene", { id: first.id, text: "The vault door groans open." }, { "x-table-host": host })).status, 200);
+  assert.equal((await post(room + "/scene", { id: opening.id, delete: true })).status, 403);
+  assert.equal((await post(room + "/scene", { id: opening.id, delete: true }, { "x-table-host": host })).status, 200);
+  assert.deepEqual((await call(room)).body.scenes.map(scene => scene.text), ["The vault door groans open.", second.text]);
+});

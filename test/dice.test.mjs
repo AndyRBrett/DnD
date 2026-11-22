@@ -92,3 +92,18 @@ test("combat order, turns, and what players may see", async () => {
   assert.deepEqual(nextTurn(order, "pc:2", 2, -1), { turn: "pc:1", round: 1 });
   assert.equal(upNext(order, "pc:0"), "en:" + guard.id);
 });
+
+test("3D dice are real polyhedra with every number once", async () => {
+  const { describeSolid, percentileLabels } = await import("../src/dice3d.js");
+  const shapes = { 4: 3, 6: 4, 8: 3, 10: 4, 12: 5, 20: 3 };
+  for (const [kind, corners] of Object.entries(shapes)) {
+    const solid = describeSolid(Number(kind));
+    assert.equal(solid.faces, Number(kind), "d" + kind + " faces");
+    assert.ok(solid.sides.every(count => count === corners), "d" + kind + " face shape");
+    assert.deepEqual(solid.slots, Array.from({ length: Number(kind) }, (_, i) => i), "d" + kind + " numbers");
+    assert.ok(solid.opposite, "d" + kind + " opposite faces");
+  }
+  assert.deepEqual(percentileLabels(84), { tens: "80", units: "4" });
+  assert.deepEqual(percentileLabels(100), { tens: "00", units: "0" });
+  assert.deepEqual(percentileLabels(7), { tens: "00", units: "7" });
+});
