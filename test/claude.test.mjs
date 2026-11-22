@@ -54,7 +54,8 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
   assert.equal(init.headers["x-api-key"], "test-key");
   assert.equal(body.model, "claude-opus-5-5");
   assert.equal(body.output_config.format.type, "json_schema");
-  const prompt = body.messages[0].content;
+  const prompt = body.messages[0].content.map(block => block.text).join("\n");
+  assert.equal(body.messages[0].content.length, 1, "no history block when the campaign has none");
   assert.match(prompt, /The White Wizard/);
   assert.match(prompt, /LATEST: Roll initiative/);
   const [ready, unconfirmed] = prompt.split("UNCONFIRMED");
@@ -82,4 +83,16 @@ test("refusals and bad input fail cleanly", async () => {
   assert.equal(refused.status, 502);
   assert.match(refused.body.error, /declined/);
   assert.equal((await post("/advise", { character: 9 })).status, 400);
+});
+
+test("campaign history goes first, cached for an hour, and can't add abilities", async () => {
+  const { claudeRequest } = await import("../src/advice.js");
+  const character = { name: "Roan", role: "", moves: "explore | Shadow swap" };
+  const body = JSON.parse(claudeRequest("k", character, [{ id: 1, text: "The vault door." }], "Session 1: Schalissa hired us.").body);
+  const [history, turn] = body.messages[0].content;
+  assert.match(history.text, /Schalissa/);
+  assert.deepEqual(history.cache_control, { type: "ephemeral", ttl: "1h" });
+  assert.match(turn.text, /LATEST: The vault door/);
+  assert.equal(turn.cache_control, undefined);
+  assert.match(body.system, /never count as available unless the character's sheet lists them as READY/);
 });

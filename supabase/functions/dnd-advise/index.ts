@@ -54,7 +54,7 @@ Deno.serve(async req => {
 
   try {
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, plan.scenes),
+      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, plan.scenes, plan.history ?? ""),
       signal: AbortSignal.timeout(45000)
     }));
     await fetch(SUPABASE_URL + "/rest/v1/dnd_advice", {

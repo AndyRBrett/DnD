@@ -91,3 +91,9 @@ button.link{background:none;border:0;padding:0;min-height:0;color:var(--accent);
 #recent-room-list a{color:var(--accent)}
 #table-code{color:var(--muted)}
 .hero p.eyebrow{color:var(--accent);font-size:.875rem;margin:0 0 4px}
+
+#history-editor>p{margin-top:12px;color:var(--muted)}
+#history-size{color:var(--muted);font-weight:400}
+.file-button{display:inline-block;border:1px solid var(--border);border-radius:7px;padding:10px 15px;color:var(--accent);font-weight:650;cursor:pointer;min-height:44px}
+.file-button input{position:absolute;width:1px;height:1px;opacity:0}
+#history-text{font-size:.95rem}

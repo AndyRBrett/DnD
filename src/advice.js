@@ -33,7 +33,8 @@ export const adviceSystem = [
   "Only recommend abilities listed under READY on the character's sheet, or ordinary actions any adventurer could attempt (move, hide, help, talk, search, shove). Never recommend anything listed under UNCONFIRMED; if one looks relevant, put it in ask_dm as something to confirm with the DM.",
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM.",
-  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably."
+  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably.",
+  "When a campaign history is provided, use it for continuity: names, places, earlier events, open threads, and what this character has done before. It is the group's own notes and may mention stats or abilities; those never count as available unless the character's sheet lists them as READY."
 ].join("\n");
 
 export function sheetText(character) {
@@ -48,9 +49,21 @@ export function sheetText(character) {
   ].join("\n\n");
 }
 
-// scenes: oldest to newest, at most the last six.
-export function claudeRequest(apiKey, character, scenes) {
+// scenes: oldest to newest, at most the last six. history: the campaign's
+// notes so far (may be empty). It goes first in the message with a cache
+// breakpoint, so every character's request in the next hour reuses it at
+// cache-read prices instead of paying for it again.
+export function claudeRequest(apiKey, character, scenes, history = "") {
   const updates = scenes.map((scene, index) => (index === scenes.length - 1 ? "LATEST: " : "- ") + scene.text).join("\n");
+  const content = [];
+  if (history.trim()) {
+    content.push({
+      type: "text",
+      text: "CAMPAIGN HISTORY (the group's notes on earlier sessions, oldest first):\n\n" + history.trim(),
+      cache_control: { type: "ephemeral", ttl: "1h" }
+    });
+  }
+  content.push({ type: "text", text: sheetText(character) + "\n\nDM updates this session, oldest to newest:\n" + updates });
   return {
     method: "POST",
     headers: {
@@ -65,7 +78,7 @@ export function claudeRequest(apiKey, character, scenes) {
       fallbacks: "default",
       output_config: { effort: "low", format: { type: "json_schema", schema: adviceSchema } },
       system: adviceSystem,
-      messages: [{ role: "user", content: sheetText(character) + "\n\nDM updates, oldest to newest:\n" + updates }]
+      messages: [{ role: "user", content }]
     })
   };
 }

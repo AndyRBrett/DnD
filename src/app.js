@@ -139,6 +139,7 @@ async function sync() {
       list("history", state.scenes.slice(0, -1).reverse().map(scene => scene.text));
     }
     if (rosterChanged || scenesChanged) showOptions();
+    if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
     $("connection").textContent = isHost ? "HOST" : "PLAYER";
   } catch (error) {
     if (error.status === 404) {
@@ -428,19 +429,62 @@ $("party-form").onsubmit = async event => {
   }
 };
 $("close").onclick = async () => {
-  if (!window.confirm("End this room and delete the session transcript and character entries?")) return;
+  if (!window.confirm("End this table for everyone? Its updates and character entries will be deleted.")) return;
+  const save = Boolean(backend.endTable) && state?.scenes.length > 1
+    && window.confirm("Add this session's updates to the campaign history first, so Claude remembers them next time?");
   stopMic();
   try {
-    await backend.closeRoom(room);
+    if (backend.endTable) await backend.endTable(room, save);
+    else await backend.closeRoom(room);
     location.href = "./";
   } catch (error) {
     $("notice").textContent = error.message;
   }
 };
+// ── Campaign history (hosted only) ──
+const describeSize = chars => chars ? "about " + Math.max(1, Math.round(chars / 6)).toLocaleString() + " words" : "empty";
+let historyLoaded = false;
+function countHistory() {
+  $("history-count").textContent = describeSize($("history-text").value.trim().length) + " · up to about 65,000 words";
+}
+$("history-editor").ontoggle = async () => {
+  if (!$("history-editor").open || historyLoaded) return;
+  try {
+    $("history-text").value = await backend.history(room) ?? "";
+    $("history-text").placeholder = "Paste session notes, recaps, or a chat export here.";
+    historyLoaded = true;
+    countHistory();
+  } catch (error) {
+    $("history-count").textContent = error.message;
+  }
+};
+$("history-text").oninput = countHistory;
+$("history-files").onchange = async event => {
+  const parts = await Promise.all([...event.target.files].map(async file => "## " + file.name + "\n" + (await file.text()).trim()));
+  $("history-text").value = [$("history-text").value.trim(), ...parts].filter(Boolean).join("\n\n");
+  event.target.value = "";
+  countHistory();
+  $("history-count").textContent += " · not saved yet";
+};
+$("history-save").onclick = async () => {
+  const button = $("history-save");
+  button.disabled = true;
+  try {
+    const chars = await backend.saveHistory(room, $("history-text").value);
+    $("history-count").textContent = "Saved, " + describeSize(chars) + ". Claude uses it from the next question.";
+    $("history-size").textContent = "· " + describeSize(chars);
+  } catch (error) {
+    $("history-count").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+
 function setHost(value) {
   isHost = value;
   $("table").classList.toggle("player-room", !isHost);
   for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !isHost;
+  $("history-editor").hidden = !isHost || !backend.saveHistory;
   if (!isHost) stopMic();
 }
 

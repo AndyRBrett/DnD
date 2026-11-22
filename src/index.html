@@ -90,7 +90,7 @@
               <p class="eyebrow" id="claude-situation"></p>
               <ul id="claude-options"></ul>
               <p class="dm-question"><strong>Ask the DM</strong><br><span id="claude-ask"></span></p>
-              <p class="fineprint">Claude only sees this character’s sheet and the DM’s recent updates. The DM decides what actually happens.</p>
+              <p class="fineprint">Claude sees this character’s sheet, the campaign history, and the DM’s recent updates. The DM decides what actually happens.</p>
             </div>
           </div>
           <details id="character-library">
@@ -110,6 +110,14 @@
         <summary>Character sheets and abilities</summary>
         <p>Add usable abilities one per line. Start a line with <code>combat</code>, <code>danger</code>, <code>explore</code>, <code>social</code>, <code>aid</code>, or <code>any</code>, followed by <code>|</code>. Include any cost or limit. Use <code>check</code> for unverified abilities to display them without suggesting them during play. Example <code>combat | Sacred Flame — action, visible creature in range, no spell slot.</code></p>
         <form id="party-form"><div id="roster"></div><button type="submit">Save characters</button></form>
+      </details>
+      <details id="history-editor" class="panel" hidden>
+        <summary>Campaign history <span id="history-size"></span></summary>
+        <p>Claude reads this before every <strong>Ask Claude</strong> answer: earlier sessions, names, places, open threads. Paste notes or add text files (.txt or .md). Ending a table can add that session’s updates here. Each save keeps the previous version.</p>
+        <label class="file-button">Add text files<input id="history-files" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple></label>
+        <textarea id="history-text" rows="14" maxlength="400000" aria-label="Campaign history" placeholder="Loading…"></textarea>
+        <p id="history-count" class="fineprint"></p>
+        <button id="history-save" type="button">Save history</button>
       </details>
       <div id="close-wrap" hidden><button id="close" class="quiet" type="button">End room and delete session</button></div>
     </div>
