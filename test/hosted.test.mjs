@@ -46,3 +46,23 @@ test("no D&D database function is executable without signing in", async () => {
   assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
   assert.match(sql, /revoke all on public\.dnd_rooms, public\.dnd_scenes, public\.dnd_ai_usage, public\.dnd_advice from anon, authenticated/);
 });
+
+test("the site build versions every asset and module import so phones never run stale code", async () => {
+  execFileSync(process.execPath, ["scripts/build-site.mjs"], { cwd: new URL("..", import.meta.url) });
+  const site = name => readFile(new URL("../site/" + name, import.meta.url), "utf8");
+  const version = (await site("version.txt")).trim();
+  assert.ok(version.length >= 7);
+  const html = await site("index.html");
+  assert.match(html, new RegExp('src="app\\.js\\?v=' + version + '"'));
+  assert.match(html, new RegExp('href="style\\.css\\?v=' + version + '"'));
+  for (const name of ["app.js", "backend.js"]) {
+    for (const [, specifier] of (await site(name)).matchAll(/from "([^"]+)"/g)) {
+      assert.ok(specifier.endsWith("?v=" + version), name + " imports " + specifier + " without the version");
+    }
+  }
+});
+
+test("every full sheet has a quick-rolls strip", async () => {
+  const { sheets } = await import("../src/campaign.js");
+  for (const [name, sheet] of Object.entries(sheets)) assert.ok(sheet.rolls?.length >= 5, name);
+});

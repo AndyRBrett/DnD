@@ -170,3 +170,8 @@ button.explain{font-size:.85rem;margin-left:4px}
 .sheet-item{margin:4px 0 8px}
 .sheet-item strong{display:block}
 .sheet-item span{color:var(--muted);font-size:.95rem}
+#quick-rolls{margin:4px 0 12px}
+#quick-rolls .eyebrow{margin:0}
+#quick-rolls .chips{margin:6px 0 4px}
+#quick-rolls .chips span{color:var(--copy);font-size:.85rem}
+#quick-rolls .chips span.is-unconfirmed{color:var(--muted);border-style:dashed}
