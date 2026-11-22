@@ -34,6 +34,7 @@ function showOptions() {
   const character = selectedCharacter();
   if (!character) return;
   storage.set("dnd-character", $("character").value);
+  $("character-role").textContent = character.role;
   const recent = state.scenes;
   const advice = recommend(character, recent);
   const latest = recent.at(-1);

@@ -97,7 +97,8 @@ const exploration = {
   question: "What stands out from my position, and what can I investigate without moving?"
 };
 
-const rolePattern = /cleric|ranger|barbarian|brawler|rogue/i;
+const rolePattern = /cleric|ranger|barbarian|brawler|fighter|gladiator|rogue/i;
+const roleAlias = { fighter: "brawler", gladiator: "brawler" };
 const ending = /\b(?:fight (?:is |has )?(?:over|ended)|combat (?:is |has )?(?:over|ended)|end of combat|no enemies remain|last enemy (?:falls|is down)|out of combat)\b/i;
 
 function latestSituation(text) {
@@ -163,7 +164,8 @@ export function recommend(character, scenes) {
   let found = detected ?? (continuation ? prior : null) ?? { rule: exploration, detail: text };
   if (["social", "explore"].includes(found.rule.tag) && combatActive(scenes)) found = { rule: situations[1], detail: text };
   const { rule, detail } = found;
-  const role = character.role.match(rolePattern)?.[0].toLowerCase();
+  const matched = character.role.match(rolePattern)?.[0].toLowerCase();
+  const role = roleAlias[matched] ?? matched;
   const moves = parseMoves(character).filter(([tag, move]) => move && tag !== "check");
   const tagged = moves.filter(([tag]) => tag === rule.tag).map(([, move]) => move);
   const general = moves.filter(([tag]) => tag === "any").map(([, move]) => move);
