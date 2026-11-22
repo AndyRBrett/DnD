@@ -9,11 +9,12 @@ const situations = [
       brawler: "Get beside the injured ally and ask whether you can block an approach or help move them safely."
     },
     fallback: "Check whether you can reach the injured ally safely. Ask what it would take to stabilize or move them.",
+    alt: "If you can't reach them, draw the threat away from the downed ally or call out where it is so someone closer can help.",
     question: "Who is down, and can I see or reach them from here?"
   },
   {
     name: "Combat", tag: "combat",
-    match: /\b(?:roll initiative|attacks?|enemies|enemy|hostile|firing|draws? (?:\w+ )?(?:swords?|muskets?|weapons?)|swings? (?:at|a|his|her)|opens? fire|charges? (?:at|you|us)|combat begins)\b/i,
+    match: /\b(?:roll (?:for )?initiative|initiative order|attacks?|enemies|enemy|hostile|firing|fires (?:at|on|a|his|her|their)|shoots?|shot at|lunges?|stabs?|slashes|draws? (?:\w+ )?(?:swords?|muskets?|weapons?|blades?|bows?)|swings? (?:at|a|his|her|their)|opens? fire|charges? (?:at|you|us|toward)|combat begins)\b/i,
     moves: {
       cleric: "If Sacred Flame is available, pick a visible enemy in range. If allies need support and Bless is prepared, check whether you can spend a slot and concentrate.",
       ranger: "Ask what you can see from your position, then pick a target you can reach with your equipped weapon without exposing yourself to more enemies.",
@@ -22,6 +23,7 @@ const situations = [
       rogue: "Look for a target that meets your sheet's Sneak Attack conditions and a place to move afterward."
     },
     fallback: "Identify a target your sheet lets you reach this turn, or move to a position that protects an ally.",
+    alt: "If nothing good is in reach, take cover or move to shield the most exposed ally, and tell the table what you're doing.",
     question: "Which targets can I reach or see, and is anyone in immediate danger?"
   },
   {
@@ -35,6 +37,7 @@ const situations = [
       rogue: "Inspect the lock for traps, then try thieves' tools if your sheet has them and the DM says you can reach it."
     },
     fallback: "Inspect the lock and frame before touching them. Look for a key, an alternate entrance, or signs of a trap.",
+    alt: "Watch the approach while someone else works on it, and agree what the group does if the noise draws attention.",
     question: "What kind of lock is it, and are there signs it is trapped?"
   },
   {
@@ -48,6 +51,7 @@ const situations = [
       rogue: "Break line of sight and listen from cover. Look for a way around the approaching figure."
     },
     fallback: "Move out of sight of the approach, or scout a nearby exit if you can do so without exposing the group.",
+    alt: "Agree on a plan with the party before it arrives: hide, talk, or fight.",
     question: "Where is the sound coming from, and how much time do we have?"
   },
   {
@@ -60,6 +64,7 @@ const situations = [
       rogue: "Inspect the trigger from a safe square and ask whether your tools could disable it."
     },
     fallback: "Stop short of the hazard and tell the group what you saw. Look for a route or a way to inspect it from safety.",
+    alt: "Ask whether anyone has a tool, spell, or object that could test the hazard from a distance.",
     question: "What appears to trigger it, and what can I inspect from where I'm standing?"
   },
   {
@@ -73,6 +78,7 @@ const situations = [
       rogue: "Ask a low-pressure question and watch for a reaction that suggests the NPC is holding back."
     },
     fallback: "Ask one question that would change the party's next move. Watch the NPC's reaction before pressing further.",
+    alt: "Let another character lead the talk while you watch the NPC's hands, the exits, and anyone listening nearby.",
     question: "What does this person seem to want, and is there anything I can tell about their reaction?"
   }
 ];
@@ -87,11 +93,12 @@ const exploration = {
     rogue: "Search for concealed features or signs of tampering before the party commits to a route."
   },
   fallback: "Inspect the nearest visible clue or obstacle. Coordinate who watches the exit while you do it.",
+  alt: "Ask the party what they want to accomplish next and offer to scout, search, or keep watch.",
   question: "What stands out from my position, and what can I investigate without moving?"
 };
 
 const rolePattern = /cleric|ranger|barbarian|brawler|rogue/i;
-const ending = /\b(?:fight (?:is |has )?over|combat (?:is |has )?ended|no enemies remain|last enemy (?:falls|is down))\b/i;
+const ending = /\b(?:fight (?:is |has )?(?:over|ended)|combat (?:is |has )?(?:over|ended)|end of combat|no enemies remain|last enemy (?:falls|is down)|out of combat)\b/i;
 
 function latestSituation(text) {
   const sentences = text.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
@@ -120,19 +127,60 @@ export function characterAbilities(character) {
   };
 }
 
+const stopWords = new Set("about after again also before being check could from have here into just only over that their them then there they this what when where which while will with would your you".split(" "));
+const words = text => new Set((text.toLowerCase().match(/[a-z']{4,}/g) ?? []).filter(word => !stopWords.has(word)));
+const abilityName = move => move.split(" — ")[0].trim();
+
+// Combat persists across updates until the DM says it ended, so "the captain
+// says nothing" mid-fight still reads as combat.
+function combatActive(scenes) {
+  for (const scene of scenes.slice(-8).reverse()) {
+    const sentences = scene.text.split(/(?<=[.!?])\s+|\n+/).filter(Boolean).reverse();
+    for (const sentence of sentences) {
+      if (ending.test(sentence)) return false;
+      if (situations[1].match.test(sentence)) return true;
+    }
+  }
+  return false;
+}
+
+function pickAbility(candidates, sceneText, seed) {
+  if (!candidates.length) return undefined;
+  const scene = words(sceneText);
+  const scored = candidates.map(move => ({ move, score: [...words(move)].filter(word => scene.has(word)).length }));
+  const best = Math.max(...scored.map(item => item.score));
+  const top = scored.filter(item => item.score === best);
+  // Rotate through equally relevant abilities as new updates arrive.
+  return top[seed % top.length].move;
+}
+
 export function recommend(character, scenes) {
   const latest = scenes.at(-1);
-  const detected = latestSituation(latest?.text ?? "");
+  const text = latest?.text ?? "";
+  const detected = latestSituation(text);
   const prior = scenes.slice(-4, -1).reverse().map(scene => latestSituation(scene.text)).find(Boolean);
-  const continuation = /^(?:it|they|he|she|that|then|still)\b/i.test(latest?.text ?? "");
-  const { rule, detail } = detected ?? (continuation ? prior : null) ?? { rule: exploration, detail: latest?.text };
+  const continuation = /^(?:it|they|he|she|that|then|still)\b/i.test(text);
+  let found = detected ?? (continuation ? prior : null) ?? { rule: exploration, detail: text };
+  if (["social", "explore"].includes(found.rule.tag) && combatActive(scenes)) found = { rule: situations[1], detail: text };
+  const { rule, detail } = found;
   const role = character.role.match(rolePattern)?.[0].toLowerCase();
-  const moves = parseMoves(character);
-  const preferred = moves.find(([tag, move]) => tag === rule.tag && move)
-    ?? moves.find(([tag, move]) => tag === "any" && move);
-  const options = [rule.moves[role] ?? rule.fallback];
-  if (preferred) options.unshift("From your sheet, if available: " + preferred[1]);
-  return { situation: rule.name, detail, options, question: rule.question };
+  const moves = parseMoves(character).filter(([tag, move]) => move && tag !== "check");
+  const tagged = moves.filter(([tag]) => tag === rule.tag).map(([, move]) => move);
+  const general = moves.filter(([tag]) => tag === "any").map(([, move]) => move);
+  const seed = Number(latest?.id) || 0;
+  const ability = pickAbility(tagged.length ? tagged : general, text, seed);
+  const tactic = rule.moves[role] ?? rule.fallback;
+  const options = [];
+  if (ability) options.push("From your sheet, if available: " + ability);
+  const name = ability && abilityName(ability).toLowerCase();
+  const repeats = name && name.length > 3 && tactic.toLowerCase().includes(name);
+  if (!repeats) options.push(tactic);
+  if (options.length < 2) {
+    const another = pickAbility(tagged.filter(move => move !== ability), text, seed);
+    options.push(another ? "Also on your sheet: " + another : rule.alt);
+  }
+  if (options.length < 2) options.push(rule.alt);
+  return { situation: rule.name, detail, options: options.slice(0, 2), question: rule.question };
 }
 
 export function coachingPrompt(character, scenes) {

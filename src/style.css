@@ -57,3 +57,28 @@ fieldset{border:1px solid var(--border);border-radius:8px;margin:12px 0;padding:
 #character-library{margin-bottom:10px}
 #character-check,#character-empty{margin-top:10px}
 #character-library li{margin:0 0 7px}
+
+.scene-panel.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{from{border-color:var(--accent);box-shadow:0 0 0 3px rgba(214,234,150,.25)}to{border-color:var(--border);box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.scene-panel.fresh{animation:none}}
+
+#claude{margin:14px 0 4px;padding-top:12px;border-top:1px solid var(--border)}
+#claude-options{padding-left:20px;margin:6px 0 0}
+#claude-options li{margin-bottom:9px;overflow-wrap:anywhere}
+#claude-options small{display:block;color:var(--muted);font-size:.9rem}
+.fineprint{color:var(--muted);font-size:.85rem}
+
+#host.listening{border-color:var(--accent)}
+#host.listening #mic-status::before{content:"";display:inline-block;width:.6em;height:.6em;margin-right:.5em;border-radius:50%;background:#e66;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){#host.listening #mic-status::before{animation:none}}
+@media(max-width:650px){#host .section-header{flex-direction:column;align-items:stretch}#mic{width:100%;min-height:56px;font-size:1.1rem}}
+
+#signin label,#code-form label{display:block;color:var(--muted);margin-top:8px}
+#signin input{max-width:360px;font-size:1.1rem}
+#code{letter-spacing:.3em;max-width:220px}
+#account .controls{flex-wrap:wrap}
+#my-rooms{margin-top:22px}
+#my-room-list{padding-left:20px;margin:6px 0 0}
+#my-room-list a{color:var(--accent)}
+button.link{background:none;border:0;padding:0;min-height:0;color:var(--accent);font-weight:600;text-decoration:underline}
