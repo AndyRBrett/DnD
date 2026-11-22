@@ -68,6 +68,11 @@
           <textarea id="draft" rows="2" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
           <div class="controls"><button id="publish" class="secondary" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
         </details>
+        <details id="party-actions" hidden>
+          <summary>Actions for each character</summary>
+          <p class="fineprint">For players without a phone out: type what their character does and add it to the story.</p>
+          <div id="party-action-rows"></div>
+        </details>
       </section>
       <div class="columns">
         <section class="panel scene-panel" aria-labelledby="scene-title">

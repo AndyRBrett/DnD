@@ -106,6 +106,7 @@ function drawRoster() {
   const stored = $("character").value || storage.get("dnd-character");
   $("character").replaceChildren(...state.party.map(({name}, index) => new Option(name, index)));
   if (state.party[Number(stored)]) $("character").value = stored ?? "0";
+  drawPartyActions();
   if (!isHost) return;
   $("roster").replaceChildren(...state.party.map(({name, role, moves}, index) => {
     const box = document.createElement("fieldset");
@@ -150,6 +151,7 @@ async function sync() {
       drawStory();
     }
     $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
+    if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
     if (rosterChanged || scenesChanged) showOptions();
     if (isPractice()) {
       $("practice-banner").hidden = false;
@@ -566,6 +568,45 @@ function drawStory() {
     item.textContent = entry.text;
     if (entry.action) item.className = "player-action";
     return item;
+  }));
+}
+
+// Host view: one input per character, for players without a phone out.
+function drawPartyActions() {
+  $("party-actions").hidden = !isHost || !backend.postAction || !Array.isArray(state?.actions);
+  if ($("party-actions").hidden) return;
+  const typed = [...$("party-action-rows").querySelectorAll("input")].map(input => input.value);
+  $("party-action-rows").replaceChildren(...state.party.map(({ name }, index) => {
+    const row = document.createElement("form");
+    row.className = "action-row party-action";
+    const input = document.createElement("input");
+    input.maxLength = 300;
+    input.autocomplete = "off";
+    input.placeholder = name + "…";
+    input.setAttribute("aria-label", "What is " + name + " doing?");
+    input.value = typed[index] ?? "";
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.className = "secondary";
+    button.textContent = "Add";
+    row.append(input, button);
+    row.onsubmit = async event => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      button.disabled = true;
+      try {
+        await backend.postAction(room, index, text);
+        input.value = "";
+        input.placeholder = name + " · added";
+        await sync();
+      } catch (error) {
+        $("notice").textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+    return row;
   }));
 }
 
