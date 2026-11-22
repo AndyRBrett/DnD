@@ -1,4 +1,8 @@
 import { recommend, coachingPrompt, characterAbilities } from "./scene-options.js";
+// A practice table is marked by its opening update (no database change), and
+// the device that started it also remembers it, in case 30+ updates push the
+// opening line out of view.
+const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { party as starterParty, recap as starterRecap } from "./campaign.js";
 
@@ -140,6 +144,10 @@ async function sync() {
       list("history", state.scenes.slice(0, -1).reverse().map(scene => scene.text));
     }
     if (rosterChanged || scenesChanged) showOptions();
+    if (isPractice()) {
+      $("practice-banner").hidden = false;
+      $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + " · PRACTICE";
+    }
     if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
     $("connection").textContent = isHost ? "HOST" : "PLAYER";
   } catch (error) {
@@ -430,8 +438,9 @@ $("party-form").onsubmit = async event => {
   }
 };
 $("close").onclick = async () => {
-  if (!window.confirm("End this table for everyone? Its updates and character entries will be deleted.")) return;
-  const save = Boolean(backend.endTable) && state?.scenes.length > 1
+  if (!window.confirm(isPractice() ? "End this practice table? Nothing from it is saved."
+    : "End this table for everyone? Its updates and character entries will be deleted.")) return;
+  const save = !isPractice() && Boolean(backend.endTable) && state?.scenes.length > 1
     && window.confirm("Add this session's updates to the campaign history first, so Claude remembers them next time?");
   stopMic();
   try {
@@ -442,6 +451,57 @@ $("close").onclick = async () => {
     $("notice").textContent = error.message;
   }
 };
+// ── Export for ChatGPT: history + sheets + this table, as one text file ──
+function sheetForExport(character) {
+  const { ready, check } = characterAbilities(character);
+  return [
+    "### " + character.name + (character.role ? " (" + character.role + ")" : ""),
+    "Ready (used in play or confirmed):",
+    ...(ready.length ? ready.map(line => "- " + line) : ["- none recorded"]),
+    "Check with the DM before using:",
+    ...(check.length ? check.map(line => "- " + line) : ["- none"])
+  ].join("\n");
+}
+$("export-chatgpt").onclick = async () => {
+  const button = $("export-chatgpt");
+  button.disabled = true;
+  try {
+    const history = $("history-text").value.trim() || await backend.history(room) || "";
+    const today = new Date().toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });
+    const updates = isPractice() ? [] : state.scenes.map(scene =>
+      "- [" + new Date(scene.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "] " + scene.text);
+    const text = [
+      "D&D CAMPAIGN EXPORT: THE ONYX JEWEL (" + today + ", from D&D Table Live)",
+      "",
+      "How to use this: it's our full campaign record. Read it, then continue helping me as a player in this campaign from where the latest updates leave off. Treat \"Check with the DM\" abilities as unconfirmed, never decide outcomes for the DM, and keep track of names, places, and open threads below.",
+      "",
+      "== CAMPAIGN HISTORY ==",
+      history || "(none saved yet)",
+      "",
+      "== CURRENT CHARACTER SHEETS ==",
+      ...state.party.map(sheetForExport).flatMap(sheet => [sheet, ""]),
+      "== THIS TABLE'S UPDATES (newest last; live speech-to-text, may have errors) ==",
+      ...(updates.length ? updates : ["(none, or a practice table)"])
+    ].join("\n");
+    const name = "onyx-jewel-campaign-" + new Date().toISOString().slice(0, 10) + ".txt";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch {}
+    $("export-status").textContent = "Downloaded " + name + (copied ? " and copied it" : "") +
+      ". In ChatGPT, attach the file (or paste) and say: \"This is our campaign so far, pick up from here.\"";
+  } catch (error) {
+    $("export-status").textContent = error.message || "Export failed. Try again.";
+  } finally {
+    button.disabled = false;
+  }
+};
+
 // ── Campaign history (hosted only) ──
 const describeSize = chars => chars ? "about " + Math.max(1, Math.round(chars / 6)).toLocaleString() + " words" : "empty";
 let historyLoaded = false;
@@ -507,7 +567,7 @@ function rememberTable(code) {
 const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
 
 function enterRoom() {
-  $("table-code").textContent = " · " + tableLabel(room).toUpperCase();
+  $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + (isPractice() ? " · PRACTICE" : "");
   $("lobby").hidden = true;
   $("table").hidden = false;
   setHost(false);
@@ -609,6 +669,22 @@ $("signout").onclick = async () => {
   showLobby();
 };
 $("join").onclick = () => enterRoom();
+function isPractice() {
+  return storage.get("practice:" + room) === "1" || Boolean(state?.scenes[0]?.text.startsWith(PRACTICE_MARK));
+}
+$("create-practice").onclick = async () => {
+  $("create-practice").disabled = true;
+  try {
+    const code = await backend.createRoom(starterParty,
+      PRACTICE_MARK + ": test freely. Nothing from this table is added to the campaign history.\n\n" + starterRecap);
+    storage.set("practice:" + code, "1");
+    location.href = "?room=" + code;
+  } catch (error) {
+    $("lobby-status").textContent = error.message;
+    $("create-practice").disabled = false;
+    if (error.status === 401) showLobby("Sign in again to continue.");
+  }
+};
 $("create").onclick = async () => {
   const warning = myRoomCount
     ? "You already have an open table. Start another one? Players on your current table won't see it."

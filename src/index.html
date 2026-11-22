@@ -41,7 +41,8 @@
           <div class="lobby-block">
             <p class="eyebrow">RUNNING THE GAME?</p>
             <div id="my-rooms" hidden><p>Your open tables:</p><ul id="my-room-list"></ul></div>
-            <button id="create" type="button">Start a table (DM)</button>
+            <div class="controls"><button id="create" type="button">Start a table (DM)</button><button id="create-practice" class="secondary" type="button">Practice table</button></div>
+            <p class="fineprint">A practice table works the same way but never adds anything to the campaign history.</p>
           </div>
           <p id="account-line" class="fineprint">Signed in as <span id="account-email"></span> · <button id="signout" class="link" type="button">Sign out</button></p>
         </div>
@@ -53,6 +54,7 @@
         <div><p class="eyebrow">CAMPAIGN SESSION<span id="table-code"></span></p><h1>The Onyx Jewel</h1></div>
         <button id="copy" class="secondary" type="button">Share player link</button>
       </div>
+      <p id="practice-banner" hidden>PRACTICE TABLE · test freely. Nothing here is added to the campaign history.</p>
       <p id="notice" class="notice" role="status"></p>
       <section id="host" class="panel capture" hidden aria-labelledby="host-title">
         <div class="section-header">
@@ -118,7 +120,8 @@
         <label class="file-button">Add text files<input id="history-files" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple></label>
         <textarea id="history-text" rows="14" maxlength="400000" aria-label="Campaign history" placeholder="Loading…"></textarea>
         <p id="history-count" class="fineprint"></p>
-        <button id="history-save" type="button">Save history</button>
+        <div class="controls"><button id="history-save" type="button">Save history</button><button id="export-chatgpt" class="secondary" type="button">Export for ChatGPT</button></div>
+        <p id="export-status" class="fineprint">Export downloads one text file with the campaign history, the current character sheets, and this table’s updates. Attach it in your ChatGPT thread to continue there.</p>
       </details>
       <div id="close-wrap" hidden><button id="close" class="quiet" type="button">End room and delete session</button></div>
     </div>
