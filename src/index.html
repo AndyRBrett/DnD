@@ -30,8 +30,19 @@
           <p class="fineprint">Same account as the UFC Picks app; the code email comes from UFC Picks.</p>
         </div>
         <div id="account" hidden>
-          <div class="controls"><button id="join" type="button" hidden>Join the table</button><button id="create" type="button">Start a table</button></div>
-          <div id="my-rooms" hidden><p class="eyebrow">YOUR OPEN TABLES</p><ul id="my-room-list"></ul></div>
+          <button id="join" type="button" hidden>Join the table</button>
+          <div id="recent-rooms" hidden><p class="eyebrow">TABLES YOU JOINED</p><ul id="recent-room-list"></ul></div>
+          <form id="join-form" class="lobby-block">
+            <p class="eyebrow">PLAYING?</p>
+            <label for="join-link">Open the link your DM shares, or paste it here</label>
+            <input id="join-link" autocomplete="off" placeholder="https://andyrbrett.github.io/DnD/?room=…">
+            <button type="submit" class="secondary">Join table</button>
+          </form>
+          <div class="lobby-block">
+            <p class="eyebrow">RUNNING THE GAME?</p>
+            <div id="my-rooms" hidden><p>Your open tables:</p><ul id="my-room-list"></ul></div>
+            <button id="create" type="button">Start a table (DM)</button>
+          </div>
           <p id="account-line" class="fineprint">Signed in as <span id="account-email"></span> · <button id="signout" class="link" type="button">Sign out</button></p>
         </div>
         <p id="lobby-status" class="notice" role="status"></p>
@@ -39,7 +50,7 @@
     </section>
     <div id="table" hidden>
       <div class="room-header">
-        <div><p class="eyebrow">CAMPAIGN SESSION</p><h1>The Onyx Jewel</h1></div>
+        <div><p class="eyebrow">CAMPAIGN SESSION<span id="table-code"></span></p><h1>The Onyx Jewel</h1></div>
         <button id="copy" class="secondary" type="button">Share player link</button>
       </div>
       <p id="notice" class="notice" role="status"></p>

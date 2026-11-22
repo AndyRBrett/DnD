@@ -82,3 +82,12 @@ fieldset{border:1px solid var(--border);border-radius:8px;margin:12px 0;padding:
 #my-room-list{padding-left:20px;margin:6px 0 0}
 #my-room-list a{color:var(--accent)}
 button.link{background:none;border:0;padding:0;min-height:0;color:var(--accent);font-weight:600;text-decoration:underline}
+
+.lobby-block{margin-top:24px;padding-top:16px;border-top:1px solid var(--border)}
+.lobby-block .eyebrow{margin-bottom:4px}
+#join-form label{display:block;color:var(--muted)}
+#recent-rooms{margin-top:18px}
+#recent-room-list{padding-left:20px;margin:6px 0 0}
+#recent-room-list a{color:var(--accent)}
+#table-code{color:var(--muted)}
+.hero p.eyebrow{color:var(--accent);font-size:.875rem;margin:0 0 4px}
