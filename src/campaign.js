@@ -23,17 +23,28 @@ export const party = [
     "check | Warding Flare — Discussed previously. Confirm the reaction, trigger, and uses on the current sheet.",
     "check | Divine Intervention — New at Level 10. Confirm the table’s version."
   ]),
-  profile("Arcturus", "Elf Gloom Stalker ranger · Level 10 · archer and scout", [
-    "combat | Longbow — Primary weapon; struck the final blow on the volcano dragon. Check range, line of sight, and cover.",
-    "combat | Extra Attack — Recorded in the ranger recap. Check your current sheet before counting attacks.",
-    "combat | Dread Ambusher — The prior recap described an opening-turn extra attack. Confirm the house rule and its timing.",
-    "combat | Sharpshooter — Prior notes say the DM limited it to cover and long-range benefits. Confirm before using.",
-    "explore | Umbral Sight — Recorded in the ranger recap. Ask what the lighting lets you see.",
-    "social | Disguise Self — Passed as a casino guard on a natural 20. Lasts 1 hour, looks only; close inspection can see through it.",
-    "social | Persuasion — +4. Used on the casino guards while disguised. Agree the story with the party first.",
-    "check | Shortsword, Iron Mind, Ring of Dragon Champion / Defensive Duelist — Recorded in the earlier recap. Verify equipment and exact effects.",
-    "check | Hunter’s Mark, Lightning Arrow, Cure Wounds, Pass Without Trace, Ensnaring Strike, Hail of Thorns, Absorb Elements — Discussed spells. Confirm which are available.",
-    "check | Level 10 ranger features — Confirm what the level-up added."
+  profile("Arcturus", "Elf Gloom Stalker ranger · Level 10 · Exiled Noble · spell DC 14, +6", [
+    "combat | Longbow — +11 to hit with Archery (+5 Dex, +4 proficiency, +2 Archery), 1d8+5 piercing, 150/600 ft. Two shots per Attack action; disadvantage if a hostile creature that can see you is within 5 ft.",
+    "combat | Extra Attack — Two attacks with the Attack action.",
+    "combat | Dread Ambusher — Legacy version: +2 (Wis) to initiative (+7 total), +10 ft on the first combat turn, and a third shot on that turn that deals an extra 1d8.",
+    "combat | Archery — Fighting style established in play: +2 to ranged weapon attack rolls. Confirm if the DM changed it.",
+    "combat | Sharpshooter — DM house rule: ignore half and three-quarters cover and no long-range disadvantage. The −5/+10 option was removed.",
+    "combat | Shortsword — +9 to hit, 1d6+5 piercing (finesse). Use when an enemy is in your face.",
+    "danger | Defensive Duelist — From the Ring of the Dragon Champion: reaction when a melee attack hits while you hold a finesse weapon (not the longbow); add +4 to AC against it.",
+    "explore | Umbral Sight — Darkvision to 90 ft at this table; invisible to creatures relying on darkvision to see you in darkness (not automatically hidden).",
+    "explore | Stealth — +9 (proficient); +19 under Pass Without Trace. Moving into cover alone doesn't give advantage; hiding needs the DM's OK and normally your action.",
+    "explore | Perception — +6 as played (passive 16); proficiency not yet verified.",
+    "social | Insight — +6 as played; proficiency not yet verified.",
+    "social | Persuasion — +4, proficient from the Exiled Noble background.",
+    "social | Disguise Self — Gloom Stalker bonus spell: 1 action, 1 hour, no concentration, looks only. Passed as a casino guard (natural 20 on Performance).",
+    "check | Iron Mind — Legacy Gloom Stalker: Wisdom save proficiency (+6). Confirm the table uses it.",
+    "check | Hunter’s Mark — First-turn routine: bonus action, concentration, +1d6 on each hit. Confirm it is a known spell and you have a slot.",
+    "check | Pass Without Trace, Cure Wounds, Ensnaring Strike, Hail of Thorns, Absorb Elements — Discussed spells; confirm which are known or prepared (slots: 4 × 1st, 3 × 2nd, 2 × 3rd).",
+    "check | Lightning Arrow — Discussed as the Level 9 spell, not verified as the final choice.",
+    "check | Rope Trick and Fear — Legacy Gloom Stalker spells at Ranger 5 and 9; verify the DM’s subclass version.",
+    "check | Hide in Plain Sight and Tireless — Level 10 ranger feature depends on 2014 vs 2024 rules; the DM also offered an additional ability. Ask before choosing.",
+    "check | Dagger — +9 to hit, 1d4+5 piercing (finesse), if it’s an ordinary dagger.",
+    "check | Current HP and AC — HP 76 at Level 9; Level 10 maybe 84. AC 16 recorded, 17 with studded leather and Dex 20. Confirm with the DM."
   ]),
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · played by Derek", [
     "combat | Rage — Bonus action, used in play. Check remaining uses.",
@@ -62,3 +73,69 @@ export const party = [
 ];
 
 export const recap = "Last time: the party reached the casino’s upper secure area by elevator and defeated four musket guards (the White Wizard’s Fireball hit for 24). A surviving guard was magically strangled before he could reveal the vault’s secrets. The jewel’s location, the vault’s wards, the killer, and the employer are still unknown. Everyone is now Level 10.";
+
+// Full sheets for characters that have one (keyed by name). Shown on the
+// Character sheet panel above the ability sections; reference only, so it
+// lives in the app rather than the table's editable sheet.
+export const sheets = {
+  "Arcturus": {
+    title: "Arcturus — The Exiled Star",
+    note: "Reconstructed from campaign chat, not a verified official sheet. Level 10 under a mix of legacy (2014) Gloom Stalker rules and DM house rules.",
+    identity: [
+      ["Ancestry", "Full elf with a dark-elf look; subrace not confirmed"],
+      ["Class", "Ranger 10 (Gloom Stalker)"],
+      ["Background", "Exiled Noble"],
+      ["Appearance", "6 ft 5 in, ash-gray skin, glowing green eyes, hooded dark battle-worn leather with subtle gold trim and earrings, longbow. Named for the orange-red star."],
+      ["Personality", "Quiet, strategic, observant shadow archer and emerging leader"]
+    ],
+    abilities: [["STR", 10, 0], ["DEX", 20, 5], ["CON", 14, 2], ["INT", 12, 1], ["WIS", 14, 2], ["CHA", 10, 0]],
+    combat: [
+      ["Proficiency", "+4"],
+      ["Initiative", "+7"],
+      ["Speed", "35 ft (45 ft first turn)"],
+      ["HP", "76 at L9 · L10 TBD (84?)"],
+      ["AC", "16 recorded · 17 if studded leather"],
+      ["Hit Dice", "10d10"],
+      ["Passive Perception", "16 if proficient (else 12)"]
+    ],
+    saves: [["STR", "+4", "proficient"], ["DEX", "+9", "proficient"], ["CON", "+2", ""], ["INT", "+1", ""], ["WIS", "+6", "Iron Mind"], ["CHA", "+0", ""]],
+    // [skill, ability, bonus to use, status]: "proficient", "provisional", or "" (not confirmed: +x, or +y if proficient)
+    skills: [
+      ["Acrobatics", "DEX", "+5 (+9 if prof.)", ""],
+      ["Animal Handling", "WIS", "+2 (+6 if prof.)", ""],
+      ["Arcana", "INT", "+1 (+5 if prof.)", ""],
+      ["Athletics", "STR", "+0 (+4 if prof.)", ""],
+      ["Deception", "CHA", "+0", "played"],
+      ["History", "INT", "+1 (+5 if prof.)", ""],
+      ["Insight", "WIS", "+6", "provisional"],
+      ["Intimidation", "CHA", "+0 (+4 if prof.)", ""],
+      ["Investigation", "INT", "+1 (+5 if prof.)", ""],
+      ["Medicine", "WIS", "+2 (+6 if prof.)", ""],
+      ["Nature", "INT", "+1 (+5 if prof.)", ""],
+      ["Perception", "WIS", "+6", "provisional"],
+      ["Performance", "CHA", "+0", "played"],
+      ["Persuasion", "CHA", "+4", "proficient"],
+      ["Religion", "INT", "+1 (+5 if prof.)", ""],
+      ["Sleight of Hand", "DEX", "+5 (+9 if prof.)", ""],
+      ["Stealth", "DEX", "+9", "proficient"],
+      ["Survival", "WIS", "+2 (+6 if prof.)", ""]
+    ],
+    spellcasting: [["Ability", "Wisdom (+2)"], ["Save DC", "14"], ["Spell attack", "+6"], ["Slots", "1st ×4 · 2nd ×3 · 3rd ×2"]],
+    items: [["Ring of the Dragon Champion", "Grants Defensive Duelist: with a finesse weapon in hand, use your reaction when a melee attack hits to add +4 to AC against it. Doesn't work with the longbow."]],
+    routine: [
+      "Bonus action: Hunter’s Mark (if known, a slot is left, and concentration is free).",
+      "Attack action: three longbow shots on the first turn (Dread Ambusher), each d20 + 11.",
+      "Damage: shots 1 and 2 deal 1d8 + 5 + 1d6; the Dread Ambusher shot deals 2d8 + 5 + 1d6. About 43.5 if all three hit.",
+      "Later turns: two shots per Attack action, each 1d8 + 5 + 1d6 while Hunter’s Mark holds.",
+      "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
+    ],
+    questions: [
+      "What exactly is the Level 10 \"additional ability\" (feat, ability score, class feature, or custom reward)?",
+      "Is Level 10 HP 84, or a rolled value?",
+      "Is AC 17 (studded leather + Dex 20), or is other armor in play?",
+      "Which skills are proficient (especially Perception, Insight, Acrobatics, Survival), and any expertise?",
+      "Which spells are known or prepared, and 2014 or 2024 text?",
+      "Elf subrace and traits, languages, equipment, remaining resources, and other magic items?"
+    ]
+  }
+};
