@@ -64,8 +64,8 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
   assert.match(prompt, /THIS SESSION SO FAR[\s\S]*Last time: the party reached the casino/);
   const [ready, unconfirmed] = prompt.split("UNCONFIRMED");
   assert.match(ready, /Sacred Flame/);
-  assert.doesNotMatch(ready, /Divine Intervention/);
-  assert.match(unconfirmed, /Divine Intervention/);
+  assert.doesNotMatch(ready, /Revivify/);
+  assert.match(unconfirmed, /Revivify/);
   assert.match(body.system, /Never recommend anything listed under UNCONFIRMED/);
 });
 
