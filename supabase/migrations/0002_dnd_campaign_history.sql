@@ -3,7 +3,8 @@
 -- table can replace the history (each save keeps the previous version in
 -- dnd_campaign_versions), ending a table can append that session's updates,
 -- and the dnd-advise edge function sends the history to Claude (prompt-cached).
--- Additive only: no existing function is dropped.
+-- Additive only: no existing table is altered and no function is dropped.
+-- Every table uses the single campaign (dnd_default_campaign()).
 
 create table public.dnd_campaigns (
   id uuid primary key default gen_random_uuid(),
@@ -26,31 +27,10 @@ revoke all on public.dnd_campaigns, public.dnd_campaign_versions from anon, auth
 
 insert into public.dnd_campaigns (name) values ('The Onyx Jewel');
 
-alter table public.dnd_rooms add column campaign_id uuid references public.dnd_campaigns(id) on delete set null;
-update public.dnd_rooms set campaign_id = (select id from public.dnd_campaigns where name = 'The Onyx Jewel') where campaign_id is null;
-
 create function public.dnd_default_campaign() returns uuid
 language sql stable security definer set search_path = public as $$
   select id from public.dnd_campaigns where name = 'The Onyx Jewel'
 $$;
-
--- New tables join the campaign.
-create or replace function public.dnd_create_room(p_party jsonb, p_recap text default null) returns text
-language plpgsql security definer set search_path = public as $$
-declare uid uuid := public.dnd_account(); new_code text;
-begin
-  delete from public.dnd_rooms where created_at < now() - interval '8 hours';
-  if (select count(*) from public.dnd_rooms where host_id = uid) >= 3 then
-    raise exception 'You already have three open tables. End one before starting another.' using errcode = '22023';
-  end if;
-  insert into public.dnd_rooms (host_id, party, campaign_id)
-  values (uid, public.dnd_clean_party(p_party), public.dnd_default_campaign())
-  returning code into new_code;
-  if btrim(coalesce(p_recap, '')) <> '' then
-    insert into public.dnd_scenes (code, text) values (new_code, left(btrim(p_recap), 1500));
-  end if;
-  return new_code;
-end $$;
 
 -- The poll stays small: only the history's size, not its text.
 create or replace function public.dnd_room(p_code text) returns jsonb
@@ -61,7 +41,7 @@ begin
     'party', r.party,
     'isHost', r.host_id = uid,
     'ai', true,
-    'historyChars', coalesce((select char_length(history) from public.dnd_campaigns where id = r.campaign_id), 0),
+    'historyChars', coalesce((select char_length(history) from public.dnd_campaigns where id = public.dnd_default_campaign()), 0),
     'scenes', coalesce((
       select jsonb_agg(jsonb_build_object('id', s.id, 'text', s.text,
         'created', (extract(epoch from s.created_at) * 1000)::bigint) order by s.id)
@@ -74,7 +54,7 @@ create function public.dnd_history(p_code text) returns text
 language plpgsql stable security definer set search_path = public as $$
 declare r public.dnd_rooms := public.dnd_host_room(p_code);
 begin
-  return coalesce((select history from public.dnd_campaigns where id = r.campaign_id), '');
+  return coalesce((select history from public.dnd_campaigns where id = public.dnd_default_campaign()), '');
 end $$;
 
 create function public.dnd_set_history(p_campaign uuid, p_history text, p_by uuid) returns integer
@@ -96,7 +76,7 @@ create function public.dnd_save_history(p_code text, p_history text) returns int
 language plpgsql security definer set search_path = public as $$
 declare r public.dnd_rooms := public.dnd_host_room(p_code);
 begin
-  return public.dnd_set_history(r.campaign_id, p_history, r.host_id);
+  return public.dnd_set_history(public.dnd_default_campaign(), p_history, r.host_id);
 end $$;
 
 -- Ending a table, optionally appending its updates (oldest first) to the history.
@@ -104,12 +84,12 @@ create function public.dnd_end_table(p_code text, p_save_history boolean default
 language plpgsql security definer set search_path = public as $$
 declare r public.dnd_rooms := public.dnd_host_room(p_code); session text; saved integer := 0;
 begin
-  if p_save_history and r.campaign_id is not null then
+  if p_save_history and public.dnd_default_campaign() is not null then
     select string_agg(text, E'\n' order by id) into session
     from public.dnd_scenes where code = r.code and created_at > r.created_at;
     if btrim(coalesce(session, '')) <> '' then
-      saved := public.dnd_set_history(r.campaign_id, right(
-        (select history from public.dnd_campaigns where id = r.campaign_id)
+      saved := public.dnd_set_history(public.dnd_default_campaign(), right(
+        (select history from public.dnd_campaigns where id = public.dnd_default_campaign())
         || E'\n\n## Session ' || to_char(r.created_at at time zone 'America/Chicago', 'YYYY-MM-DD')
         || E' (live transcript)\n' || session, 400000), r.host_id);
     end if;
@@ -137,7 +117,7 @@ begin
   if not found then
     raise exception 'Wait for a scene update.' using errcode = '22023';
   end if;
-  select * into campaign from public.dnd_campaigns where id = r.campaign_id;
+  select * into campaign from public.dnd_campaigns where id = public.dnd_default_campaign();
   hash := md5(concat_ws(chr(31), ch->>'name', ch->>'role', ch->>'moves', latest.text, campaign.updated_at::text));
   select advice into cached from public.dnd_advice
     where code = p_code and character_index = p_character and scene_id = latest.id and sheet_hash = hash;
