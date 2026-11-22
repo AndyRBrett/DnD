@@ -131,6 +131,7 @@ async function sync() {
     const previous = state;
     state = fresh;
     if (hostChanged) setHost(fresh.isHost);
+    if (!previous) rememberTable(room);
     if (rosterChanged || hostChanged) drawRoster();
     if (scenesChanged) {
       if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
@@ -439,7 +440,24 @@ function setHost(value) {
 }
 
 let poll;
+// Tables this browser joined, so a player who lands on the home page can get
+// back to the DM's table instead of starting their own.
+const RECENT_KEY = "dnd-recent-tables";
+const tableAge = 8 * 60 * 60 * 1000;
+function recentTables() {
+  try {
+    return JSON.parse(storage.get(RECENT_KEY) ?? "[]").filter(entry => Date.now() - entry.at < tableAge);
+  } catch {
+    return [];
+  }
+}
+function rememberTable(code) {
+  storage.set(RECENT_KEY, JSON.stringify([{ code, at: Date.now() }, ...recentTables().filter(entry => entry.code !== code)].slice(0, 5)));
+}
+const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
+
 function enterRoom() {
+  $("table-code").textContent = " · " + tableLabel(room).toUpperCase();
   $("lobby").hidden = true;
   $("table").hidden = false;
   setHost(false);
@@ -449,6 +467,25 @@ function enterRoom() {
 
 // ── Lobby and sign-in (hosted mode uses the UFC app's email-code login) ──
 let pendingEmail = "";
+let myRoomCount = 0;
+function tableLink(code, text) {
+  const item = document.createElement("li");
+  const link = document.createElement("a");
+  link.href = "?room=" + code;
+  link.textContent = text;
+  item.append(link);
+  return item;
+}
+$("join-form").onsubmit = event => {
+  event.preventDefault();
+  const value = $("join-link").value.trim();
+  const code = (value.match(/room=([a-f0-9]{24})/i) ?? value.match(/^([a-f0-9]{24})$/i))?.[1];
+  if (!code) {
+    $("lobby-status").textContent = "That doesn't look like a table link. Ask the DM to tap Share player link.";
+    return;
+  }
+  location.href = "?room=" + code.toLowerCase();
+};
 async function showLobby(message = "") {
   $("lobby").hidden = false;
   $("table").hidden = true;
@@ -457,21 +494,18 @@ async function showLobby(message = "") {
   $("signin").hidden = !backend.hosted || Boolean(user);
   $("account").hidden = backend.hosted && !user;
   $("account-line").hidden = !backend.hosted;
-  $("create").textContent = room ? "Start a new table" : "Start a table";
   $("join").hidden = !room;
+  const recent = recentTables();
+  $("recent-rooms").hidden = !recent.length;
+  $("recent-room-list").replaceChildren(...recent.map(({ code, at }) => tableLink(code, tableLabel(code) + " · joined " + new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))));
   if (!user) return;
   $("account-email").textContent = user.email;
   try {
     const rooms = await backend.myRooms();
+    myRoomCount = rooms.length;
     $("my-rooms").hidden = !rooms.length;
-    $("my-room-list").replaceChildren(...rooms.map(({ code, created }) => {
-      const item = document.createElement("li");
-      const link = document.createElement("a");
-      link.href = "?room=" + code;
-      link.textContent = "Table started " + new Date(created).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
-      item.append(link);
-      return item;
-    }));
+    $("my-room-list").replaceChildren(...rooms.map(({ code, created }) =>
+      tableLink(code, tableLabel(code) + " · started " + new Date(created).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))));
   } catch (error) {
     if (error.status === 401) showLobby("Sign in again to continue.");
   }
@@ -526,6 +560,10 @@ $("signout").onclick = async () => {
 };
 $("join").onclick = () => enterRoom();
 $("create").onclick = async () => {
+  const warning = myRoomCount
+    ? "You already have an open table. Start another one? Players on your current table won't see it."
+    : "Start a new table as the DM? Players should open the DM's link instead.";
+  if (!window.confirm(warning)) return;
   $("create").disabled = true;
   try {
     const code = await backend.createRoom(starterParty, starterRecap);
