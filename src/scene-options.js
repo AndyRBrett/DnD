@@ -14,7 +14,7 @@ const situations = [
   },
   {
     name: "Combat", tag: "combat",
-    match: /\b(?:roll (?:for )?initiative|initiative order|attacks?|enemies|enemy|hostile|firing|fires (?:at|on|a|his|her|their)|shoots?|shot at|lunges?|stabs?|slashes|draws? (?:\w+ )?(?:swords?|muskets?|weapons?|blades?|bows?)|swings? (?:at|a|his|her|their)|opens? fire|charges? (?:at|you|us|toward)|combat begins)\b/i,
+    match: /\b(?:initiative|attack\w*|fight(?:s|ing)?|battle|ambush\w*|combat|enem(?:y|ies)|hostile|firing|fires (?:at|on|a|his|her|their)|opens? fire|shoot(?:s|ing)?|shot at|lunges?|stabs?|slash\w*|bites?|claws? at|swoops? (?:at|down|in|toward)|strikes? (?:at|you|him|her|them|the)|hits? (?:you|him|her|them|the)|damage|draws? (?:\w+ )?(?:swords?|muskets?|weapons?|blades?|bows?)|swings? (?:at|a|his|her|their)|charges? (?:at|you|us|toward)|your turn)\b/i,
     moves: {
       cleric: "If Sacred Flame is available, pick a visible enemy in range. If allies need support and Bless is prepared, check whether you can spend a slot and concentrate.",
       ranger: "Ask what you can see from your position, then pick a target you can reach with your equipped weapon without exposing yourself to more enemies.",
@@ -42,7 +42,7 @@ const situations = [
   },
   {
     name: "Something is approaching", tag: "danger",
-    match: /\b(?:footsteps?|approach\w*|getting closer|pursu\w*|patrol\w*|alarms?|shadows? (?:move|moving))\b/i,
+    match: /\b(?:footsteps?|approach\w*|getting closer|pursu\w*|patrol\w*|alarms?|shadows? (?:move|moving)|encounter\w*|appears?|emerges?|bursts? (?:in|out|through))\b/i,
     moves: {
       cleric: "Get an ally into cover and identify the source of the sound. If trouble is imminent, check whether you have time and a prepared support spell.",
       ranger: "Get out of the approaching creature's line of sight. Watch the route it would take and signal the party when you can identify it.",

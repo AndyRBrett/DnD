@@ -68,3 +68,22 @@ test("the coaching prompt carries character and the last five updates", () => {
   assert.doesNotMatch(prompt, /^- a$/m);
   assert.match(prompt, /^- f$/m);
 });
+
+test("everyday combat narration from real sessions reads as combat", () => {
+  for (const text of [
+    "The monster starts attacking everyone",
+    "It swoops down at Logan",
+    "The guard hits you for 6 damage",
+    "Everyone roll initiative",
+    "The fighting spills into the street"
+  ]) assert.equal(recommend(cleric, scenes([text])).situation, "Combat", text);
+});
+
+test("a creature showing up reads as something approaching, not exploration", () => {
+  assert.equal(recommend(cleric, scenes(["And they encounter a one eyed flying purple people eater"])).situation, "Something is approaching");
+});
+
+test("combat continues through transcript fragments", () => {
+  const result = recommend(cleric, scenes(["The monster starts attacking everyone", "People eat that's purple"]));
+  assert.equal(result.situation, "Combat");
+});
