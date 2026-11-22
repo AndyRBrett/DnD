@@ -53,9 +53,16 @@ Deno.serve(async req => {
   if (plan.cached) return reply({ ...plan.cached, sceneId: plan.sceneId });
 
   try {
+    // The whole session, not just the last few updates (claudeRequest trims
+    // to its character budget). Read with the service role: the tables have
+    // no client grants, and dnd_advise_begin already checked this player.
+    const sessionResponse = await fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text&code=eq." + code + "&order=id.desc&limit=200", {
+      headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY }
+    });
+    const session = sessionResponse.ok ? (await sessionResponse.json()).reverse() : plan.scenes;
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, plan.scenes, plan.history ?? ""),
-      signal: AbortSignal.timeout(45000)
+      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, session.length ? session : plan.scenes, plan.history ?? ""),
+      signal: AbortSignal.timeout(60000)
     }));
     await fetch(SUPABASE_URL + "/rest/v1/dnd_advice", {
       method: "POST",

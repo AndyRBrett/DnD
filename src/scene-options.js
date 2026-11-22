@@ -186,12 +186,12 @@ export function recommend(character, scenes) {
 }
 
 export function coachingPrompt(character, scenes) {
-  const updates = scenes.slice(-5).map(scene => "- " + scene.text).join("\n");
+  const updates = scenes.slice(-20).map(scene => "- " + scene.text).join("\n");
   return [
     "Help me decide what my D&D character can do next. Use our campaign context if you have it.",
     "Character: " + character.name + (character.role ? " (" + character.role + ")" : ""),
     "Known abilities and limits: " + (character.moves.trim() || "Use only abilities already confirmed in our conversation; ask about anything missing."),
     "DM updates, oldest to newest:\n" + updates,
-    "Give me two or three concrete options for this scene, including action economy, cost, concentration, or range where relevant. Flag assumptions, distinguish possible actions from DM-confirmed outcomes, and do not invent resources or rules."
+    "First tell me in a sentence or two what you think the DM is building toward, using our campaign history and these updates (as a theory, not a fact). Then give me two or three concrete options for this scene that also move us toward that bigger picture, including action economy, cost, concentration, or range where relevant. Flag assumptions, distinguish possible actions from DM-confirmed outcomes, and do not invent resources or rules."
   ].join("\n\n");
 }

@@ -36,7 +36,7 @@ const AI_ROOM_LIMIT = 200;
 const AI_COOLDOWN = 8000;
 
 async function askClaude(apiKey, character, scenes) {
-  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes), signal: AbortSignal.timeout(45000) });
+  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes), signal: AbortSignal.timeout(60000) });
   return readAdvice(response);
 }
 
@@ -64,7 +64,7 @@ const endpoints = {
     const party = importHistory(JSON.parse(room.party));
     const character = party[index];
     if (!Number.isInteger(index) || !character) return json({ error: "Pick a character." }, 400);
-    const { results } = await db.prepare("SELECT id, text FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 6").bind(code).all();
+    const { results } = await db.prepare("SELECT id, text FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 200").bind(code).all();
     const scenes = results.reverse();
     if (!scenes.length) return json({ error: "Wait for a scene update." }, 400);
     const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves].join("\u0000");

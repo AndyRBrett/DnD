@@ -55,9 +55,10 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
   assert.equal(body.model, "claude-opus-5-5");
   assert.equal(body.output_config.format.type, "json_schema");
   const prompt = body.messages[0].content.map(block => block.text).join("\n");
-  assert.equal(body.messages[0].content.length, 1, "no history block when the campaign has none");
+  assert.ok(!body.messages[0].content.some(block => block.text.startsWith("CAMPAIGN HISTORY")), "no history block when the campaign has none");
   assert.match(prompt, /The White Wizard/);
-  assert.match(prompt, /LATEST: Roll initiative/);
+  assert.match(prompt, /LATEST DM UPDATE:\nRoll initiative/);
+  assert.match(prompt, /THIS SESSION SO FAR[\s\S]*Last time: the party reached the casino/);
   const [ready, unconfirmed] = prompt.split("UNCONFIRMED");
   assert.match(ready, /Sacred Flame/);
   assert.doesNotMatch(ready, /Divine Intervention/);
@@ -92,7 +93,31 @@ test("campaign history goes first, cached for an hour, and can't add abilities",
   const [history, turn] = body.messages[0].content;
   assert.match(history.text, /Schalissa/);
   assert.deepEqual(history.cache_control, { type: "ephemeral", ttl: "1h" });
-  assert.match(turn.text, /LATEST: The vault door/);
+  assert.match(turn.text, /LATEST DM UPDATE:\nThe vault door/);
   assert.equal(turn.cache_control, undefined);
   assert.match(body.system, /never count as available unless the character's sheet lists them as READY/);
+});
+
+test("Claude reads the whole session and is asked for the bigger picture", async () => {
+  const { claudeRequest, sessionWindow, SESSION_CHARS, readAdvice } = await import("../src/advice.js");
+  const scenes = Array.from({ length: 40 }, (_, index) => ({ id: index + 1, text: "Update " + (index + 1) + ": the employer's seal appears again." }));
+  const body = JSON.parse(claudeRequest("k", { name: "Roan", role: "", moves: "" }, scenes, "History.").body);
+  const [history, session, turn] = body.messages[0].content;
+  assert.equal(history.cache_control.ttl, "1h");
+  assert.match(session.text, /Update 1:[\s\S]*Update 39:/, "every earlier update is sent, not just the last six");
+  assert.deepEqual(session.cache_control, { type: "ephemeral" });
+  assert.match(turn.text, /LATEST DM UPDATE:\nUpdate 40:/);
+  assert.match(body.system, /bigger picture the DM is building/);
+  assert.ok(body.output_config.format.schema.required.includes("big_picture"));
+  assert.equal(body.output_config.effort, "medium");
+
+  const long = Array.from({ length: 400 }, (_, index) => ({ id: index, text: "x".repeat(200) }));
+  const kept = sessionWindow(long);
+  assert.ok(kept.length < 400 && kept.at(-1) === long.at(-1));
+  assert.ok(kept.reduce((sum, scene) => sum + scene.text.length, 0) <= SESSION_CHARS);
+
+  const advice = await readAdvice(Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
+    big_picture: "The DM seems to be building toward the employer being the strangler.", situation: "Investigating",
+    options: [{ action: "a", why: "b" }, { action: "c", why: "d" }], ask_dm: "q" }) }] }));
+  assert.match(advice.bigPicture, /employer/);
 });
