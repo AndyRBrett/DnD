@@ -42,7 +42,7 @@ Deno.serve(async req => {
   const character = Number(input.character);
   if (!code || !Number.isInteger(character) || character < 0 || character > 4) return reply({ error: "Invalid request." }, 400);
 
-  const begin = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_advise_begin", {
+  const begin = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_advise_begin_v2", {
     method: "POST",
     headers: { apikey: ANON_KEY, Authorization: req.headers.get("Authorization") ?? "", "Content-Type": "application/json" },
     body: JSON.stringify({ p_code: code, p_character: character })
@@ -56,12 +56,15 @@ Deno.serve(async req => {
     // The whole session, not just the last few updates (claudeRequest trims
     // to its character budget). Read with the service role: the tables have
     // no client grants, and dnd_advise_begin already checked this player.
-    const sessionResponse = await fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text&code=eq." + code + "&order=id.desc&limit=200", {
+    const sessionResponse = await fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=200", {
       headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY }
     });
-    const session = sessionResponse.ok ? (await sessionResponse.json()).reverse() : plan.scenes;
+    const session = sessionResponse.ok
+      ? (await sessionResponse.json()).reverse().map((scene: { id: number; text: string; created_at: string }) =>
+          ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }))
+      : plan.scenes;
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, session.length ? session : plan.scenes, plan.history ?? ""),
+      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, session.length ? session : plan.scenes, plan.history ?? "", plan.actions ?? []),
       signal: AbortSignal.timeout(60000)
     }));
     await fetch(SUPABASE_URL + "/rest/v1/dnd_advice", {

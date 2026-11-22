@@ -121,3 +121,22 @@ test("Claude reads the whole session and is asked for the bigger picture", async
     options: [{ action: "a", why: "b" }, { action: "c", why: "d" }], ask_dm: "q" }) }] }));
   assert.match(advice.bigPicture, /employer/);
 });
+
+test("player actions are woven into the session and the newest are called out", async () => {
+  const { claudeRequest } = await import("../src/advice.js");
+  const scenes = [
+    { id: 1, text: "Recap.", created: 1000 },
+    { id: 2, text: "You cross to the tavern.", created: 2000 },
+    { id: 3, text: "A hooded figure sits alone.", created: 4000 }
+  ];
+  const actions = [
+    { name: "The White Wizard", text: "views his surroundings", created: 3000 },
+    { name: "Dum Dum", text: "walks up to the hooded figure", created: 5000 }
+  ];
+  const body = JSON.parse(claudeRequest("k", { name: "Arcturus", role: "", moves: "" }, scenes, "", actions).body);
+  const [session, turn] = body.messages[0].content;
+  assert.match(session.text, /DM: You cross to the tavern\.\n- The White Wizard \(player\): views his surroundings/);
+  assert.doesNotMatch(session.text, /Dum Dum/);
+  assert.match(turn.text, /LATEST DM UPDATE:\nA hooded figure sits alone\.\n\nPLAYER ACTIONS SINCE THAT UPDATE[^\n]*\n- Dum Dum: walks up to the hooded figure/);
+  assert.match(body.system, /Build on what this character already declared/);
+});
