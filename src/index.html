@@ -182,6 +182,34 @@
             <div id="party-action-rows"></div>
           </details>
         </section>
+        <section id="encounter" class="card" hidden aria-labelledby="encounter-count">
+          <p class="eyebrow red">ENCOUNTER · ONLY YOU SEE THIS</p>
+          <h2 id="encounter-count" class="display sm">No enemies yet</h2>
+          <div class="controls" id="encounter-controls" hidden><button id="enc-init" class="ghost" type="button">Roll initiative</button><button id="enc-clear" class="quiet" type="button">Clear encounter</button></div>
+          <div id="enemy-list"></div>
+          <details id="enemy-builder" class="fold">
+            <summary>Add enemies</summary>
+            <form id="enemy-form" class="stack">
+              <label for="enemy-template">Start from</label>
+              <select id="enemy-template"></select>
+              <div class="grid-2">
+                <label>Name<input id="enemy-name" required maxlength="40" placeholder="Musket guard"></label>
+                <label>How many<input id="enemy-count" type="number" min="1" max="30" value="1" inputmode="numeric"></label>
+                <label>AC<input id="enemy-ac" type="number" min="1" max="40" value="12" inputmode="numeric"></label>
+                <label>HP (number or dice)<input id="enemy-hp" value="2d8+2" maxlength="20"></label>
+                <label>Initiative bonus<input id="enemy-init" type="number" min="-10" max="20" value="0" inputmode="numeric"></label>
+                <label>Speed (ft)<input id="enemy-speed" type="number" min="0" max="200" value="30" inputmode="numeric"></label>
+              </div>
+              <p class="label">Attacks</p>
+              <div class="attack-row"><input id="atk1-name" placeholder="Attack" maxlength="40"><input id="atk1-hit" type="number" placeholder="+hit" inputmode="numeric"><input id="atk1-dmg" placeholder="1d6+2" maxlength="20"></div>
+              <div class="attack-row"><input id="atk2-name" placeholder="2nd attack (optional)" maxlength="40"><input id="atk2-hit" type="number" placeholder="+hit" inputmode="numeric"><input id="atk2-dmg" placeholder="1d8" maxlength="20"></div>
+              <label>Abilities and notes<textarea id="enemy-abilities" rows="3" maxlength="1000" placeholder="Multiattack, resistances, spells, tactics…"></textarea></label>
+              <button type="submit" class="cta">Add to encounter</button>
+              <button type="button" id="enemy-save-template" class="ghost">Save as my template</button>
+              <p id="enemy-status" class="fineprint"></p>
+            </form>
+          </details>
+        </section>
         <details id="party-editor" class="card" hidden>
           <summary class="card-summary">Edit character sheets</summary>
           <p class="fineprint">One ability per line. Start with <code>combat</code>, <code>danger</code>, <code>explore</code>, <code>social</code>, <code>aid</code>, or <code>any</code>, then <code>|</code>, the name, <code>—</code>, and any cost or limit. Use <code>check</code> for abilities the DM hasn't confirmed: they show on the sheet but are never suggested. Example: <code>combat | Sacred Flame — action, visible creature in range, no spell slot.</code></p>
@@ -200,6 +228,32 @@
       </section>
     </div>
   </main>
+
+  <button id="dice-fab" class="fab" type="button" aria-label="Roll dice" hidden>
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13z"/><path class="d20-lines" d="M16 2 9 13h14zM9 13 3 22.5M23 13l6 9.5M9 13l7 11 7-11M16 24v6M3 9.5 9 13M29 9.5 23 13"/></svg>
+  </button>
+  <div id="dice-tray" class="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dice-title">
+      <div class="sheet-head"><h2 id="dice-title" class="display sm">Roll dice</h2><button id="dice-close" class="icon-btn" type="button" aria-label="Close">✕</button></div>
+      <p id="dice-label" class="eyebrow red"></p>
+      <div id="dice-result" class="dice-result" hidden><strong id="dice-total"></strong><span id="dice-tag"></span><p id="dice-breakdown"></p></div>
+      <div class="dice-row" id="dice-buttons">
+        <button type="button" data-sides="4">d4</button><button type="button" data-sides="6">d6</button><button type="button" data-sides="8">d8</button><button type="button" data-sides="10">d10</button><button type="button" data-sides="12">d12</button><button type="button" data-sides="20">d20</button><button type="button" data-sides="100">d100</button>
+      </div>
+      <div class="dice-expr">
+        <input id="dice-expression" autocomplete="off" spellcheck="false" placeholder="Tap dice or type d20+5" aria-label="Dice to roll">
+        <div class="stepper"><button type="button" id="mod-minus" aria-label="Lower modifier">−</button><span id="mod-value">+0</span><button type="button" id="mod-plus" aria-label="Raise modifier">+</button></div>
+      </div>
+      <div class="segmented" id="dice-mode" role="group" aria-label="Advantage">
+        <button type="button" data-mode="normal" class="is-active">Normal</button><button type="button" data-mode="advantage">Advantage</button><button type="button" data-mode="disadvantage">Disadvantage</button>
+      </div>
+      <label class="check" id="dice-share-wrap" hidden><input type="checkbox" id="dice-share" checked> Share the result with the table</label>
+      <button id="dice-roll" class="cta" type="button">Roll</button>
+      <button id="dice-clear" class="quiet" type="button">Clear</button>
+      <p id="dice-status" class="fineprint"></p>
+      <ul id="dice-log" class="feed"></ul>
+    </div>
+  </div>
 
   <nav class="tabbar" id="tabbar" aria-label="Table" hidden>
     <button class="tab-btn" id="tab-scene" data-tab="scene" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Scene</span><i class="dot" aria-hidden="true"></i></button>

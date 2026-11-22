@@ -21,10 +21,14 @@ The app uses the UFC Picked Fight visual system: near-black cards, red primary a
 - **Scene:** the DM's current scene, *Since then* (players' actions, newest first), earlier updates, and *What is <character> doing?*.
 - **Moves:** quick keyword suggestions and a question for the DM.
 - **Claude:** Ask Claude about the scene or ask a question (hidden when Claude isn't available).
-- **Sheet:** roll tiles, the full character sheet, D&D basics, and copy-to-AI-chat.
-- **DM** (host only): microphone, manual updates, actions for each character, character sheet editor, campaign history, and end table.
+- **Sheet:** roll tiles (tap one to roll it), the full character sheet, D&D basics, and copy-to-AI-chat.
+- **DM** (host only): microphone, manual updates, the encounter tracker, actions for each character, character sheet editor, campaign history, and end table.
 
 Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
+
+**Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
+
+**Encounter tracker** (`src/encounter.js`, DM tab): add enemies from standard 5e stat blocks or your own (name, how many, AC, HP as a number or dice rolled per enemy, initiative, speed, two attacks, abilities), and save your own as templates. It shows how many are still standing, HP bars with damage and heal (bloodied at half, down at 0), attack buttons that roll to-hit and damage (dice doubled on a natural 20), and initiative order. The encounter lives only on the DM's phone (localStorage); nothing is stored in the database or shown to players.
 
 ## Hosted version (how the group uses it)
 
