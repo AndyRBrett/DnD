@@ -40,6 +40,14 @@ function showOptions() {
   if (!character) return;
   storage.set("dnd-character", $("character").value);
   $("character-role").textContent = character.role;
+  const rolls = sheets[character.name]?.rolls ?? [];
+  $("quick-rolls").hidden = !rolls.length;
+  $("quick-roll-chips").replaceChildren(...rolls.map(roll => {
+    const chip = document.createElement("span");
+    chip.textContent = roll;
+    if (roll.endsWith("*")) chip.className = "is-unconfirmed";
+    return chip;
+  }));
   $("action-label").textContent = "What is " + character.name + " doing?";
   const recent = state.scenes;
   const advice = recommend(character, recent);
