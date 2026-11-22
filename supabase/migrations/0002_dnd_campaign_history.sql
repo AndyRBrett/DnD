@@ -1,36 +1,40 @@
--- Campaign history that outlives tables. One campaign per host account; every
--- table that account starts belongs to it. The host can upload or edit the
--- history, ending a table can append that session's updates to it, and the
--- dnd-advise edge function sends it to Claude (prompt-cached) with each request.
+-- Campaign history that outlives tables. The group plays one campaign, so
+-- there is one shared campaign row and every table uses it. The host of a live
+-- table can replace the history (each save keeps the previous version in
+-- dnd_campaign_versions), ending a table can append that session's updates,
+-- and the dnd-advise edge function sends the history to Claude (prompt-cached).
+-- Additive only: no existing function is dropped.
 
 create table public.dnd_campaigns (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null unique references auth.users(id) on delete cascade,
-  name text not null default 'The Onyx Jewel',
+  name text not null unique,
   history text not null default '' check (char_length(history) <= 400000),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id) on delete set null
 );
+create table public.dnd_campaign_versions (
+  id bigint generated always as identity primary key,
+  campaign_id uuid not null references public.dnd_campaigns(id) on delete cascade,
+  history text not null,
+  saved_at timestamptz not null default now(),
+  saved_by uuid references auth.users(id) on delete set null
+);
+create index dnd_campaign_versions_campaign on public.dnd_campaign_versions (campaign_id, id desc);
 alter table public.dnd_campaigns enable row level security;
-revoke all on public.dnd_campaigns from anon, authenticated;
+alter table public.dnd_campaign_versions enable row level security;
+revoke all on public.dnd_campaigns, public.dnd_campaign_versions from anon, authenticated;
+
+insert into public.dnd_campaigns (name) values ('The Onyx Jewel');
 
 alter table public.dnd_rooms add column campaign_id uuid references public.dnd_campaigns(id) on delete set null;
+update public.dnd_rooms set campaign_id = (select id from public.dnd_campaigns where name = 'The Onyx Jewel') where campaign_id is null;
 
-create function public.dnd_campaign_for(p_owner uuid) returns uuid
-language plpgsql security definer set search_path = public as $$
-declare found_id uuid;
-begin
-  select id into found_id from public.dnd_campaigns where owner_id = p_owner;
-  if found_id is null then
-    insert into public.dnd_campaigns (owner_id) values (p_owner)
-    on conflict (owner_id) do nothing returning id into found_id;
-    if found_id is null then
-      select id into found_id from public.dnd_campaigns where owner_id = p_owner;
-    end if;
-  end if;
-  return found_id;
-end $$;
+create function public.dnd_default_campaign() returns uuid
+language sql stable security definer set search_path = public as $$
+  select id from public.dnd_campaigns where name = 'The Onyx Jewel'
+$$;
 
--- New tables join the host's campaign.
+-- New tables join the campaign.
 create or replace function public.dnd_create_room(p_party jsonb, p_recap text default null) returns text
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := public.dnd_account(); new_code text;
@@ -40,16 +44,13 @@ begin
     raise exception 'You already have three open tables. End one before starting another.' using errcode = '22023';
   end if;
   insert into public.dnd_rooms (host_id, party, campaign_id)
-  values (uid, public.dnd_clean_party(p_party), public.dnd_campaign_for(uid))
+  values (uid, public.dnd_clean_party(p_party), public.dnd_default_campaign())
   returning code into new_code;
   if btrim(coalesce(p_recap, '')) <> '' then
     insert into public.dnd_scenes (code, text) values (new_code, left(btrim(p_recap), 1500));
   end if;
   return new_code;
 end $$;
-
--- Tables started before this migration join their host's campaign.
-update public.dnd_rooms set campaign_id = public.dnd_campaign_for(host_id) where campaign_id is null;
 
 -- The poll stays small: only the history's size, not its text.
 create or replace function public.dnd_room(p_code text) returns jsonb
@@ -76,34 +77,45 @@ begin
   return coalesce((select history from public.dnd_campaigns where id = r.campaign_id), '');
 end $$;
 
-create function public.dnd_save_history(p_code text, p_history text) returns integer
+create function public.dnd_set_history(p_campaign uuid, p_history text, p_by uuid) returns integer
 language plpgsql security definer set search_path = public as $$
-declare r public.dnd_rooms := public.dnd_host_room(p_code); cleaned text := btrim(coalesce(p_history, ''));
+declare cleaned text := btrim(coalesce(p_history, ''));
 begin
   if char_length(cleaned) > 400000 then
-    raise exception 'The history is too long (400,000 characters max). Trim the oldest parts or summarize them.' using errcode = '22023';
+    raise exception 'The history is too long (400,000 characters max). Trim or summarize the oldest parts.' using errcode = '22023';
   end if;
-  update public.dnd_campaigns set history = cleaned, updated_at = now() where id = r.campaign_id;
+  insert into public.dnd_campaign_versions (campaign_id, history, saved_by)
+    select id, history, updated_by from public.dnd_campaigns where id = p_campaign and history <> '';
+  delete from public.dnd_campaign_versions where campaign_id = p_campaign and id not in
+    (select id from public.dnd_campaign_versions where campaign_id = p_campaign order by id desc limit 30);
+  update public.dnd_campaigns set history = cleaned, updated_at = now(), updated_by = p_by where id = p_campaign;
   return char_length(cleaned);
 end $$;
 
--- Ending a table can first append its updates (oldest first) to the history.
-drop function public.dnd_close_room(text);
-create function public.dnd_close_room(p_code text, p_save_history boolean default false) returns void
+create function public.dnd_save_history(p_code text, p_history text) returns integer
 language plpgsql security definer set search_path = public as $$
-declare r public.dnd_rooms := public.dnd_host_room(p_code); session text;
+declare r public.dnd_rooms := public.dnd_host_room(p_code);
+begin
+  return public.dnd_set_history(r.campaign_id, p_history, r.host_id);
+end $$;
+
+-- Ending a table, optionally appending its updates (oldest first) to the history.
+create function public.dnd_end_table(p_code text, p_save_history boolean default false) returns integer
+language plpgsql security definer set search_path = public as $$
+declare r public.dnd_rooms := public.dnd_host_room(p_code); session text; saved integer := 0;
 begin
   if p_save_history and r.campaign_id is not null then
     select string_agg(text, E'\n' order by id) into session
     from public.dnd_scenes where code = r.code and created_at > r.created_at;
     if btrim(coalesce(session, '')) <> '' then
-      update public.dnd_campaigns
-      set history = right(btrim(history || E'\n\n## Session ' || to_char(r.created_at at time zone 'America/Chicago', 'YYYY-MM-DD') || E' (live transcript)\n' || session), 400000),
-          updated_at = now()
-      where id = r.campaign_id;
+      saved := public.dnd_set_history(r.campaign_id, right(
+        (select history from public.dnd_campaigns where id = r.campaign_id)
+        || E'\n\n## Session ' || to_char(r.created_at at time zone 'America/Chicago', 'YYYY-MM-DD')
+        || E' (live transcript)\n' || session, 400000), r.host_id);
     end if;
   end if;
   delete from public.dnd_rooms where code = r.code;
+  return saved;
 end $$;
 
 -- Advice now carries the campaign history; the cache key covers its version.
@@ -156,8 +168,9 @@ begin
   );
 end $$;
 
-revoke all on function public.dnd_campaign_for(uuid) from public, anon, authenticated;
+revoke all on function public.dnd_default_campaign(), public.dnd_set_history(uuid, text, uuid)
+  from public, anon, authenticated;
 revoke all on function public.dnd_history(text), public.dnd_save_history(text, text),
-  public.dnd_close_room(text, boolean) from public, anon;
+  public.dnd_end_table(text, boolean) from public, anon;
 grant execute on function public.dnd_history(text), public.dnd_save_history(text, text),
-  public.dnd_close_room(text, boolean) to authenticated;
+  public.dnd_end_table(text, boolean) to authenticated;

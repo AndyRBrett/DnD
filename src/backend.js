@@ -131,7 +131,10 @@ function hostedBackend({ url, anonKey }) {
     myRooms: () => rpc("dnd_my_rooms"),
     postScene: (code, text, id) => rpc("dnd_post_scene", { p_code: code, p_text: text, p_id: id ?? null }),
     saveParty: (code, party) => rpc("dnd_save_party", { p_code: code, p_party: party }),
-    closeRoom: code => rpc("dnd_close_room", { p_code: code }),
+    closeRoom: code => rpc("dnd_end_table", { p_code: code, p_save_history: false }),
+    endTable: (code, saveHistory) => rpc("dnd_end_table", { p_code: code, p_save_history: saveHistory }),
+    history: code => rpc("dnd_history", { p_code: code }),
+    saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
     async advise(code, character) {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
