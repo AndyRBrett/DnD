@@ -749,7 +749,7 @@ function drawStory() {
   const latest = state.scenes.at(-1);
   const actions = state.actions ?? [];
   const since = actions.filter(action => !latest || action.created >= latest.created);
-  list("since-actions", since.map(action => action.name + ": " + action.text));
+  list("since-actions", [...since].reverse().map(action => action.name + ": " + action.text));
   $("since-wrap").hidden = !since.length;
   const earlier = [
     ...state.scenes.slice(0, -1).map(scene => ({ at: scene.created, text: scene.text })),
