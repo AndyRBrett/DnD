@@ -27,10 +27,19 @@ npm run table   # rooms saved to table.sqlite, so a restart mid-session keeps th
 ```
 
 1. Set the DM's mic as the laptop's input. In Chrome on the laptop, open `http://localhost:4173`, choose **Start a table**, then **Start listening**. Allow the mic and say a test line; it should appear under **Current scene**.
-2. Send players the **Copy player link** URL. It uses the laptop's LAN address; if the laptop has several connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part.
+2. Send players the **Share player link** URL. It uses the laptop's LAN address; if the laptop has several connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part.
 3. Use **Character sheets and abilities** to edit the five profiles (The White Wizard, Arcturus, Logan Ninefingers, Dum Dum, Roan the Last Shadow). One ability per line: `tag | Name — cost, limits`. Tags: `combat`, `danger`, `explore`, `social`, `aid`, `any`, or `check` for anything not yet confirmed.
 4. Host controls: pause listening, type an update, correct the latest transcript, or turn off auto-publish. Host control survives closing and reopening the tab on the host laptop.
 5. **End room and delete session** when finished. Rooms expire eight hours after creation either way.
+
+## Host from a phone
+
+A phone can't run the Node server, so phone hosting uses the hosted (https://) version of the app. Speech recognition only works on an `https://` link or `localhost`.
+
+1. On the DM's phone, open the hosted link in **Safari (iPhone)** or **Chrome (Android)** and choose **Start a table**, then **Start listening**. Allow the microphone.
+2. **Share player link** opens the phone's share sheet, so the DM can drop the link in the group chat.
+3. Keep the app in front and the phone on power. While listening, the screen stays on. If the DM switches apps or the screen locks, listening pauses and resumes on return. If the phone blocks the automatic restart, tap **Start listening**.
+4. Put the phone in front of the DM, not in the middle of the table, or it will transcribe the whole table. A clip-on mic plugged into the phone works best.
 
 If phones can't load the page, the Wi-Fi may block device-to-device traffic (common on guest networks), or the laptop firewall may be blocking the server on the private network.
 

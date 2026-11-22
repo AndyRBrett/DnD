@@ -250,17 +250,37 @@ async function publish(automatic = false) {
   }
 }
 
+// Phones lock their screens and stop speech recognition when the browser
+// leaves the foreground, so a host on a phone holds a screen wake lock while
+// listening and resumes listening when the tab comes back.
+let wakeLock;
+let resumeOnReturn = false;
+async function holdScreen() {
+  if (!("wakeLock" in navigator) || document.hidden || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = undefined; });
+  } catch {}
+}
+function releaseScreen() {
+  wakeLock?.release().catch(() => {});
+  wakeLock = undefined;
+}
+
 function stopMic() {
   listening = false;
   clearTimeout(restartTimer);
   try { recognition?.stop(); } catch {}
+  releaseScreen();
   $("mic").textContent = "Start listening";
+  $("host").classList.remove("listening");
 }
 
 function startMic() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!isSecureContext || !SpeechRecognition) {
-    $("mic-status").textContent = "Open the host page in Chrome on a computer or Safari on iPhone over HTTPS to try voice capture. You can also post a typed update.";
+    $("mic-status").textContent = "Voice capture needs Chrome (Android or computer) or Safari (iPhone) on an https:// link or localhost. You can still type updates below.";
+    $("manual-controls").open = true;
     return;
   }
   clearTimeout(restartTimer);
@@ -296,7 +316,9 @@ function startMic() {
   speech.onerror = event => {
     if (recognition !== speech || event.error === "no-speech" || event.error === "aborted") return;
     stopMic();
-    $("mic-status").textContent = "Mic stopped (" + event.error + "). Check browser permissions and audio input, then try again.";
+    $("mic-status").textContent = ["not-allowed", "service-not-allowed"].includes(event.error)
+      ? "The browser blocked the mic. Allow microphone access for this site, then tap Start listening."
+      : "Mic stopped (" + event.error + "). Check the connection and audio input, then tap Start listening.";
   };
   speech.onend = () => {
     if (recognition !== speech) return;
@@ -305,15 +327,18 @@ function startMic() {
   };
   try {
     speech.start();
+    holdScreen();
     $("mic").textContent = "Stop listening";
+    $("host").classList.add("listening");
     $("mic-status").textContent = "Opening microphone…";
   } catch {
     stopMic();
-    $("mic-status").textContent = "Unable to open the microphone. Check browser permissions.";
+    $("mic-status").textContent = "Couldn't open the microphone. Tap Start listening to try again.";
   }
 }
 
 $("mic").onclick = () => {
+  resumeOnReturn = false;
   if (listening) {
     stopMic();
     $("mic-status").textContent = "Microphone paused.";
@@ -369,6 +394,15 @@ $("copy-coach").onclick = async () => {
   }
 };
 $("copy").onclick = async () => {
+  const shareLink = async href => {
+    if (!navigator.share || !matchMedia("(pointer: coarse)").matches) return false;
+    try {
+      await navigator.share({ title: "D&D Table Live", text: "Join the table and pick your character:", url: href });
+    } catch (error) {
+      if (error.name !== "AbortError") return false;
+    }
+    return true;
+  };
   const link = new URL("/?room=" + room, location.href);
   if (["localhost", "127.0.0.1"].includes(link.hostname)) {
     try {
@@ -379,6 +413,7 @@ $("copy").onclick = async () => {
       }
     } catch {}
   }
+  if (await shareLink(link.href)) return;
   try {
     await navigator.clipboard.writeText(link.href);
     $("notice").textContent = "Player link copied. Send it to the table.";
@@ -434,7 +469,19 @@ if (room) {
   sync();
   setInterval(sync, 1500);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) sync();
+    if (document.hidden) {
+      if (listening) {
+        resumeOnReturn = true;
+        stopMic();
+        $("mic-status").textContent = "Listening paused while the screen was off or another app was open.";
+      }
+      return;
+    }
+    sync();
+    if (resumeOnReturn && !ended) {
+      resumeOnReturn = false;
+      startMic();
+    }
   });
   window.addEventListener("pageshow", sync);
 }

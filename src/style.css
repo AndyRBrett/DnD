@@ -67,3 +67,9 @@ fieldset{border:1px solid var(--border);border-radius:8px;margin:12px 0;padding:
 #claude-options li{margin-bottom:9px;overflow-wrap:anywhere}
 #claude-options small{display:block;color:var(--muted);font-size:.9rem}
 .fineprint{color:var(--muted);font-size:.85rem}
+
+#host.listening{border-color:var(--accent)}
+#host.listening #mic-status::before{content:"";display:inline-block;width:.6em;height:.6em;margin-right:.5em;border-radius:50%;background:#e66;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){#host.listening #mic-status::before{animation:none}}
+@media(max-width:650px){#host .section-header{flex-direction:column;align-items:stretch}#mic{width:100%;min-height:56px;font-size:1.1rem}}
