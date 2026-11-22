@@ -21,13 +21,14 @@ The terminal shows `Claude suggestions · on` at startup. Nothing is sent until 
 - **Sign in** with an email code. It's the same account system as the UFC Picks app, and the code email comes from UFC Picks.
 - **DM:** tap **Start a table**, then **Start listening**, then **Share player link** to send it to the group chat. Whichever account starts a table is its host on any device. Your open tables are listed on the home screen, so you can switch phone ↔ laptop or reload without losing control.
 - **Players:** open the link, sign in, pick your character. **Ask Claude** works for everyone and uses the Anthropic key already saved in Supabase. Limits: 1 request per character every 8 seconds, 200 per table, 60 per person per day, 600 a day in total.
+- **Campaign history:** the host opens **Campaign history** on their table to paste notes or add .txt/.md files. Ask Claude reads the whole history before answering, so it knows earlier sessions, names, and open threads. It still suggests only abilities on the character's sheet. When you end a table, you can add that session's updates to the history. Every save keeps the previous version (the last 30) in `dnd_campaign_versions`. The history is cached on Anthropic's side for an hour, so repeat questions are cheap. The limit is 400,000 characters (about 65,000 words).
 - Tables expire 8 hours after they start. **End room and delete session** removes everything right away.
 
-How it's built: GitHub Pages serves the files in `src/` (`.github/workflows/pages.yml` runs the tests, then publishes on every push to `main`). Rooms and logins live in the UFC app's Supabase project, in tables prefixed `dnd_` (`supabase/migrations/0001_dnd_tables.sql`). Clients can only reach them through database functions that check the signed-in account. **Ask Claude** runs in the `dnd-advise` edge function (`supabase/functions/dnd-advise/`).
+How it's built: GitHub Pages serves the files in `src/` (`.github/workflows/pages.yml` runs the tests, then publishes on every push to `main`). Rooms, logins, and the campaign history live in the UFC app's Supabase project, in tables prefixed `dnd_` (`supabase/migrations/`). Clients can only reach them through database functions that check the signed-in account. **Ask Claude** runs in the `dnd-advise` edge function (`supabase/functions/dnd-advise/`).
 
 ### Changing the hosted backend
 
-- **Database:** add a new numbered file in `supabase/migrations/` and apply it to project `gkccophrdqtqcowmblre` (Supabase SQL editor, CLI, or MCP). Only ever create or change `dnd_` objects; the UFC tables share this database.
+- **Database:** add a new numbered file in `supabase/migrations/` and apply it to project `gkccophrdqtqcowmblre`. The Supabase SQL editor is the reliable route; MCP migrations that need a confirmation prompt can time out. Only ever create or change `dnd_` objects; the UFC tables share this database.
 - **Claude prompt:** edit `src/advice.js`, copy it to `supabase/functions/dnd-advise/advice.js` (`npm test` fails until they match), then redeploy: `supabase functions deploy dnd-advise --use-api --project-ref gkccophrdqtqcowmblre`.
 - **Allowed origins** for the edge function default to `https://andyrbrett.github.io` and `http://localhost:4173`. Override them with the `DND_ALLOWED_ORIGINS` secret.
 
