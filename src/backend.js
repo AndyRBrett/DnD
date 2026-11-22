@@ -51,7 +51,7 @@ function localBackend() {
       await post(code, "close", {});
       storage.remove("host:" + code);
     },
-    advise: (code, character) => post(code, "advise", { character }, false)
+    advise: (code, character, question = "") => post(code, "advise", { character, question }, false)
   };
 }
 
@@ -136,11 +136,11 @@ function hostedBackend({ url, anonKey }) {
     endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
-    async advise(code, character) {
+    async advise(code, character, question = "") {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
         headers: { apikey: anonKey, Authorization: "Bearer " + await token(), "content-type": "application/json" },
-        body: JSON.stringify({ code, character })
+        body: JSON.stringify({ code, character, question })
       });
       const data = await readJson(response);
       if (!response.ok) throw failure(data?.error ?? data?.message, response.status);

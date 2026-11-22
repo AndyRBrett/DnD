@@ -54,6 +54,7 @@ function showOptions() {
   list("check-abilities", abilities.check);
   $("character-check").hidden = !abilities.check.length;
   $("character-empty").hidden = abilities.ready.length > 0 || abilities.check.length > 0;
+  explainButtons();
   resetClaude();
 }
 
@@ -67,38 +68,109 @@ function resetClaude() {
   $("claude-status").textContent = "";
 }
 
-async function askClaude() {
+async function askClaude(question = "") {
   const index = $("character").value;
   const sceneId = state?.scenes.at(-1)?.id;
-  const button = $("ask-claude");
-  button.disabled = true;
-  $("claude-status").textContent = "Claude is reading the story…";
+  const buttons = [$("ask-claude"), $("question-form").querySelector("button")];
+  for (const button of buttons) button.disabled = true;
+  $("claude-status").textContent = question ? "Claude is thinking about your question…" : "Claude is reading the story…";
   try {
-    const advice = await backend.advise(room, Number(index));
-    if ($("character").value !== index || state.scenes.at(-1)?.id !== sceneId) {
+    const advice = await backend.advise(room, Number(index), question);
+    if ($("character").value !== index || (!question && state.scenes.at(-1)?.id !== sceneId)) {
       $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
       return;
     }
     claudeFor = index + ":" + sceneId;
+    $("claude-reply").hidden = !advice.answer;
+    $("claude-asked").textContent = question ? "You asked: “" + question + "”" : "";
+    $("claude-reply").querySelector("span").textContent = advice.answer ?? "";
     $("claude-situation").textContent = "Claude · " + advice.situation;
     $("claude-big-picture").hidden = !advice.bigPicture;
     $("claude-big-picture").querySelector("span").textContent = advice.bigPicture ?? "";
-    $("claude-options").replaceChildren(...advice.options.map(option => {
-      const item = document.createElement("li");
-      const action = document.createElement("span");
-      action.textContent = option.action;
-      const why = document.createElement("small");
-      why.textContent = option.why;
-      item.append(action, why);
-      return item;
-    }));
+    $("claude-options").replaceChildren(...advice.options.map(option => claudeOption(option, Number(index))));
     $("claude-ask").textContent = advice.question;
     $("claude-answer").hidden = false;
     $("claude-status").textContent = "";
+    if (question) $("question-text").value = "";
   } catch (error) {
     $("claude-status").textContent = error.message || "Claude could not answer. Try again.";
   } finally {
-    button.disabled = false;
+    for (const button of buttons) button.disabled = false;
+  }
+}
+
+// One Claude option: what to do, why, how it works, and an editable line to
+// post straight into the story.
+function claudeOption(option, characterIndex) {
+  const item = document.createElement("li");
+  const action = document.createElement("span");
+  action.textContent = option.action;
+  const why = document.createElement("small");
+  why.textContent = option.why;
+  item.append(action, why);
+  if (option.explain) {
+    const explain = document.createElement("p");
+    explain.className = "how-it-works";
+    const label = document.createElement("strong");
+    label.textContent = "How it works: ";
+    explain.append(label, option.explain);
+    item.append(explain);
+  }
+  if (option.declare && backend.postAction && Array.isArray(state?.actions)) {
+    const form = document.createElement("form");
+    form.className = "declare";
+    const field = document.createElement("textarea");
+    field.rows = 2;
+    field.maxLength = 300;
+    field.value = option.declare;
+    field.setAttribute("aria-label", "Edit this action before adding it to the story");
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.className = "secondary";
+    button.textContent = "Add to story";
+    form.append(field, button);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const text = field.value.trim();
+      if (!text) return;
+      button.disabled = true;
+      try {
+        await backend.postAction(room, characterIndex, text);
+        button.textContent = "Added ✓";
+        await sync();
+      } catch (error) {
+        button.disabled = false;
+        $("claude-status").textContent = error.message;
+      }
+    };
+    item.append(form);
+  }
+  return item;
+}
+
+$("question-form").onsubmit = event => {
+  event.preventDefault();
+  const question = $("question-text").value.trim();
+  if (question) askClaude(question);
+};
+
+// Each ability gets an Explain button that asks Claude about that move.
+function explainButtons() {
+  if (!state?.ai) return;
+  const character = selectedCharacter();
+  for (const item of [...$("character-abilities").children, ...$("check-abilities").children]) {
+    const name = item.textContent.split(" — ")[0].trim();
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "link explain";
+    button.textContent = "Explain";
+    button.onclick = () => {
+      const question = "Explain " + name + " for " + character.name + ": how does it work, what does it cost, and when is it a good idea right now?";
+      $("question-text").value = question;
+      $("claude").scrollIntoView({ behavior: "smooth", block: "start" });
+      askClaude(question);
+    };
+    item.append(" ", button);
   }
 }
 
@@ -389,7 +461,7 @@ $("cancel").onclick = () => {
   $("publish").textContent = "Publish update";
 };
 $("character").onchange = showOptions;
-$("ask-claude").onclick = askClaude;
+$("ask-claude").onclick = () => askClaude();
 $("copy-coach").onclick = async () => {
   const character = selectedCharacter();
   if (!character || ended) return;

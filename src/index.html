@@ -100,8 +100,13 @@
           </form>
           <div id="claude" hidden>
             <button id="ask-claude" class="secondary" type="button">Ask Claude about this scene</button>
+            <form id="question-form">
+              <label for="question-text">Or ask Claude a question</label>
+              <div class="action-row"><input id="question-text" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. Can I cast Silence with one arm held?"><button type="submit" class="secondary">Ask</button></div>
+            </form>
             <p id="claude-status" class="notice" role="status"></p>
             <div id="claude-answer" hidden>
+              <div id="claude-reply" hidden><p class="fineprint" id="claude-asked"></p><p><strong>Claude’s answer</strong><br><span></span></p></div>
               <p class="eyebrow" id="claude-situation"></p>
               <p id="claude-big-picture" hidden><strong>The bigger picture</strong><br><span></span></p>
               <ul id="claude-options"></ul>

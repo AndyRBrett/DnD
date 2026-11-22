@@ -12,7 +12,9 @@ beforeEach(() => {
   reply = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
     situation: "Combat",
     options: [{ action: "Cast Sacred Flame at the nearest guard.", why: "No slot needed." },
-      { action: "Move behind the bar.", why: "Cover from muskets." }, { action: "extra", why: "dropped" }],
+      { action: "Move behind the bar.", why: "Cover from muskets." },
+      { action: "Call out the reloading guard.", why: "Warns the party.", explain: "Free to speak on your turn.", declare: "The White Wizard shouts a warning." },
+      { action: "extra", why: "dropped" }],
     ask_dm: "Can I see the guard?"
   }) }] });
   globalThis.fetch = async (url, init) => {
@@ -42,12 +44,13 @@ test("off without a key: state says so and nothing is sent", async () => {
   assert.equal(requests.length, 0);
 });
 
-test("a player can ask; the request respects the sheet and the answer is trimmed to two", async () => {
+test("a player can ask; the request respects the sheet and the answer is trimmed to three", async () => {
   const { call, post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
   assert.equal((await call("")).body.ai, true);
   const result = await post("/advise", { character: 0 });
   assert.equal(result.status, 200);
-  assert.equal(result.body.options.length, 2);
+  assert.equal(result.body.options.length, 3);
+  assert.equal(result.body.options[2].declare, "The White Wizard shouts a warning.");
   assert.equal(result.body.question, "Can I see the guard?");
 
   const [{ init, body }] = requests;
@@ -139,4 +142,38 @@ test("player actions are woven into the session and the newest are called out", 
   assert.doesNotMatch(session.text, /Dum Dum/);
   assert.match(turn.text, /LATEST DM UPDATE:\nA hooded figure sits alone\.\n\nPLAYER ACTIONS SINCE THAT UPDATE[^\n]*\n- Dum Dum: walks up to the hooded figure/);
   assert.match(body.system, /Build on what this character already declared/);
+});
+
+test("a question reaches Claude, and three options come back with explanations and editable lines", async () => {
+  const { claudeRequest, readAdvice, adviceSchema } = await import("../src/advice.js");
+  const body = JSON.parse(claudeRequest("k", { name: "The White Wizard", role: "cleric", moves: "combat | Silence" },
+    [{ id: 1, text: "Two guards hold your arms.", created: 1 }], "", [], "Can I cast Silence with one arm held?").body);
+  assert.match(body.messages[0].content.at(-1).text, /THE PLAYER'S QUESTION:\nCan I cast Silence with one arm held\?/);
+  assert.match(body.system, /exactly three options/);
+  assert.match(body.system, /bonus action, reaction/);
+  assert.deepEqual(adviceSchema.properties.options.items.required, ["action", "why", "explain", "declare"]);
+  assert.ok(adviceSchema.required.includes("answer"));
+
+  const advice = await readAdvice(Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
+    answer: "Probably: Silence needs a free hand for its gesture, and one arm is free. The DM decides.",
+    big_picture: "", situation: "Restrained", ask_dm: "Is my casting hand free?",
+    options: ["a", "b", "c", "d"].map(letter => ({ action: letter, why: "w", explain: "Uses your action.", declare: "The White Wizard does " + letter + "." }))
+  }) }] }));
+  assert.match(advice.answer, /free hand/);
+  assert.equal(advice.options.length, 3);
+  assert.equal(advice.options[0].explain, "Uses your action.");
+  assert.equal(advice.options[2].declare, "The White Wizard does c.");
+});
+
+test("local server: a question gets its own answer, not the cached scene answer", async () => {
+  const { post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "k" });
+  await post("/advise", { character: 4 });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  reply = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
+    answer: "Yes, if your shadow is within range.", big_picture: "", situation: "Question", ask_dm: "q",
+    options: [{ action: "a", why: "b", explain: "c", declare: "d" }] }) }] });
+  const asked = await post("/advise", { character: 3, question: "Can Roan swap with his shadow from here?" });
+  assert.equal(asked.status, 200);
+  assert.match(asked.body.answer, /shadow/);
+  assert.match(requests.at(-1).body.messages[0].content.at(-1).text, /Can Roan swap/);
 });

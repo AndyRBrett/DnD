@@ -112,3 +112,14 @@ button.link{background:none;border:0;padding:0;min-height:0;color:var(--accent);
 .action-row button{margin-top:6px;white-space:nowrap}
 #party-actions{margin-top:10px}
 .party-action input{margin:6px 0 0}
+
+#question-form{margin-top:10px}
+#question-form label{display:block;color:var(--muted)}
+#claude-reply{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+#claude-reply p{margin:0 0 6px}
+.how-it-works{margin:6px 0 0;font-size:.92rem;color:var(--muted)}
+.how-it-works strong{color:var(--copy);font-weight:600}
+.declare{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px}
+.declare textarea{margin:0;font-size:.95rem}
+.declare button{align-self:flex-start}
+button.explain{font-size:.85rem;margin-left:4px}
