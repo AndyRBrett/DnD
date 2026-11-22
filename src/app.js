@@ -4,7 +4,7 @@ import { recommend, coachingPrompt, characterAbilities } from "./scene-options.j
 // opening line out of view.
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
-import { organizeSheet, basics } from "./rules.js";
+import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
@@ -42,6 +42,7 @@ function showOptions() {
   if (!character) return;
   storage.set("dnd-character", $("character").value);
   $("character-role").textContent = character.role;
+  drawConditions();
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
   $("quick-roll-chips").replaceChildren(...rolls.map(([label, value]) => {
@@ -881,6 +882,105 @@ $("action-form").onsubmit = async event => {
   }
 };
 
+// ── Conditions (kept on this device for each character; changes are posted
+// to the table so the DM sees them) ──
+const conditionKey = () => "dnd-conditions:" + room + ":" + $("character").value;
+const conditionByName = Object.fromEntries(conditions.map(condition => [condition.name, condition]));
+function activeConditions() {
+  try {
+    const saved = JSON.parse(storage.get(conditionKey()) ?? "{}");
+    return Object.fromEntries(Object.entries(saved).filter(([name, level]) => conditionByName[name] && level > 0));
+  } catch {
+    return {};
+  }
+}
+const conditionLabel = (name, level) => name + (name === "Exhaustion" ? " " + level : "");
+async function setCondition(name, level) {
+  const active = activeConditions();
+  const before = active[name] ?? 0;
+  level = Math.max(0, Math.min(name === "Exhaustion" ? 6 : 1, level));
+  if (level === before) return;
+  if (level) active[name] = level; else delete active[name];
+  storage.set(conditionKey(), JSON.stringify(active));
+  drawConditions();
+  const character = selectedCharacter();
+  if (!character || !backend.postAction || !Array.isArray(state?.actions) || ended) return;
+  const { icon } = conditionByName[name];
+  const text = !level ? "is no longer " + name + (name === "Exhaustion" ? "ed" : "")
+    : name === "Exhaustion" ? "has Exhaustion level " + level + " " + icon
+    : name === "Concentrating" ? "is concentrating on a spell " + icon
+    : "is " + name + " " + icon;
+  try {
+    await backend.postAction(room, Number($("character").value), text.replace("Exhaustioned", "exhausted"));
+    $("condition-status").textContent = "The table can see this.";
+    sync();
+  } catch (error) {
+    $("condition-status").textContent = error.message;
+  }
+}
+function drawConditions() {
+  const active = activeConditions();
+  const names = Object.keys(active);
+  $("conditions-count").textContent = names.length ? names.length + " active" : "None";
+  $("conditions-count").classList.toggle("is-alert", names.length > 0);
+  $("condition-active").replaceChildren(...names.map(name => {
+    const { icon, text } = conditionByName[name];
+    const item = document.createElement("li");
+    item.className = "condition";
+    const head = document.createElement("div");
+    head.className = "condition-head";
+    const title = document.createElement("strong");
+    title.textContent = icon + " " + conditionLabel(name, active[name]);
+    head.append(title);
+    if (name === "Exhaustion") {
+      const stepper = document.createElement("div");
+      stepper.className = "stepper small";
+      const minus = document.createElement("button");
+      minus.type = "button"; minus.textContent = "−"; minus.setAttribute("aria-label", "Lower exhaustion");
+      minus.onclick = () => setCondition(name, active[name] - 1);
+      const plus = document.createElement("button");
+      plus.type = "button"; plus.textContent = "+"; plus.setAttribute("aria-label", "Raise exhaustion");
+      plus.onclick = () => setCondition(name, active[name] + 1);
+      stepper.append(minus, plus);
+      head.append(stepper);
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "quiet";
+    remove.textContent = "Remove";
+    remove.onclick = () => setCondition(name, 0);
+    head.append(remove);
+    const body = document.createElement("p");
+    body.textContent = text;
+    item.append(head, body);
+    return item;
+  }));
+  $("condition-grid").replaceChildren(...conditions.map(({ name, icon }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "condition-toggle" + (active[name] ? " is-active" : "");
+    button.setAttribute("aria-pressed", String(Boolean(active[name])));
+    button.textContent = icon + " " + name;
+    button.onclick = () => setCondition(name, active[name] ? 0 : 1);
+    return button;
+  }));
+  $("condition-badges").hidden = !names.length;
+  $("condition-badges").replaceChildren(...names.map(name => {
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "badge";
+    badge.textContent = conditionByName[name].icon + " " + conditionLabel(name, active[name]);
+    badge.onclick = () => { showTab("scene"); $("conditions").scrollIntoView({ behavior: "smooth", block: "center" }); };
+    return badge;
+  }));
+}
+function conditionRollNotes() {
+  if (isHost) return [];
+  const active = activeConditions();
+  return Object.keys(active).filter(name => conditionByName[name].roll)
+    .map(name => conditionByName[name].icon + " " + conditionLabel(name, active[name]) + ": " + conditionByName[name].roll);
+}
+
 // ── Dice ──
 const dice = { pool: {}, modifier: 0, mode: "normal", label: "", log: [] };
 function syncDiceExpression() {
@@ -898,6 +998,9 @@ function openDice(expression = "", label = "") {
   $("dice-status").textContent = "";
   const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended;
   $("dice-share-wrap").hidden = !canShare;
+  const notes = conditionRollNotes();
+  $("dice-conditions").hidden = !notes.length;
+  $("dice-conditions").textContent = notes.join(" ");
   $("dice-tray").hidden = false;
   document.body.classList.add("no-scroll");
 }
@@ -1059,6 +1162,19 @@ function enemyCard(enemy) {
     chip.textContent = state === "down" ? "DOWN" : "BLOODIED";
     tags.append(chip);
   }
+  for (const condition of enemy.conditions ?? []) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "enemy-condition";
+    chip.textContent = (conditionByName[condition]?.icon ?? "") + " " + condition + " ✕";
+    chip.setAttribute("aria-label", "Remove " + condition + " on " + enemy.name);
+    chip.onclick = () => {
+      enemies = enemies.map(other => other.id === enemy.id ? { ...other, conditions: (other.conditions ?? []).filter(c => c !== condition) } : other);
+      saveEncounter();
+      drawEncounter();
+    };
+    tags.append(chip);
+  }
   head.append(name, tags);
 
   const bar = document.createElement("div");
@@ -1119,7 +1235,24 @@ function enemyCard(enemy) {
     attacks.append(button);
   }
 
+  const addCondition = document.createElement("select");
+  addCondition.className = "enemy-condition-select";
+  addCondition.setAttribute("aria-label", "Add a condition to " + enemy.name);
+  addCondition.append(new Option("+ Condition", ""), ...conditions.filter(({ name }) => !(enemy.conditions ?? []).includes(name)).map(({ name, icon }) => new Option(icon + " " + name, name)));
+  addCondition.onchange = () => {
+    if (!addCondition.value) return;
+    enemies = enemies.map(other => other.id === enemy.id ? { ...other, conditions: [...(other.conditions ?? []), addCondition.value] } : other);
+    saveEncounter();
+    drawEncounter();
+  };
+  attacks.append(addCondition);
   card.append(head, bar, hpText, adjust, attacks, result);
+  for (const condition of enemy.conditions ?? []) {
+    const note = document.createElement("p");
+    note.className = "fineprint";
+    note.textContent = condition + ": " + (conditionByName[condition]?.text ?? "");
+    card.append(note);
+  }
   if (enemy.abilities) {
     const more = document.createElement("details");
     more.className = "fold";

@@ -89,3 +89,13 @@ test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async 
   assert.ok(!ready.includes("Hunter's Mark"), "Hunter's Mark stays unconfirmed until the DM says it's known");
   assert.match(arcturus.moves, /Longbow — \+11 to hit/);
 });
+
+test("every 5e condition has a plain-language rule", async () => {
+  const { conditions } = await import("../src/rules.js");
+  const names = conditions.map(condition => condition.name);
+  for (const name of ["Blinded", "Charmed", "Deafened", "Exhaustion", "Frightened", "Grappled", "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious"]) {
+    assert.ok(names.includes(name), name + " is missing");
+  }
+  for (const condition of conditions) assert.ok(condition.text.length > 40 && condition.icon, condition.name);
+  assert.match(conditions.find(condition => condition.name === "Poisoned").roll, /disadvantage/i);
+});
