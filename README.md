@@ -25,9 +25,11 @@ The app uses the UFC Picked Fight visual system: near-black cards, red primary a
 - **Combat** (only during a fight): initiative order, whose turn it is, and enemies as Healthy, Bloodied, or Down.
 - **DM** (host only): microphone, manual updates, the encounter tracker, actions for each character, character sheet editor, campaign history, and end table.
 
+**Editing the story:** the DM can tap ✎ on anything in the story (the current scene, *Since then*, and earlier updates, including players' actions) to fix it or delete it in place. Players can do the same for their own actions. Edits clear Claude's cached suggestions so the next answer reads the corrected story (`supabase/migrations/0005_dnd_story_edits.sql`). The campaign history itself is edited in the DM tab.
+
 Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
 
-**Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Each die is drawn in its own shape and tumbles before landing on the result (no animation when the phone asks for reduced motion). Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
+**Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Dice are real 3D solids drawn on a canvas (`src/dice3d.js`: tetrahedron, cube, octahedron, d10 trapezohedron, dodecahedron, icosahedron; d100 is a tens die plus a units die) that tumble, bounce, and land with the rolled number facing you. A natural 20 lands gold, a natural 1 dark (no animation when the phone asks for reduced motion). Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
 
 **Conditions** (Scene tab): each player marks what's affecting their character (Poisoned, Prone, Frightened, Exhaustion levels, Concentrating, and the rest of the 5e conditions). The card explains each one in plain words, badges show under the character chips on every tab, the dice tray reminds you when a condition changes your roll, and each change is posted to *Since then* so the DM sees it. Conditions are kept on the player's phone.
 

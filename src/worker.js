@@ -16,7 +16,7 @@ function importHistory(currentParty) {
   });
 }
 const roomAge = 8 * 60 * 60 * 1000;
-const types = {"index.html":"text/html", "app.js":"text/javascript", "scene-options.js":"text/javascript", "backend.js":"text/javascript", "campaign.js":"text/javascript", "rules.js":"text/javascript", "dice.js":"text/javascript", "encounter.js":"text/javascript", "config.js":"text/javascript", "style.css":"text/css"};
+const types = {"index.html":"text/html", "app.js":"text/javascript", "scene-options.js":"text/javascript", "backend.js":"text/javascript", "campaign.js":"text/javascript", "rules.js":"text/javascript", "dice.js":"text/javascript", "dice3d.js":"text/javascript", "encounter.js":"text/javascript", "config.js":"text/javascript", "style.css":"text/css"};
 
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -129,6 +129,12 @@ const endpoints = {
   },
   async scene(request, db, code) {
     const body = await request.json();
+    if (body.delete) {
+      const id = Number(body.id);
+      if (!Number.isSafeInteger(id) || id < 1) return json({ error: "Invalid request." }, 400);
+      await db.prepare("DELETE FROM scenes WHERE code = ? AND id = ?").bind(code, id).run();
+      return json({ ok: true });
+    }
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text || text.length > 1500) return json({ error: "Use 1 to 1,500 characters." }, 400);
     const now = Date.now();

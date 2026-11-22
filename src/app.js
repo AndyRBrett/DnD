@@ -6,6 +6,7 @@ const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
+import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
@@ -412,8 +413,7 @@ async function sync() {
     if (rosterChanged || hostChanged) drawRoster();
     if (scenesChanged) {
       if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
-      $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
-      drawStory();
+      renderStory();
     }
     $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
     if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
@@ -630,15 +630,8 @@ $("publish").onclick = () => publish();
 let savedDraft = "";
 $("edit").onclick = () => {
   const latest = state?.scenes.at(-1);
-  if (!latest || writing) return;
-  if (!editId) savedDraft = $("draft").value;
-  editId = latest.id;
-  setDraft(latest.text);
-  clearPublishTimers();
-  $("publish").textContent = "Save correction";
-  $("cancel").hidden = false;
-  $("manual-controls").open = true;
-  $("draft").focus();
+  if (!latest) return;
+  openStoryEditor($("scene-current"), { kind: "scene", id: latest.id, text: latest.text });
 };
 function restoreDraft() {
   if (savedDraft) {
@@ -818,23 +811,131 @@ $("history-save").onclick = async () => {
 };
 
 // ── The story: DM updates plus what players say their characters do ──
+// ── The story: current scene, "since then", and earlier updates. The DM can
+// edit or delete any of it in place; players can edit their own actions. ──
+let storyEditing = null;
+function renderStory(force = false) {
+  if (storyEditing && !force) return;
+  for (const form of $("scene-current").querySelectorAll(".story-editor")) form.remove();
+  $("scene-current").classList.remove("is-editing");
+  $("scene").hidden = false;
+  $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
+  $("edit").hidden = !isHost || ended || !state.scenes.length;
+  drawStory();
+}
+const canEditStory = entry => !ended && (entry.kind === "scene"
+  ? isHost
+  : Boolean(backend.editAction) && (isHost || entry.mine));
+function storyItem(entry) {
+  const item = document.createElement("li");
+  if (entry.kind === "action") item.className = "player-action";
+  const text = document.createElement("span");
+  text.className = "story-text";
+  text.textContent = entry.kind === "action" ? entry.name + ": " + entry.text : entry.text;
+  item.append(text);
+  if (canEditStory(entry)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "edit-btn";
+    button.textContent = "✎";
+    button.setAttribute("aria-label", "Edit or delete this");
+    button.onclick = () => openStoryEditor(item, entry);
+    item.append(button);
+  }
+  return item;
+}
+function friendlyStoryError(error) {
+  return /could not find the function/i.test(error.message)
+    ? "Editing actions needs a one-time database update: run supabase/migrations/0005_dnd_story_edits.sql in the Supabase SQL editor."
+    : error.message;
+}
+function openStoryEditor(container, entry) {
+  if (storyEditing) renderStory(true);
+  if (!container.isConnected) return;
+  storyEditing = entry;
+  for (const child of container.children) child.hidden = true;
+  container.classList.add("is-editing");
+  const form = document.createElement("form");
+  form.className = "story-editor";
+  const area = document.createElement("textarea");
+  area.value = entry.text;
+  area.rows = entry.kind === "scene" ? 4 : 2;
+  area.maxLength = entry.kind === "scene" ? 1500 : 300;
+  area.setAttribute("aria-label", entry.kind === "scene" ? "Edit this update" : "Edit " + entry.name + "'s action");
+  const row = document.createElement("div");
+  row.className = "action-row";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "cta";
+  save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "quiet";
+  cancel.textContent = "Cancel";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger-soft";
+  remove.textContent = "Delete";
+  row.append(save, cancel, remove);
+  const status = document.createElement("p");
+  status.className = "fineprint";
+  if (entry.kind === "action") {
+    const who = document.createElement("p");
+    who.className = "eyebrow";
+    who.textContent = entry.name.toUpperCase();
+    form.append(who);
+  }
+  form.append(area, row, status);
+  container.append(form);
+  area.focus();
+  const busy = value => { for (const button of [save, cancel, remove]) button.disabled = value; };
+  const finish = async () => {
+    storyEditing = null;
+    await sync();
+    renderStory(true);
+  };
+  cancel.onclick = () => { storyEditing = null; renderStory(true); };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const text = area.value.trim();
+    if (!text) { status.textContent = "Write something, or tap Delete."; return; }
+    busy(true);
+    status.textContent = "Saving…";
+    try {
+      if (entry.kind === "scene") await backend.postScene(room, text, entry.id);
+      else await backend.editAction(room, entry.id, text);
+      await finish();
+    } catch (error) {
+      status.textContent = friendlyStoryError(error);
+      busy(false);
+    }
+  };
+  remove.onclick = async () => {
+    if (!window.confirm(entry.kind === "scene" ? "Delete this update for everyone?" : "Delete " + entry.name + "'s action for everyone?")) return;
+    busy(true);
+    status.textContent = "Deleting…";
+    try {
+      if (entry.kind === "scene") await backend.deleteScene(room, entry.id);
+      else await backend.deleteAction(room, entry.id);
+      await finish();
+    } catch (error) {
+      status.textContent = friendlyStoryError(error);
+      busy(false);
+    }
+  };
+}
+
 function drawStory() {
   const latest = state.scenes.at(-1);
-  const actions = state.actions ?? [];
+  const actions = (state.actions ?? []).map(action => ({ ...action, kind: "action" }));
   const since = actions.filter(action => !latest || action.created >= latest.created);
-  list("since-actions", [...since].reverse().map(action => action.name + ": " + action.text));
+  $("since-actions").replaceChildren(...[...since].reverse().map(storyItem));
   $("since-wrap").hidden = !since.length;
   const earlier = [
-    ...state.scenes.slice(0, -1).map(scene => ({ at: scene.created, text: scene.text })),
-    ...actions.filter(action => latest && action.created < latest.created)
-      .map(action => ({ at: action.created, text: action.name + ": " + action.text, action: true }))
+    ...state.scenes.slice(0, -1).map(scene => ({ kind: "scene", id: scene.id, at: scene.created, text: scene.text })),
+    ...actions.filter(action => latest && action.created < latest.created).map(action => ({ ...action, at: action.created }))
   ].sort((a, b) => b.at - a.at);
-  $("history").replaceChildren(...earlier.map(entry => {
-    const item = document.createElement("li");
-    item.textContent = entry.text;
-    if (entry.action) item.className = "player-action";
-    return item;
-  }));
+  $("history").replaceChildren(...earlier.map(storyItem));
 }
 
 // Host view: one input per character, for players without a phone out.
@@ -995,84 +1096,59 @@ function conditionRollNotes() {
 
 // ── Dice ──
 const dice = { pool: {}, modifier: 0, mode: "normal", label: "", log: [] };
-// Spinning dice: one shape per die type, tumbling before they land.
-const DIE_SHAPES = {
-  4: '<polygon points="50,6 95,88 5,88"/>',
-  6: '<rect x="10" y="10" width="80" height="80" rx="12"/>',
-  8: '<polygon points="50,4 94,50 50,96 6,50"/><path d="M6 50h88"/>',
-  10: '<polygon points="50,4 93,44 50,96 7,44"/><path d="M7 44 50 60 93 44M50 60v36"/>',
-  12: '<polygon points="50,4 96,37 78,93 22,93 4,37"/><polygon class="inner" points="50,24 73,41 64,69 36,69 27,41"/>',
-  20: '<polygon points="50,3 93,27 93,73 50,97 7,73 7,27"/><polygon class="inner" points="50,22 76,66 24,66"/>'
-};
-DIE_SHAPES[100] = DIE_SHAPES[10];
+// 3D dice (src/dice3d.js): each die tumbles and lands on its rolled number.
 const MAX_SHOWN = 8;
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-function dieElement(sides, text) {
-  const die = document.createElement("div");
-  die.className = "die";
-  die.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true">' + (DIE_SHAPES[sides] ?? '<circle cx="50" cy="50" r="44"/>') + "</svg>";
-  const face = document.createElement("span");
-  face.textContent = text;
+function dieSlot(kind, caption, size) {
+  const wrap = document.createElement("div");
+  wrap.className = "die";
+  const die = createDie(kind, size);
   const label = document.createElement("small");
-  label.textContent = "d" + sides;
-  die.append(face, label);
-  return die;
+  label.textContent = caption;
+  wrap.append(die.canvas, label);
+  return { wrap, die };
 }
-function stageDice(faces, idle) {
-  const shown = faces.slice(0, MAX_SHOWN).map(face => {
-    const die = dieElement(face.sides, idle ? String(face.sides) : "");
-    if (idle) die.classList.add("is-idle");
-    return die;
-  });
-  const extra = faces.length - MAX_SHOWN;
+// d100 is two dice (tens and units); everything else is one.
+function diceFor(faces) {
+  return faces.flatMap(face => face.sides === 100
+    ? [{ ...face, kind: "tens", caption: "d100", label: face.value === undefined ? undefined : percentileLabels(face.value).tens },
+       { ...face, kind: "units", caption: "", label: face.value === undefined ? undefined : percentileLabels(face.value).units }]
+    : [{ ...face, kind: face.sides, caption: "d" + face.sides, label: face.value === undefined ? undefined : String(face.value) }]);
+}
+function stageDice(faces) {
+  const all = diceFor(faces);
+  const shown = all.slice(0, MAX_SHOWN);
+  const size = shown.length === 1 ? 132 : shown.length === 2 ? 104 : shown.length <= 4 ? 74 : 52;
+  const slots = shown.map(face => ({ face, ...dieSlot(face.kind, face.caption, size) }));
   const more = [];
-  if (extra > 0) {
+  if (all.length > MAX_SHOWN) {
     const chip = document.createElement("span");
     chip.className = "dice-more";
-    chip.textContent = "+" + extra + " more";
+    chip.textContent = "+" + (all.length - MAX_SHOWN) + " more";
     more.push(chip);
   }
-  $("dice-stage").replaceChildren(...shown, ...more);
-  $("dice-stage").hidden = !faces.length;
-  return shown;
+  $("dice-stage").replaceChildren(...slots.map(slot => slot.wrap), ...more);
+  $("dice-stage").hidden = !all.length;
+  return slots;
 }
 function previewDice() {
   const parsed = parseDice($("dice-expression").value.trim() || "d20");
-  if (!parsed) return stageDice([], true);
+  if (!parsed) return stageDice([]);
   const faces = parsed.dice.flatMap(die => Array.from({ length: die.count }, () => ({ sides: die.sides })));
   const single20 = faces.length === 1 && faces[0].sides === 20 && parsed.dice[0].sign === 1;
   if (single20 && dice.mode !== "normal") faces.push({ sides: 20 });
-  stageDice(faces, true);
+  for (const slot of stageDice(faces)) slot.die.idle();
 }
 async function spinDice(result) {
   const faces = result.groups.flatMap(group => group.results.map(value => ({ sides: group.sides, value })));
   if (result.dropped !== null) faces.push({ sides: 20, value: result.dropped, dropped: true });
-  const dies = stageDice(faces, false);
-  const land = () => dies.forEach((die, index) => {
-    const face = faces[index];
-    die.classList.remove("is-rolling");
-    die.classList.add("is-landed");
-    die.querySelector("span").textContent = String(face.value);
-    if (face.dropped) die.classList.add("is-dropped");
-    else if (face.sides === 20 && face.value === 20) die.classList.add("is-crit");
-    else if (face.sides === 20 && face.value === 1) die.classList.add("is-fumble");
-  });
-  if (reduceMotion()) return land();
-  dies.forEach(die => {
-    die.style.setProperty("--spin", (Math.random() < .5 ? -1 : 1) * 360 * (Math.random() < .5 ? 2 : 3) + "deg");
-    die.style.setProperty("--delay", Math.floor(Math.random() * 90) + "ms");
-    die.classList.add("is-rolling");
-  });
-  const started = performance.now();
-  await new Promise(resolve => {
-    const tick = () => {
-      dies.forEach((die, index) => { die.querySelector("span").textContent = String(1 + Math.floor(Math.random() * faces[index].sides)); });
-      if (performance.now() - started < 820) setTimeout(tick, 60);
-      else resolve();
-    };
-    tick();
-  });
-  land();
+  const slots = stageDice(faces);
+  const reduced = reduceMotion();
+  await Promise.all(slots.map(({ face, die, wrap }, index) => {
+    const color = face.dropped ? "grey" : face.sides === 20 && face.value === 20 ? "gold" : face.sides === 20 && face.value === 1 ? "dark" : "red";
+    if (face.dropped) wrap.classList.add("is-dropped");
+    return die.roll(face.label, { color, reduced, delay: index * 70 });
+  }));
 }
 
 function syncDiceExpression() {
@@ -1621,7 +1697,8 @@ function drawEncounter() {
 function setHost(value) {
   isHost = value;
   $("table").classList.toggle("player-room", !isHost);
-  for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !isHost;
+  for (const id of ["host", "party-editor", "close-wrap"]) $(id).hidden = !isHost;
+  if (state) renderStory();
   $("history-editor").hidden = !isHost || !backend.saveHistory;
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;

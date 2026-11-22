@@ -52,6 +52,7 @@ function localBackend() {
       storage.remove("host:" + code);
     },
     advise: (code, character, question = "") => post(code, "advise", { character, question }, false),
+    deleteScene: (code, id) => post(code, "scene", { id, delete: true }),
     combatSet: (code, combat) => post(code, "combat", combat),
     combatEnd: code => post(code, "combat", { end: true }),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
@@ -138,7 +139,7 @@ function hostedBackend({ url, anonKey }) {
         try {
           return await rpc("dnd_room_v3", { p_code: code });
         } catch (error) {
-          if (error.status !== 404) throw error;
+          if (error.status !== 404 && !/could not find the function/i.test(error.message)) throw error;
           combatMissing = true;
         }
       }
@@ -146,6 +147,9 @@ function hostedBackend({ url, anonKey }) {
     },
     combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
     combatEnd: code => rpc("dnd_combat_end", { p_code: code }),
+    deleteScene: (code, id) => rpc("dnd_delete_scene", { p_code: code, p_id: id }),
+    editAction: (code, id, text) => rpc("dnd_edit_action", { p_code: code, p_id: id, p_text: text }),
+    deleteAction: (code, id) => rpc("dnd_delete_action", { p_code: code, p_id: id }),
     combatInitiative: (code, character, value) => rpc("dnd_combat_initiative", { p_code: code, p_character: character, p_value: value }),
     postAction: (code, character, text) => rpc("dnd_post_action", { p_code: code, p_character: character, p_text: text }),
     myRooms: () => rpc("dnd_my_rooms"),

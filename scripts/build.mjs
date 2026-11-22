@@ -9,7 +9,7 @@ const unexport = source => source.replace(/^export (?=(?:const|function|async fu
 await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });
 const assets = Object.fromEntries(await Promise.all(
-  ["index.html", "app.js", "backend.js", "campaign.js", "dice.js", "encounter.js", "rules.js", "scene-options.js", "style.css"].map(async name => [name, await readFile("src/" + name, "utf8")])
+  ["index.html", "app.js", "backend.js", "campaign.js", "dice.js", "dice3d.js", "encounter.js", "rules.js", "scene-options.js", "style.css"].map(async name => [name, await readFile("src/" + name, "utf8")])
 ));
 assets["config.js"] = "// Local server: no Supabase, rooms live in this server's SQLite.\nexport const SUPABASE = null;\n";
 const shared = (await Promise.all(["campaign.js", "advice.js"].map(name => readFile("src/" + name, "utf8")))).map(unexport).join("\n");
