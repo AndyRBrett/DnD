@@ -42,12 +42,17 @@ function showOptions() {
   $("character-role").textContent = character.role;
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
-  $("quick-roll-chips").replaceChildren(...rolls.map(roll => {
-    const chip = document.createElement("span");
-    chip.textContent = roll;
-    if (roll.endsWith("*")) chip.className = "is-unconfirmed";
-    return chip;
+  $("quick-roll-chips").replaceChildren(...rolls.map(([label, value]) => {
+    const tile = document.createElement("div");
+    tile.className = "stat" + (value.endsWith("*") ? " is-unconfirmed" : "");
+    const number = document.createElement("strong");
+    number.textContent = value.replace(/\*$/, "");
+    const name = document.createElement("span");
+    name.textContent = label;
+    tile.append(number, name);
+    return tile;
   }));
+  updateChips();
   $("action-label").textContent = "What is " + character.name + " doing?";
   const recent = state.scenes;
   const advice = recommend(character, recent);
@@ -66,6 +71,8 @@ let claudeFor = "";
 function resetClaude() {
   const key = $("character").value + ":" + (state?.scenes.at(-1)?.id ?? "");
   $("claude").hidden = !state?.ai || ended;
+  $("tab-claude").hidden = $("claude").hidden;
+  $("claude-off").hidden = !$("claude").hidden;
   if (key === claudeFor) return;
   claudeFor = "";
   $("claude-answer").hidden = true;
@@ -295,10 +302,54 @@ $("basics-list").replaceChildren(...basics.flatMap(([term, text]) => {
   return [dt, dd];
 }));
 
+// ── Character chips (the select stays as the source of truth) ──
+function updateChips() {
+  for (const chip of $("char-chips").children) {
+    const active = chip.dataset.index === $("character").value;
+    chip.classList.toggle("is-active", active);
+    chip.setAttribute("aria-pressed", String(active));
+  }
+}
+function drawChips() {
+  $("char-chips").replaceChildren(...state.party.map(({ name }, index) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.dataset.index = String(index);
+    chip.textContent = name.replace(/^The /, "");
+    chip.onclick = () => {
+      $("character").value = String(index);
+      $("character").dispatchEvent(new Event("change"));
+    };
+    return chip;
+  }));
+  updateChips();
+}
+
+// ── Tabs ──
+const TAB_KEY = "dnd-tab";
+let currentTab = "scene";
+function showTab(name) {
+  if ($("tab-" + name)?.hidden) name = "scene";
+  currentTab = name;
+  for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
+  for (const button of document.querySelectorAll(".tab-btn")) {
+    const active = button.dataset.tab === name;
+    button.classList.toggle("is-active", active);
+    if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+  }
+  if (name === "scene") $("tab-scene").classList.remove("has-news");
+  $("char-bar").hidden = name === "dm";
+  storage.set(TAB_KEY, name);
+  window.scrollTo({ top: 0 });
+}
+for (const button of document.querySelectorAll(".tab-btn")) button.onclick = () => showTab(button.dataset.tab);
+
 function drawRoster() {
   const stored = $("character").value || storage.get("dnd-character");
   $("character").replaceChildren(...state.party.map(({name}, index) => new Option(name, index)));
   if (state.party[Number(stored)]) $("character").value = stored ?? "0";
+  drawChips();
   drawPartyActions();
   if (!isHost) return;
   $("roster").replaceChildren(...state.party.map(({name, role, moves}, index) => {
@@ -385,6 +436,7 @@ async function sync() {
 }
 
 function flashScene() {
+  if (currentTab !== "scene") $("tab-scene").classList.add("has-news");
   const panel = document.querySelector(".scene-panel");
   panel.classList.remove("fresh");
   void panel.offsetWidth;
@@ -826,6 +878,9 @@ function setHost(value) {
   $("table").classList.toggle("player-room", !isHost);
   for (const id of ["host", "party-editor", "close-wrap", "edit"]) $(id).hidden = !isHost;
   $("history-editor").hidden = !isHost || !backend.saveHistory;
+  $("tab-dm").hidden = !isHost;
+  if (!isHost && currentTab === "dm") showTab("scene");
+  if (isHost && storage.get(TAB_KEY) === "dm" && currentTab !== "dm") showTab("dm");
   if (!isHost) stopMic();
 }
 
@@ -847,6 +902,10 @@ function rememberTable(code) {
 const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
 
 function enterRoom() {
+  $("tabbar").hidden = false;
+  $("copy").hidden = false;
+  document.body.classList.add("in-table");
+  showTab(storage.get(TAB_KEY) ?? "scene");
   $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + (isPractice() ? " · PRACTICE" : "");
   $("lobby").hidden = true;
   $("table").hidden = false;
@@ -883,6 +942,10 @@ async function showLobby(message = "") {
   const user = backend.user();
   $("signin").hidden = !backend.hosted || Boolean(user);
   $("account").hidden = backend.hosted && !user;
+  $("account-cards").hidden = $("account").hidden;
+  $("tabbar").hidden = true;
+  $("copy").hidden = true;
+  document.body.classList.remove("in-table");
   $("account-line").hidden = !backend.hosted;
   $("join").hidden = !room;
   const recent = recentTables();

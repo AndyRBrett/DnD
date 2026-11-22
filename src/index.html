@@ -2,155 +2,211 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#141816">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e0f12">
   <title>D&D Table Live</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://gkccophrdqtqcowmblre.supabase.co; form-action 'self'; base-uri 'none'">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
+  <header class="hdr">
+    <div class="brand">
+      <svg class="d20" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13z"/><path class="d20-lines" d="M16 2 9 13h14zM9 13 3 22.5M23 13l6 9.5M9 13l7 11 7-11M16 24v6M3 9.5 9 13M29 9.5 23 13"/></svg>
+      <span class="wordmark">TABLE <b>LIVE</b></span>
+    </div>
+    <div class="hdr-right">
+      <span id="connection" class="role-pill" aria-live="polite"></span>
+      <button id="copy" class="icon-btn" type="button" aria-label="Share player link" title="Share player link" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+      </button>
+    </div>
+  </header>
+
   <main>
-    <header class="masthead"><p class="mark">D&D TABLE LIVE</p><span id="connection" aria-live="polite"></span></header>
+    <!-- ── Lobby ── -->
     <section id="lobby">
-      <div class="hero">
-        <h1>One table.<br>Five adventurers.</h1>
-        <p>Capture the DM’s narration once and give every player a view of the scene and their character’s options.</p>
+      <div class="card hero">
+        <p class="eyebrow red">THE ONYX JEWEL</p>
+        <h1 class="display">One table.<br>Five adventurers.</h1>
+        <p class="sub">The DM narrates once. Every player sees the scene, their character, and what they could do next.</p>
         <div id="signin" hidden>
-          <form id="email-form">
+          <form id="email-form" class="stack">
             <label for="email">Sign in with your email</label>
             <input id="email" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com">
-            <button type="submit">Email me a code</button>
+            <button type="submit" class="cta">Email me a code</button>
           </form>
-          <form id="code-form" hidden>
+          <form id="code-form" class="stack" hidden>
             <label for="code">Enter the code sent to <span id="code-email"></span></label>
             <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required>
-            <div class="controls"><button type="submit">Sign in</button><button id="code-back" class="quiet" type="button">Use a different email</button></div>
+            <button type="submit" class="cta">Sign in</button>
+            <button id="code-back" class="quiet" type="button">Use a different email</button>
           </form>
           <p class="fineprint">Same account as the UFC Picks app; the code email comes from UFC Picks.</p>
         </div>
         <div id="account" hidden>
-          <button id="join" type="button" hidden>Join the table</button>
-          <div id="recent-rooms" hidden><p class="eyebrow">TABLES YOU JOINED</p><ul id="recent-room-list"></ul></div>
-          <form id="join-form" class="lobby-block">
-            <p class="eyebrow">PLAYING?</p>
-            <label for="join-link">Open the link your DM shares, or paste it here</label>
-            <input id="join-link" autocomplete="off" placeholder="https://andyrbrett.github.io/DnD/?room=…">
-            <button type="submit" class="secondary">Join table</button>
-          </form>
-          <div class="lobby-block">
-            <p class="eyebrow">RUNNING THE GAME?</p>
-            <div id="my-rooms" hidden><p>Your open tables:</p><ul id="my-room-list"></ul></div>
-            <div class="controls"><button id="create" type="button">Start a table (DM)</button><button id="create-practice" class="secondary" type="button">Practice table</button></div>
-            <p class="fineprint">A practice table works the same way but never adds anything to the campaign history.</p>
-          </div>
-          <p id="account-line" class="fineprint">Signed in as <span id="account-email"></span> · <button id="signout" class="link" type="button">Sign out</button></p>
+          <button id="join" class="cta" type="button" hidden>Join the table</button>
+          <div id="recent-rooms" hidden><p class="eyebrow">TABLES YOU JOINED</p><ul id="recent-room-list" class="link-list"></ul></div>
         </div>
         <p id="lobby-status" class="notice" role="status"></p>
       </div>
-    </section>
-    <div id="table" hidden>
-      <div class="room-header">
-        <div><p class="eyebrow">CAMPAIGN SESSION<span id="table-code"></span></p><h1>The Onyx Jewel</h1></div>
-        <button id="copy" class="secondary" type="button">Share player link</button>
-      </div>
-      <p id="practice-banner" hidden>PRACTICE TABLE · test freely. Nothing here is added to the campaign history.</p>
-      <p id="notice" class="notice" role="status"></p>
-      <section id="host" class="panel capture" hidden aria-labelledby="host-title">
-        <div class="section-header">
-          <div><p class="eyebrow">HOST CONTROLS</p><h2 id="host-title">DM microphone</h2></div>
-          <button id="mic" type="button">Start listening</button>
+      <div id="account-cards" hidden>
+        <form id="join-form" class="card stack">
+          <p class="eyebrow">PLAYING?</p>
+          <label for="join-link">Open the link your DM shares, or paste it here</label>
+          <input id="join-link" autocomplete="off" placeholder="https://andyrbrett.github.io/DnD/?room=…">
+          <button type="submit" class="ghost">Join table</button>
+        </form>
+        <div class="card stack">
+          <p class="eyebrow">RUNNING THE GAME?</p>
+          <div id="my-rooms" hidden><p class="label">Your open tables</p><ul id="my-room-list" class="link-list"></ul></div>
+          <button id="create" class="cta" type="button">Start a table (DM)</button>
+          <button id="create-practice" class="ghost" type="button">Practice table</button>
+          <p class="fineprint">A practice table works the same way but never adds anything to the campaign history.</p>
         </div>
-        <p id="mic-status" role="status">Set the phone or mic close to the DM. Keep this page open and in front while listening; the screen stays on.</p>
-        <details id="manual-controls">
-          <summary>Transcript and manual updates</summary>
-          <label class="check"><input type="checkbox" id="auto" checked> Publish automatically</label>
-          <textarea id="draft" rows="2" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
-          <div class="controls"><button id="publish" class="secondary" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
+        <p id="account-line" class="fineprint center">Signed in as <span id="account-email"></span> · <button id="signout" class="link" type="button">Sign out</button></p>
+      </div>
+    </section>
+
+    <!-- ── Table ── -->
+    <div id="table" hidden>
+      <div class="table-head">
+        <p class="eyebrow red">CAMPAIGN SESSION<span id="table-code"></span></p>
+        <h1 class="display">The Onyx Jewel</h1>
+      </div>
+      <p id="practice-banner" class="banner" hidden>PRACTICE TABLE · test freely. Nothing here is added to the campaign history.</p>
+      <p id="notice" class="notice" role="status"></p>
+
+      <div class="char-bar" id="char-bar">
+        <select id="character" class="sr-only" aria-label="Your character"></select>
+        <div id="char-chips" class="chip-row" role="group" aria-label="Your character"></div>
+      </div>
+
+      <!-- Scene -->
+      <section class="tab-panel" data-panel="scene">
+        <section class="card scene-panel" aria-labelledby="scene-title">
+          <p class="eyebrow red">SHARED BY THE DM</p>
+          <h2 id="scene-title" class="display sm">Current scene</h2>
+          <p id="scene">Waiting for an update.</p>
+          <div id="since-wrap" hidden><p class="eyebrow">SINCE THEN · NEWEST FIRST</p><ul id="since-actions" class="feed"></ul></div>
+          <button id="edit" class="quiet" type="button" hidden>Edit latest update</button>
+          <details class="fold"><summary>Earlier updates</summary><ol id="history" class="feed"></ol></details>
+        </section>
+        <form id="action-form" class="card stack" hidden>
+          <label for="action-text" id="action-label" class="display xs">What is your character doing?</label>
+          <textarea id="action-text" rows="2" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. looks around the tavern for anyone watching us"></textarea>
+          <button type="submit" class="cta">Add to story</button>
+          <p id="action-status" class="fineprint"></p>
+        </form>
+      </section>
+
+      <!-- Moves -->
+      <section class="tab-panel" data-panel="moves" hidden>
+        <section class="card options-panel" aria-labelledby="options-title">
+          <h2 id="options-title" class="display sm">What can I do?</h2>
+          <p id="situation" class="pill-label" role="status"></p>
+          <p id="responding-to" class="fineprint"></p>
+          <ul id="options" class="option-list"></ul>
+          <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="ask-dm"></p></div>
+          <p class="fineprint">Quick suggestions from the scene's keywords and your sheet. For ones that follow the whole story, use the Claude tab.</p>
+        </section>
+      </section>
+
+      <!-- Claude -->
+      <section class="tab-panel" data-panel="claude" hidden>
+        <div id="claude" class="card" hidden>
+          <p class="eyebrow red">ASK CLAUDE</p>
+          <h2 class="display sm">Read the story with me</h2>
+          <button id="ask-claude" class="cta" type="button">Ask Claude about this scene</button>
+          <form id="question-form" class="stack">
+            <label for="question-text">Or ask Claude a question</label>
+            <div class="action-row"><input id="question-text" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. Can I cast Silence with one arm held?"><button type="submit" class="ghost">Ask</button></div>
+          </form>
+          <p id="claude-status" class="notice" role="status"></p>
+        </div>
+        <div id="claude-answer" class="stack-gap" hidden>
+          <div id="claude-reply" class="card" hidden><p class="fineprint" id="claude-asked"></p><p class="eyebrow">CLAUDE'S ANSWER</p><p><span></span></p></div>
+          <div class="card">
+            <p class="pill-label" id="claude-situation"></p>
+            <div id="claude-big-picture" class="callout gold" hidden><p class="eyebrow">THE BIGGER PICTURE</p><p><span></span></p></div>
+            <ul id="claude-options" class="option-list"></ul>
+            <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="claude-ask"></p></div>
+            <p class="fineprint">Claude reads the campaign history, everything the DM has said this session, and this character’s sheet. Its read of the bigger picture is a guess; the DM decides what actually happens.</p>
+          </div>
+        </div>
+        <div id="claude-off" class="card"><p class="fineprint">Claude isn't available on this table.</p></div>
+      </section>
+
+      <!-- Sheet -->
+      <section class="tab-panel" data-panel="sheet" hidden>
+        <section class="card">
+          <p id="character-role" class="role-line"></p>
+          <div id="quick-rolls" hidden><div class="stat-grid" id="quick-roll-chips"></div><p class="fineprint">Dashed = not yet confirmed by the DM.</p></div>
+        </section>
+        <details id="character-library" class="card" open>
+          <summary class="card-summary">Character sheet</summary>
+          <div id="sheet-stats" class="chips"></div>
+          <div id="sheet-full" hidden></div>
+          <p id="character-empty">This character’s abilities haven’t been entered yet.</p>
+          <div id="sheet-sections"></div>
+          <details id="sheet-confirm" class="sheet-section fold" hidden><summary>Confirm with the DM first</summary><div id="sheet-confirm-list"></div></details>
+          <p class="fineprint">Tap any entry for how it works. Rules are standard 5th edition summaries; your table’s note is shown under each, and the DM’s ruling wins.</p>
         </details>
-        <details id="party-actions" hidden>
-          <summary>Actions for each character</summary>
-          <p class="fineprint">For players without a phone out: type what their character does and add it to the story.</p>
-          <div id="party-action-rows"></div>
+        <details id="rules-basics" class="card">
+          <summary class="card-summary">D&amp;D basics: your turn</summary>
+          <dl id="basics-list"></dl>
+        </details>
+        <details id="coach-controls" class="card">
+          <summary class="card-summary">Bring this to your AI chat</summary>
+          <button id="copy-coach" class="ghost" type="button">Copy character and scene</button>
+          <p id="coach-status" class="notice" role="status"></p>
         </details>
       </section>
-      <div class="columns">
-        <section class="panel scene-panel" aria-labelledby="scene-title">
-          <p class="eyebrow">SHARED BY THE DM</p>
-          <h2 id="scene-title">Current scene</h2>
-          <p id="scene">Waiting for an update.</p>
-          <div id="since-wrap" hidden><p class="eyebrow">SINCE THEN</p><ul id="since-actions"></ul></div>
-          <button id="edit" class="quiet" type="button" hidden>Edit latest update</button>
-          <details><summary>Earlier updates</summary><ol id="history"></ol></details>
-        </section>
-        <section class="panel options-panel" aria-labelledby="options-title">
-          <div class="player-heading">
-            <h2 id="options-title">What can I do?</h2>
-            <select id="character" aria-label="Your character"></select>
-          </div>
-          <p id="character-role" class="fineprint"></p>
-          <div id="quick-rolls" hidden><p class="eyebrow">YOUR ROLLS</p><div class="chips" id="quick-roll-chips"></div><p class="fineprint">* not yet confirmed by the DM. Full numbers are in the character sheet below.</p></div>
-          <p id="situation" class="eyebrow" role="status"></p>
-          <p id="responding-to" class="fineprint"></p>
-          <ul id="options"></ul>
-          <p class="dm-question"><strong>Ask the DM</strong><br><span id="ask-dm"></span></p>
-          <form id="action-form" hidden>
-            <label for="action-text" id="action-label">What is your character doing?</label>
-            <div class="action-row"><input id="action-text" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. looks around the tavern for anyone watching us"><button type="submit">Add to story</button></div>
-            <p id="action-status" class="fineprint"></p>
-          </form>
-          <div id="claude" hidden>
-            <button id="ask-claude" class="secondary" type="button">Ask Claude about this scene</button>
-            <form id="question-form">
-              <label for="question-text">Or ask Claude a question</label>
-              <div class="action-row"><input id="question-text" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. Can I cast Silence with one arm held?"><button type="submit" class="secondary">Ask</button></div>
-            </form>
-            <p id="claude-status" class="notice" role="status"></p>
-            <div id="claude-answer" hidden>
-              <div id="claude-reply" hidden><p class="fineprint" id="claude-asked"></p><p><strong>Claude’s answer</strong><br><span></span></p></div>
-              <p class="eyebrow" id="claude-situation"></p>
-              <p id="claude-big-picture" hidden><strong>The bigger picture</strong><br><span></span></p>
-              <ul id="claude-options"></ul>
-              <p class="dm-question"><strong>Ask the DM</strong><br><span id="claude-ask"></span></p>
-              <p class="fineprint">Claude reads the campaign history, everything the DM has said this session, and this character’s sheet. Its read of the bigger picture is a guess; the DM decides what actually happens.</p>
-            </div>
-          </div>
-          <details id="character-library">
-            <summary>Character sheet</summary>
-            <div id="sheet-stats" class="chips"></div>
-            <div id="sheet-full" hidden></div>
-            <p id="character-empty">This character’s abilities haven’t been entered yet.</p>
-            <div id="sheet-sections"></div>
-            <details id="sheet-confirm" class="sheet-section" hidden><summary>Confirm with the DM first</summary><div id="sheet-confirm-list"></div></details>
-            <p class="fineprint">Tap any entry for how it works. Rules are standard 5th edition summaries; your table’s note is shown under each, and the DM’s ruling wins.</p>
+
+      <!-- DM -->
+      <section class="tab-panel" data-panel="dm" hidden>
+        <section id="host" class="card capture" hidden aria-labelledby="host-title">
+          <p class="eyebrow red">HOST CONTROLS</p>
+          <h2 id="host-title" class="display sm">DM microphone</h2>
+          <button id="mic" class="cta" type="button">Start listening</button>
+          <p id="mic-status" role="status">Set the phone or mic close to the DM. Keep this page open and in front while listening; the screen stays on.</p>
+          <details id="manual-controls" class="fold">
+            <summary>Transcript and manual updates</summary>
+            <label class="check"><input type="checkbox" id="auto" checked> Publish automatically</label>
+            <textarea id="draft" rows="3" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
+            <div class="controls"><button id="publish" class="ghost" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
           </details>
-          <details id="rules-basics">
-            <summary>D&amp;D basics: what you can do on your turn</summary>
-            <dl id="basics-list"></dl>
-          </details>
-          <details id="coach-controls">
-            <summary>Bring this to the D&amp;D chat</summary>
-            <button id="copy-coach" class="secondary" type="button">Copy character and scene</button>
-            <p id="coach-status" class="notice" role="status"></p>
+          <details id="party-actions" class="fold" hidden>
+            <summary>Actions for each character</summary>
+            <p class="fineprint">For players without a phone out: type what their character does and add it to the story.</p>
+            <div id="party-action-rows"></div>
           </details>
         </section>
-      </div>
-      <details id="party-editor" class="panel" hidden>
-        <summary>Character sheets and abilities</summary>
-        <p>Add usable abilities one per line. Start a line with <code>combat</code>, <code>danger</code>, <code>explore</code>, <code>social</code>, <code>aid</code>, or <code>any</code>, followed by <code>|</code>. Include any cost or limit. Use <code>check</code> for unverified abilities to display them without suggesting them during play. Example <code>combat | Sacred Flame — action, visible creature in range, no spell slot.</code></p>
-        <form id="party-form"><div id="roster"></div><button type="submit">Save characters</button></form>
-      </details>
-      <details id="history-editor" class="panel" hidden>
-        <summary>Campaign history <span id="history-size"></span></summary>
-        <p>Claude reads this before every <strong>Ask Claude</strong> answer: earlier sessions, names, places, open threads. Paste notes or add text files (.txt or .md). Ending a table can add that session’s updates here. Each save keeps the previous version.</p>
-        <label class="file-button">Add text files<input id="history-files" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple></label>
-        <textarea id="history-text" rows="14" maxlength="400000" aria-label="Campaign history" placeholder="Loading…"></textarea>
-        <p id="history-count" class="fineprint"></p>
-        <div class="controls"><button id="history-save" type="button">Save history</button><button id="export-chatgpt" class="secondary" type="button">Export for ChatGPT</button></div>
-        <p id="export-status" class="fineprint">Export downloads one text file with the campaign history, the current character sheets, and this table’s updates. Attach it in your ChatGPT thread to continue there.</p>
-      </details>
-      <div id="close-wrap" hidden><button id="close" class="quiet" type="button">End room and delete session</button></div>
+        <details id="party-editor" class="card" hidden>
+          <summary class="card-summary">Edit character sheets</summary>
+          <p class="fineprint">One ability per line. Start with <code>combat</code>, <code>danger</code>, <code>explore</code>, <code>social</code>, <code>aid</code>, or <code>any</code>, then <code>|</code>, the name, <code>—</code>, and any cost or limit. Use <code>check</code> for abilities the DM hasn't confirmed: they show on the sheet but are never suggested. Example: <code>combat | Sacred Flame — action, visible creature in range, no spell slot.</code></p>
+          <form id="party-form"><div id="roster"></div><button type="submit" class="cta">Save characters</button></form>
+        </details>
+        <details id="history-editor" class="card" hidden>
+          <summary class="card-summary">Campaign history <span id="history-size"></span></summary>
+          <p class="fineprint">Claude reads this before every answer: earlier sessions, names, places, open threads. Paste notes or add text files (.txt or .md). Ending a table can add that session’s updates here. Each save keeps the previous version.</p>
+          <label class="file-button">Add text files<input id="history-files" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple></label>
+          <textarea id="history-text" rows="14" maxlength="400000" aria-label="Campaign history" placeholder="Loading…"></textarea>
+          <p id="history-count" class="fineprint"></p>
+          <div class="controls"><button id="history-save" class="cta" type="button">Save history</button><button id="export-chatgpt" class="ghost" type="button">Export for ChatGPT</button></div>
+          <p id="export-status" class="fineprint">Export downloads one text file with the campaign history, the current character sheets, and this table’s updates. Attach it in your ChatGPT thread to continue there.</p>
+        </details>
+        <div id="close-wrap" class="card danger-zone" hidden><button id="close" class="danger" type="button">End table and delete session</button></div>
+      </section>
     </div>
   </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Table" hidden>
+    <button class="tab-btn" id="tab-scene" data-tab="scene" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Scene</span><i class="dot" aria-hidden="true"></i></button>
+    <button class="tab-btn" id="tab-moves" data-tab="moves" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5L9 20H4v-5z"/><path d="M12 7l5 5"/></svg><span>Moves</span></button>
+    <button class="tab-btn" id="tab-claude" data-tab="claude" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg><span>Claude</span></button>
+    <button class="tab-btn" id="tab-sheet" data-tab="sheet" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Sheet</span></button>
+    <button class="tab-btn" id="tab-dm" data-tab="dm" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>DM</span></button>
+  </nav>
 </body>
 </html>
