@@ -353,3 +353,33 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .story-editor .action-row{display:flex;gap:8px}
 .story-editor .action-row button{flex:0 0 auto;min-height:44px}
 .story-editor .action-row .cta{flex:1 1 auto}
+
+/* ── Party HP ── */
+.status-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.status-row:not(:has(:not([hidden]))){display:none}
+.status-row .badge-row{margin-top:0}
+.hp-badge{background:color-mix(in srgb,var(--green) 18%,transparent);border-color:color-mix(in srgb,var(--green) 45%,transparent)}
+.hp-badge.is-bloodied{background:var(--gold-dim);border-color:var(--gold-border);color:var(--gold)}
+.hp-badge.is-down{background:var(--red);border-color:var(--red)}
+.hp-badge.is-unknown{background:var(--card2);border-color:var(--border2);color:var(--muted2)}
+.hp-card .eyebrow{margin:0}
+.hp-widget{display:flex;flex-direction:column;gap:8px}
+.hp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.hp-numbers{margin:0;font:700 1.9rem/1 var(--font-display);letter-spacing:.02em}
+.hp-widget.is-compact .hp-numbers{font-size:1.3rem}
+.hp-widget .hp-name{font:700 1.15rem var(--font-display);text-transform:uppercase;letter-spacing:.02em}
+.hp-widget.is-unknown .hp-numbers{color:var(--muted)}
+.hp-widget.is-bloodied .hp-numbers,.hp-widget.is-bloodied .hp-state{color:var(--gold)}
+.hp-widget.is-down .hp-numbers,.hp-widget.is-down .hp-state{color:var(--red)}
+.hp-widget.is-bloodied .hp-bar i{background:var(--gold)}
+.hp-widget.is-down .hp-bar i{background:var(--red)}
+.hp-state{margin:0;font:700 .8rem var(--font-display);letter-spacing:.12em;text-transform:uppercase}
+.hp-adjust{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}
+.hp-adjust input{min-width:0}
+.hp-set{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.hp-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hp-fields label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted2)}
+.party-hp-list>div{background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:12px;margin-top:10px}
+.combatant .state.is-party.is-ok{color:var(--green)}
+.combatant .state.is-party.is-bloodied{color:var(--gold);border-color:var(--gold-border);background:var(--gold-dim)}
+.combatant .state.is-party.is-down{color:var(--red);border-color:var(--red-border);background:var(--red-dim)}

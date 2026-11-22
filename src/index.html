@@ -80,7 +80,10 @@
       <div class="char-bar" id="char-bar">
         <select id="character" class="sr-only" aria-label="Your character"></select>
         <div id="char-chips" class="chip-row" role="group" aria-label="Your character"></div>
-        <div id="condition-badges" class="badge-row" hidden></div>
+        <div class="status-row">
+          <button id="hp-badge" class="badge hp-badge" type="button" hidden></button>
+          <div id="condition-badges" class="badge-row" hidden></div>
+        </div>
       </div>
 
       <!-- Scene -->
@@ -128,6 +131,7 @@
           </div>
           <p id="combat-status" class="fineprint"></p>
         </section>
+        <section id="hp-combat" class="card hp-card" hidden></section>
         <form id="combat-init" class="card stack" hidden>
           <h3 class="display xs" id="init-title">Your initiative</h3>
           <p class="fineprint">Roll it here, or type the total you rolled at the table.</p>
@@ -188,6 +192,7 @@
 
       <!-- Sheet -->
       <section class="tab-panel" data-panel="sheet" hidden>
+        <section id="hp-sheet" class="card hp-card" hidden></section>
         <section class="card">
           <p id="character-role" class="role-line"></p>
           <div id="quick-rolls" hidden><div class="stat-grid" id="quick-roll-chips"></div><p class="fineprint">Dashed = not yet confirmed by the DM.</p></div>
@@ -230,6 +235,11 @@
             <p class="fineprint">For players without a phone out: type what their character does and add it to the story.</p>
             <div id="party-action-rows"></div>
           </details>
+        </section>
+        <section id="party-hp" class="card" hidden aria-labelledby="party-hp-title">
+          <p class="eyebrow red">EVERYONE SEES THIS</p>
+          <h2 id="party-hp-title" class="display sm">Party HP</h2>
+          <div id="party-hp-list" class="party-hp-list"></div>
         </section>
         <section id="encounter" class="card" hidden aria-labelledby="encounter-count">
           <p class="eyebrow red">ENCOUNTER · ONLY YOU SEE THIS</p>

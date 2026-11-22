@@ -134,3 +134,28 @@ export function upNext(order, turn) {
   const at = live.findIndex(entry => entry.key === turn);
   return at < 0 ? null : live[(at + 1) % live.length]?.key ?? null;
 }
+
+// ── Party hit points ──
+
+// Max HP from a sheet's "HP" line ("75 max with the cloak · …" → 75).
+export function maxHpFromSheet(text) {
+  const match = String(text ?? "").match(/\d+/);
+  const value = match ? Number(match[0]) : NaN;
+  return value >= 1 && value <= 999 ? value : null;
+}
+
+// Same rule as the database: damage (negative) uses temp HP first; healing
+// stops at max.
+export function changePartyHp(record, change) {
+  if (change < 0) {
+    return { ...record, temp: Math.max(0, record.temp + change), hp: Math.max(0, record.hp - Math.max(0, -change - record.temp)) };
+  }
+  return { ...record, hp: Math.min(record.max, record.hp + change) };
+}
+
+export function partyHpStatus(record) {
+  if (!record) return "unknown";
+  if (record.hp <= 0) return "down";
+  if (record.hp <= record.max / 2) return "bloodied";
+  return "ok";
+}

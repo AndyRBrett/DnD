@@ -56,8 +56,12 @@ const endpoints = {
   async state(db, room, code, env) {
     const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 30").bind(code).all();
     const combat = await db.prepare("SELECT round, turn, enemies, party_init FROM combats WHERE code = ?").bind(code).first();
+    const party = importHistory(JSON.parse(room.party));
+    const { results: hpRows } = await db.prepare("SELECT name, hp, max_hp, temp FROM party_hp").all();
+    const names = new Set(party.map(member => member.name));
+    const hp = Object.fromEntries(hpRows.filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp }]));
     return json({
-      party: importHistory(JSON.parse(room.party)), scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      party, hp, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
     });
   },
@@ -127,6 +131,30 @@ const endpoints = {
     await db.prepare("UPDATE combats SET party_init = ? WHERE code = ?").bind(JSON.stringify(party), code).run();
     return json({ ok: true });
   },
+  // Party HP: anyone at the table can change it.
+  async hp(request, db, room, adjust) {
+    const body = await request.json();
+    const name = JSON.parse(room.party)[Number(body.character)]?.name;
+    if (!Number.isInteger(Number(body.character)) || !name) return json({ error: "Pick a character." }, 400);
+    const whole = value => Number.isInteger(Number(value)) ? Number(value) : NaN;
+    if (adjust) {
+      const change = whole(body.change);
+      if (!change || Math.abs(change) > 999) return json({ error: "Enter an amount from 1 to 999." }, 400);
+      const row = await db.prepare("SELECT hp, max_hp, temp FROM party_hp WHERE name = ?").bind(name).first();
+      if (!row) return json({ error: "Set this character's max HP first." }, 400);
+      const next = change < 0
+        ? { temp: Math.max(0, row.temp + change), hp: Math.max(0, row.hp - Math.max(0, -change - row.temp)) }
+        : { temp: row.temp, hp: Math.min(row.max_hp, row.hp + change) };
+      await db.prepare("UPDATE party_hp SET hp = ?, temp = ? WHERE name = ?").bind(next.hp, next.temp, name).run();
+      return json({ ok: true });
+    }
+    const max = whole(body.max);
+    if (!(max >= 1 && max <= 999)) return json({ error: "Max HP must be 1 to 999." }, 400);
+    const hp = Math.max(0, Math.min(max, Number.isFinite(whole(body.hp)) ? whole(body.hp) : max));
+    const temp = Math.max(0, Math.min(999, whole(body.temp) || 0));
+    await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp) VALUES (?, ?, ?, ?)").bind(name, hp, max, temp).run();
+    return json({ ok: true });
+  },
   async scene(request, db, code) {
     const body = await request.json();
     if (body.delete) {
@@ -184,7 +212,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
@@ -192,6 +220,7 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
       if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
+      if ((operation === "hp" || operation === "hp-adjust") && request.method === "POST") return await endpoints.hp(request, env.DB, room, operation === "hp-adjust");
       if (operation === "initiative" && request.method === "POST") return await endpoints.initiative(request, env.DB, room, code);
       if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
       if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the host can make changes." }, 403);
