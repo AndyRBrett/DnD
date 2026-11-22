@@ -69,7 +69,7 @@ async function askClaude() {
   const sceneId = state?.scenes.at(-1)?.id;
   const button = $("ask-claude");
   button.disabled = true;
-  $("claude-status").textContent = "Asking Claude…";
+  $("claude-status").textContent = "Claude is reading the story…";
   try {
     const advice = await backend.advise(room, Number(index));
     if ($("character").value !== index || state.scenes.at(-1)?.id !== sceneId) {
@@ -78,6 +78,8 @@ async function askClaude() {
     }
     claudeFor = index + ":" + sceneId;
     $("claude-situation").textContent = "Claude · " + advice.situation;
+    $("claude-big-picture").hidden = !advice.bigPicture;
+    $("claude-big-picture").querySelector("span").textContent = advice.bigPicture ?? "";
     $("claude-options").replaceChildren(...advice.options.map(option => {
       const item = document.createElement("li");
       const action = document.createElement("span");

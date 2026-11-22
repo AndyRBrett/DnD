@@ -62,11 +62,13 @@ test("the cleric's sheet ability is not repeated by the class tactic", () => {
   }
 });
 
-test("the coaching prompt carries character and the last five updates", () => {
-  const prompt = coachingPrompt(shadow, scenes(["a", "b", "c", "d", "e", "f"]));
+test("the coaching prompt carries character, the last twenty updates, and asks for the bigger picture", () => {
+  const prompt = coachingPrompt(shadow, scenes(Array.from({ length: 25 }, (_, index) => "u" + index)));
   assert.match(prompt, /Roan the Last Shadow/);
-  assert.doesNotMatch(prompt, /^- a$/m);
-  assert.match(prompt, /^- f$/m);
+  assert.doesNotMatch(prompt, /^- u4$/m);
+  assert.match(prompt, /^- u5$/m);
+  assert.match(prompt, /^- u24$/m);
+  assert.match(prompt, /what you think the DM is building toward/);
 });
 
 test("everyday combat narration from real sessions reads as combat", () => {
