@@ -9,6 +9,7 @@ export function openDatabase(file = ":memory:") {
   if (!sql.prepare("SELECT 1 FROM sqlite_master WHERE name = 'rooms'").get()) {
     sql.exec(readFileSync(new URL("../drizzle/0000_rooms.sql", import.meta.url), "utf8"));
   }
+  sql.exec(readFileSync(new URL("../drizzle/0001_combat.sql", import.meta.url), "utf8"));
 
   function wrap(statement, bindings = []) {
     return {

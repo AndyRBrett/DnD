@@ -79,3 +79,58 @@ export function rollInitiative(enemies, random) {
     .map(enemy => ({ ...enemy, initiative: roll("d20" + (enemy.init >= 0 ? "+" : "") + enemy.init, random ? { random } : {}).total }))
     .sort((a, b) => b.initiative - a.initiative || b.init - a.init);
 }
+
+// ── Combat mode (shared with every phone) ──
+
+// What players may see of an enemy: never HP, AC, or attacks.
+export function publicEnemies(enemies) {
+  return enemies.map(enemy => ({
+    id: enemy.id,
+    name: enemy.name,
+    initiative: enemy.initiative,
+    status: status(enemy),
+    conditions: enemy.conditions ?? []
+  }));
+}
+
+// One initiative order from the party (their recorded rolls) and the enemies.
+// Highest first; ties go to the party; anyone who hasn't rolled goes last.
+// Turn keys: "pc:<index>" and "en:<id>".
+export function combatOrder(combat, party) {
+  if (!combat) return [];
+  const rolls = combat.party ?? {};
+  const players = party.map((character, index) => ({
+    key: "pc:" + index, kind: "pc", character: index, name: character.name,
+    initiative: Number.isFinite(rolls[index]) ? rolls[index] : null, status: "ok", conditions: []
+  }));
+  const foes = (combat.enemies ?? []).map(enemy => ({
+    key: "en:" + enemy.id, kind: "enemy", name: enemy.name,
+    initiative: Number.isFinite(enemy.initiative) ? enemy.initiative : null,
+    status: enemy.status ?? "ok", conditions: enemy.conditions ?? []
+  }));
+  const rank = entry => entry.initiative ?? -Infinity;
+  return [...players, ...foes]
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => rank(b.entry) - rank(a.entry) || (a.entry.kind === "pc" ? -1 : 0) - (b.entry.kind === "pc" ? -1 : 0) || a.index - b.index)
+    .map(({ entry }) => entry);
+}
+
+// The next turn after `turn`, skipping enemies that are down. Moving past the
+// end of the order starts a new round. direction -1 steps back.
+export function nextTurn(order, turn, round = 1, direction = 1) {
+  const live = order.filter(entry => entry.status !== "down");
+  if (!live.length) return { turn: null, round };
+  const at = live.findIndex(entry => entry.key === turn);
+  if (at < 0) return { turn: live[direction > 0 ? 0 : live.length - 1].key, round };
+  let next = at + direction;
+  if (next >= live.length) return { turn: live[0].key, round: round + 1 };
+  if (next < 0) return round > 1 ? { turn: live[live.length - 1].key, round: round - 1 } : { turn: live[0].key, round };
+  return { turn: live[next].key, round };
+}
+
+// Which turn comes after the current one (for the "you're up next" heads-up).
+export function upNext(order, turn) {
+  const live = order.filter(entry => entry.status !== "down");
+  const at = live.findIndex(entry => entry.key === turn);
+  return at < 0 ? null : live[(at + 1) % live.length]?.key ?? null;
+}

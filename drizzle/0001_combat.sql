@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS combats (
+  code TEXT PRIMARY KEY REFERENCES rooms(code) ON DELETE CASCADE,
+  round INTEGER NOT NULL DEFAULT 1,
+  turn TEXT,
+  enemies TEXT NOT NULL DEFAULT '[]',
+  party_init TEXT NOT NULL DEFAULT '{}'
+);

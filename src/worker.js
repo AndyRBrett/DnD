@@ -55,7 +55,11 @@ const endpoints = {
   },
   async state(db, room, code, env) {
     const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 30").bind(code).all();
-    return json({ party: importHistory(JSON.parse(room.party)), scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY) });
+    const combat = await db.prepare("SELECT round, turn, enemies, party_init FROM combats WHERE code = ?").bind(code).first();
+    return json({
+      party: importHistory(JSON.parse(room.party)), scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
+    });
   },
   async advise(request, db, room, code, env) {
     if (!env.ANTHROPIC_API_KEY) return json({ error: "Claude suggestions are off on this server." }, 404);
@@ -87,6 +91,41 @@ const endpoints = {
       if (!(error instanceof AdviceError)) console.error(error);
       return json({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
     }
+  },
+  // Combat: only the public view of each enemy is stored (never HP or AC).
+  async combat(request, db, code) {
+    const body = await request.json();
+    if (body.end) {
+      await db.prepare("DELETE FROM combats WHERE code = ?").bind(code).run();
+      return json({ ok: true });
+    }
+    if (!Array.isArray(body.enemies) || body.enemies.length > 40) return json({ error: "Use up to 40 enemies." }, 400);
+    const enemies = body.enemies.map(enemy => ({
+      id: String(enemy?.id ?? "").slice(0, 40),
+      name: String(enemy?.name ?? "Enemy").slice(0, 60),
+      initiative: Number.isFinite(enemy?.initiative) ? enemy.initiative : null,
+      status: ["ok", "bloodied", "down"].includes(enemy?.status) ? enemy.status : "ok",
+      conditions: Array.isArray(enemy?.conditions) ? enemy.conditions.slice(0, 16).map(condition => String(condition).slice(0, 30)) : []
+    }));
+    const round = Math.max(1, Math.min(999, Math.floor(Number(body.round)) || 1));
+    const turn = typeof body.turn === "string" ? body.turn.slice(0, 60) : null;
+    const existing = await db.prepare("SELECT party_init FROM combats WHERE code = ?").bind(code).first();
+    const partyInit = existing && !body.reset ? existing.party_init : "{}";
+    await db.prepare("INSERT OR REPLACE INTO combats (code, round, turn, enemies, party_init) VALUES (?, ?, ?, ?, ?)")
+      .bind(code, round, turn, JSON.stringify(enemies), partyInit).run();
+    return json({ ok: true });
+  },
+  async initiative(request, db, room, code) {
+    const body = await request.json();
+    const index = Number(body.character);
+    const value = Number(body.value);
+    if (!Number.isInteger(index) || !JSON.parse(room.party)[index]) return json({ error: "Pick a character." }, 400);
+    if (!Number.isInteger(value) || value < -10 || value > 60) return json({ error: "Enter an initiative between -10 and 60." }, 400);
+    const combat = await db.prepare("SELECT party_init FROM combats WHERE code = ?").bind(code).first();
+    if (!combat) return json({ error: "Combat has not started." }, 400);
+    const party = { ...JSON.parse(combat.party_init), [index]: value };
+    await db.prepare("UPDATE combats SET party_init = ? WHERE code = ?").bind(JSON.stringify(party), code).run();
+    return json({ ok: true });
   },
   async scene(request, db, code) {
     const body = await request.json();
@@ -139,7 +178,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
@@ -147,9 +186,11 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
       if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
+      if (operation === "initiative" && request.method === "POST") return await endpoints.initiative(request, env.DB, room, code);
       if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
       if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the host can make changes." }, 403);
       if (operation === "close") return await endpoints.close(env.DB, code);
+      if (operation === "combat") return await endpoints.combat(request, env.DB, code);
       if (operation === "scene" || operation === "party") return await endpoints[operation](request, env.DB, code);
       return json({ error: "Invalid request." }, 400);
     } catch (error) {
