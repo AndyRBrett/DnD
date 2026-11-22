@@ -196,11 +196,16 @@ function clearPublishTimers() {
   publishDeadline = undefined;
 }
 
+// Phones finalize speech on short pauses, which published fragments like
+// "The". Wait for a real pause, hold drafts under five words until the DM has
+// been quiet for a while, and cap continuous speech at one update every ~9 s.
 function queuePublish(delay) {
   clearTimeout(publishTimer);
   if ($("auto").checked && !editId && !ended) {
-    publishTimer = setTimeout(() => publish(true), delay);
-    publishDeadline ??= setTimeout(() => publish(true), 5200);
+    const words = $("draft").value.trim().split(/\s+/).filter(Boolean).length;
+    const short = words < 5;
+    publishTimer = setTimeout(() => publish(true), short ? Math.max(delay, 7000) : delay);
+    if (!short) publishDeadline ??= setTimeout(() => publish(true), 9000);
   }
 }
 
@@ -293,7 +298,7 @@ function startMic() {
       lastFinal = Date.now();
       pendingSpeech = [pendingSpeech, final.join(" ")].filter(Boolean).join(" ").slice(0, 3000);
       addPendingSpeech();
-      queuePublish(interim.length ? 3500 : 1550);
+      queuePublish(interim.length ? 3500 : 2500);
     }
   };
   speech.onerror = event => {
