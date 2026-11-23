@@ -154,6 +154,8 @@ function hostedBackend({ url, anonKey }) {
     setHp: (code, character, { hp, max, temp, ac }) => rpc("dnd_hp_set", { p_code: code, p_character: character, p_hp: hp, p_max: max, p_temp: temp ?? 0, p_ac: ac ?? null }),
     adjustHp: (code, character, change) => rpc("dnd_hp_adjust", { p_code: code, p_character: character, p_change: change }),
     setResources: (code, character, state) => rpc("dnd_resources_set", { p_code: code, p_character: character, p_state: state }),
+    encounterGet: code => rpc("dnd_encounter_get", { p_code: code }),
+    encounterSave: (code, enemies) => rpc("dnd_encounter_save", { p_code: code, p_enemies: enemies }),
     combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
     combatEnd: code => rpc("dnd_combat_end", { p_code: code }),
     deleteScene: (code, id) => rpc("dnd_delete_scene", { p_code: code, p_id: id }),
