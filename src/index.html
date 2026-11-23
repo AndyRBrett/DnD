@@ -78,7 +78,12 @@
         <div id="dm-card" class="card stack">
           <p class="eyebrow">RUNNING THE GAME?</p>
           <p id="not-dm" class="fineprint" hidden>Only your group's DMs can start a table. To play, open the link your DM shares. Want to run games too? Ask your DM to add you from their DM tab.</p>
-          <div id="my-rooms" hidden><p class="label">Your open tables</p><ul id="my-room-list" class="link-list"></ul></div>
+          <div id="my-rooms" hidden>
+            <p class="label">Your open tables</p>
+            <ul id="my-room-list" class="link-list"></ul>
+            <button id="delete-practice" class="quiet" type="button" hidden>Delete all practice tables</button>
+            <p id="my-rooms-status" class="fineprint" role="status"></p>
+          </div>
           <button id="create" class="cta" type="button">Start a table (DM)</button>
           <button id="create-practice" class="ghost" type="button">Practice table</button>
           <p class="fineprint">A practice table works the same way but never adds anything to the campaign history.</p>

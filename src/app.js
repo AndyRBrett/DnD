@@ -3256,13 +3256,103 @@ function enterRoom() {
 // ── Lobby and sign-in (hosted mode uses the UFC app's email-code login) ──
 let pendingEmail = "";
 let myRoomCount = 0;
-function tableLink(code, text) {
+function tableLink(code, text, { tag = "", note = "", action = null } = {}) {
   const item = document.createElement("li");
   const link = document.createElement("a");
   link.href = "?room=" + code;
   link.textContent = text;
+  if (tag) {
+    const label = document.createElement("span");
+    label.className = "tag";
+    label.textContent = tag;
+    link.append(label);
+  }
+  if (note) {
+    const small = document.createElement("small");
+    small.textContent = note;
+    link.append(small);
+  }
   item.append(link);
+  if (action) {
+    item.classList.add("with-action");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = action.className ?? "quiet";
+    button.textContent = action.text;
+    button.setAttribute("aria-label", action.label);
+    button.onclick = () => action.onclick(button);
+    item.append(button);
+  }
   return item;
+}
+const shortTime = ms => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+
+// ── Managing your tables from the home screen ──
+// A DM deletes tables they started (a finished test, a practice run) without
+// opening each one; a real table can save its session to the history first,
+// as ending it from inside does.
+// practice: true, false, or null when unknown (the hosted list before
+// migration 0014): unknown never offers the history save, so a test table's
+// updates can't land in the campaign.
+async function deleteTable(code, practice) {
+  if (practice !== false) {
+    await backend.closeRoom(code);
+  } else {
+    const save = Boolean(backend.endTable)
+      && window.confirm("Add this table's updates to the campaign history first, so Claude remembers them? (Cancel deletes without saving.)");
+    if (backend.endTable) await backend.endTable(code, save);
+    else await backend.closeRoom(code);
+  }
+  storage.remove("practice:" + code);
+  storage.set(RECENT_KEY, JSON.stringify(recentTables().filter(entry => entry.code !== code)));
+}
+function drawMyRooms(found) {
+  // Practice status from the server, else this phone's marker, else unknown.
+  const rooms = found.map(entry => ({ ...entry,
+    practice: typeof entry.practice === "boolean" ? entry.practice : storage.get("practice:" + entry.code) === "1" ? true : null }));
+  $("my-rooms").hidden = !rooms.length;
+  // Your own tables are listed here, not again under "Tables you joined".
+  const mine = new Set(rooms.map(entry => entry.code));
+  for (const item of [...$("recent-room-list").children]) {
+    if (mine.has(item.querySelector("a")?.getAttribute("href")?.slice(6))) item.remove();
+  }
+  $("recent-rooms").hidden = !$("recent-room-list").children.length;
+  $("my-room-list").replaceChildren(...rooms.map(({ code, created, active, practice }) =>
+    tableLink(code, tableLabel(code), {
+      tag: practice ? "PRACTICE" : "",
+      note: "Started " + shortTime(created) + (active && active - created > 60000 ? " · last used " + shortTime(active) : ""),
+      action: {
+        text: "Delete",
+        className: "danger-soft",
+        label: "Delete " + tableLabel(code),
+        onclick: async button => {
+          if (!window.confirm(practice ? "Delete this practice table? Nothing from it is saved."
+            : "Delete " + tableLabel(code) + " for everyone? Its updates and player entries are removed"
+              + (practice === null ? " without saving them to the campaign history (to save them, open the table and end it there)." : "."))) return;
+          button.disabled = true;
+          try {
+            await deleteTable(code, practice);
+            $("my-rooms-status").textContent = tableLabel(code) + " deleted.";
+            showLobby();
+          } catch (error) {
+            button.disabled = false;
+            $("my-rooms-status").textContent = error.message;
+          }
+        }
+      }
+    })));
+  const practiceRooms = rooms.filter(entry => entry.practice === true);
+  $("delete-practice").hidden = practiceRooms.length < 2;
+  $("delete-practice").textContent = "Delete all " + practiceRooms.length + " practice tables";
+  $("delete-practice").onclick = async () => {
+    if (!window.confirm("Delete all " + practiceRooms.length + " practice tables? Nothing from them is saved.")) return;
+    $("delete-practice").disabled = true;
+    const results = await Promise.allSettled(practiceRooms.map(entry => deleteTable(entry.code, true)));
+    $("delete-practice").disabled = false;
+    const failed = results.filter(result => result.status === "rejected").length;
+    $("my-rooms-status").textContent = failed ? failed + " couldn't be deleted. Try again." : "Practice tables deleted.";
+    showLobby();
+  };
 }
 $("join-form").onsubmit = event => {
   event.preventDefault();
@@ -3295,9 +3385,20 @@ async function showLobby(message = "") {
   $("joining-note").hidden = !room;
   const recent = recentTables();
   $("recent-rooms").hidden = !recent.length;
-  $("recent-room-list").replaceChildren(...recent.map(({ code, at }) => tableLink(code, tableLabel(code) + " · joined " + new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))));
-  if (!user) return;
-  $("account-email").textContent = user.email;
+  // Players can tidy their own list (this only forgets it on this phone).
+  $("recent-room-list").replaceChildren(...recent.map(({ code, at }) => tableLink(code, tableLabel(code), {
+    note: "Joined " + new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    action: {
+      text: "Remove",
+      label: "Remove " + tableLabel(code) + " from this list",
+      onclick: () => {
+        storage.set(RECENT_KEY, JSON.stringify(recentTables().filter(entry => entry.code !== code)));
+        showLobby();
+      }
+    }
+  })));
+  if (backend.hosted && !user) return;
+  if (user) $("account-email").textContent = user.email;
   try {
     const rooms = await backend.myRooms();
     myRoomCount = rooms.length;
@@ -3307,9 +3408,7 @@ async function showLobby(message = "") {
       $("not-dm").hidden = canStart;
       $("dm-card").querySelector(".fineprint:not(#not-dm)").hidden = !canStart;
     }
-    $("my-rooms").hidden = !rooms.length;
-    $("my-room-list").replaceChildren(...rooms.map(({ code, created }) =>
-      tableLink(code, tableLabel(code) + " · started " + new Date(created).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))));
+    drawMyRooms(rooms);
   } catch (error) {
     if (error.status === 401) showLobby("Sign in again to continue.");
   }
