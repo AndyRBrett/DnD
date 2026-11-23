@@ -64,8 +64,9 @@
           <input id="join-link" autocomplete="off" placeholder="https://andyrbrett.github.io/DnD/?room=…">
           <button type="submit" class="ghost">Join table</button>
         </form>
-        <div class="card stack">
+        <div id="dm-card" class="card stack">
           <p class="eyebrow">RUNNING THE GAME?</p>
+          <p id="not-dm" class="fineprint" hidden>Only your group's DMs can start a table. To play, open the link your DM shares. Want to run games too? Ask your DM to add you from their DM tab.</p>
           <div id="my-rooms" hidden><p class="label">Your open tables</p><ul id="my-room-list" class="link-list"></ul></div>
           <button id="create" class="cta" type="button">Start a table (DM)</button>
           <button id="create-practice" class="ghost" type="button">Practice table</button>
@@ -334,6 +335,17 @@
               <p id="enemy-status" class="fineprint"></p>
             </form>
           </details>
+        </section>
+        <section id="dm-list" class="card stack" hidden aria-labelledby="dm-list-title">
+          <p class="eyebrow">WHO CAN START TABLES</p>
+          <h2 id="dm-list-title" class="display xs">DMs</h2>
+          <p class="fineprint">Only these accounts can start a table, so a stranger who signs up can't run up Ask Claude. Players just need your table link.</p>
+          <ul id="dm-emails" class="dm-emails"></ul>
+          <form id="dm-add" class="action-row">
+            <input id="dm-add-email" type="email" autocomplete="off" placeholder="their sign-in email" aria-label="Email of the DM to add">
+            <button type="submit" class="ghost">Add DM</button>
+          </form>
+          <p id="dm-status" class="fineprint"></p>
         </section>
         <details id="party-editor" class="card" hidden>
           <summary class="card-summary">Edit character sheets</summary>

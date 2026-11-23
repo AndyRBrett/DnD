@@ -63,6 +63,10 @@ Character chips under the header switch characters. A red dot on Scene means the
 
 How it's built: GitHub Pages serves the files in `src/` (`.github/workflows/pages.yml` runs the tests, then publishes on every push to `main`). Rooms, logins, and the campaign history live in the UFC app's Supabase project, in tables prefixed `dnd_` (`supabase/migrations/`). Clients can only reach them through database functions that check the signed-in account. **Ask Claude** runs in the `dnd-advise` edge function (`supabase/functions/dnd-advise/`).
 
+### Who can start tables
+
+Anyone can sign in (it's the UFC app's login), but only the group's DMs can **start** a table (`supabase/migrations/0010_dnd_hosts.sql`). Players join with the DM's link as usual. A stranger who signs up has no table, and every Ask Claude request needs a live table, so they can't spend Claude calls. A DM adds or removes DMs by email in the DM tab under **DMs** (the person must have signed in once). If you're not listed (no table was open when 0010 ran), add yourself once in the SQL editor: `insert into public.dnd_hosts (user_id) select id from auth.users where email = 'you@example.com';`. As a backstop, set a monthly spend limit for the Anthropic key in the Anthropic Console.
+
 ### Changing the hosted backend
 
 - **Database:** add a new numbered file in `supabase/migrations/` and apply it to project `gkccophrdqtqcowmblre`. The Supabase SQL editor is the reliable route; MCP migrations that need a confirmation prompt can time out. Only ever create or change `dnd_` objects; the UFC tables share this database.
