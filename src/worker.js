@@ -32,11 +32,11 @@ function randomToken(bytes) {
 // "Ask Claude". The prompt and request live in src/advice.js.
 const aiCache = new Map();
 const aiUsage = new Map();
-const AI_ROOM_LIMIT = 200;
+const AI_ROOM_LIMIT = 500;
 const AI_COOLDOWN = 8000;
 
-async function askClaude(apiKey, character, scenes, question = "") {
-  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes, "", [], question), signal: AbortSignal.timeout(60000) });
+async function askClaude(apiKey, character, scenes, question = "", table = "") {
+  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes, "", [], question, table), signal: AbortSignal.timeout(60000) });
   return readAdvice(response);
 }
 
@@ -80,7 +80,8 @@ const endpoints = {
     const question = typeof body.question === "string" ? body.question.trim().slice(0, 300) : "";
     const spent = Array.isArray(body.spent) ? body.spent.slice(0, 40).map(item => String(item).slice(0, 120)) : [];
     if (spent.length) character.spent = spent;
-    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves, question, spent.join("|")].join("\u0000");
+    const table = typeof body.table === "string" ? body.table.slice(0, 2000) : "";
+    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves, question, spent.join("|"), table].join("\u0000");
     const cached = aiCache.get(key);
     if (cached) return json({ ...(await cached), sceneId: scenes.at(-1).id });
     const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
@@ -89,7 +90,7 @@ const endpoints = {
     usage.count += 1;
     usage.last.set(index, Date.now());
     aiUsage.set(code, usage);
-    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes, question);
+    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes, question, table);
     aiCache.set(key, pending);
     if (aiCache.size > 500) aiCache.delete(aiCache.keys().next().value);
     try {

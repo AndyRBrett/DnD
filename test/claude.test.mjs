@@ -55,7 +55,7 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
 
   const [{ init, body }] = requests;
   assert.equal(init.headers["x-api-key"], "test-key");
-  assert.equal(body.model, "claude-opus-5-5");
+  assert.equal(body.model, "claude-sonnet-5-5");
   assert.equal(body.output_config.format.type, "json_schema");
   const prompt = body.messages[0].content.map(block => block.text).join("\n");
   assert.ok(!body.messages[0].content.some(block => block.text.startsWith("CAMPAIGN HISTORY")), "no history block when the campaign has none");
@@ -188,4 +188,14 @@ test("spent abilities from the player's phone reach Claude", async () => {
   assert.ok(rest && /- Fireball: no 3rd-level/.test(rest));
   assert.ok(!/- Fireball —/.test(ready), "Fireball isn't listed as READY");
   assert.match(requests[0].body.system, /Never recommend anything listed under SPENT/);
+});
+
+test("the table snapshot (turn, HP, what's left) reaches Claude", async () => {
+  const { post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "k" });
+  const table = "In combat, round 2. It is The White Wizard's turn right now.\nWhite Wizard: HP 30/75; AC 17.";
+  assert.equal((await post("/advise", { character: 0, table })).status, 200);
+  const prompt = requests[0].body.messages[0].content.map(block => block.text).join("\n");
+  assert.match(prompt, /TABLE STATE \(from the app, right now\):\nIn combat, round 2\. It is The White Wizard's turn right now\./);
+  assert.match(requests[0].body.system, /Enemy HP and AC are hidden: never guess numbers/);
+  assert.equal(requests[0].body.model, "claude-sonnet-5-5");
 });

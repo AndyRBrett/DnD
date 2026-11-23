@@ -32,7 +32,7 @@ Deno.serve(async req => {
   if (req.method !== "POST") return reply({ error: "Method unavailable." }, 405);
   if (!ANTHROPIC_API_KEY) return reply({ error: "Claude suggestions are off on this server." }, 503);
 
-  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown };
+  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown; table?: unknown };
   try {
     input = await req.json();
   } catch {
@@ -45,7 +45,10 @@ Deno.serve(async req => {
   // Abilities the player's phone says are out of uses ("Fireball: no 3rd-level
   // or higher spell slot left"). Advice that depends on them skips the cache.
   const spent = Array.isArray(input.spent) ? input.spent.slice(0, 40).map(item => String(item).slice(0, 120)) : [];
-  if (question || spent.length) return await answerQuestion(req, reply, code, character, question, spent);
+  // The table as the player's phone sees it now (turn, HP, conditions, what's
+  // left). It changes every turn, so such requests skip the cache too.
+  const table = typeof input.table === "string" ? input.table.slice(0, 2000) : "";
+  if (question || spent.length || table) return await answerQuestion(req, reply, code, character, question, spent, table);
 
   const begin = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_advise_begin_v2", {
     method: "POST",
@@ -110,7 +113,7 @@ function tokenSubject(req: Request): string {
   }
 }
 
-async function answerQuestion(req: Request, reply: (body: unknown, status?: number) => Response, code: string, character: number, question: string, spent: string[] = []) {
+async function answerQuestion(req: Request, reply: (body: unknown, status?: number) => Response, code: string, character: number, question: string, spent: string[] = [], table = "") {
   const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
     method: "POST",
     headers: { apikey: ANON_KEY, Authorization: req.headers.get("Authorization") ?? "", "Content-Type": "application/json" },
@@ -124,8 +127,8 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
 
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
   if (await countUsage("created_at=gte." + since(86400000)) >= 600) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
-  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= 60) return reply({ error: "You have used today's Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code) >= 200) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= 120) return reply({ error: "You have used today's Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code) >= 500) return reply({ error: "This session has used its Claude suggestions." }, 429);
   if (await countUsage("code=eq." + code + "&character_index=eq." + character + "&created_at=gte." + since(8000)) > 0) {
     return reply({ error: "One moment — Claude was just asked for this character." }, 429);
   }
@@ -143,7 +146,7 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
     const scenes = sceneRows.reverse().map((scene: { id: number; text: string; created_at: string }) =>
       ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }));
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, sheet, scenes.length ? scenes : room.scenes, historyRows[0]?.history ?? "", room.actions ?? [], question),
+      ...claudeRequest(ANTHROPIC_API_KEY, sheet, scenes.length ? scenes : room.scenes, historyRows[0]?.history ?? "", room.actions ?? [], question, table),
       signal: AbortSignal.timeout(60000)
     }));
     return reply({ ...advice, sceneId: room.scenes?.at(-1)?.id ?? null, ...(question ? { asked: question } : {}) });
