@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -1235,7 +1235,7 @@ $("dice-roll").onclick = async () => {
   dice.log = dice.log.slice(0, 8);
   list("dice-log", dice.log);
   if (dice.onResult) {
-    await dice.onResult(result.total);
+    await dice.onResult(result.total, result);
     return;
   }
   if (!$("dice-share-wrap").hidden && $("dice-share").checked) {
@@ -1486,6 +1486,37 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   numbers.textContent = hpText(record);
   head.append(title, numbers);
   box.append(head);
+  if (!compact) {
+    const mods = abilityMods(sheets[partyName(index)]);
+    if (mods.length) {
+      const grid = document.createElement("div");
+      grid.className = "ability-roll-grid";
+      grid.setAttribute("aria-label", "Ability checks and saving throws");
+      const signed = value => (value >= 0 ? "+" : "−") + Math.abs(value);
+      const expr = value => "d20" + (value >= 0 ? "+" : "-") + Math.abs(value);
+      for (const entry of mods) {
+        const cell = document.createElement("div");
+        cell.className = "ability-roll";
+        const name = document.createElement("span");
+        name.textContent = entry.ability;
+        const check = document.createElement("button");
+        check.type = "button";
+        check.className = "ability-check";
+        check.textContent = signed(entry.mod);
+        check.setAttribute("aria-label", "Roll a " + entry.ability + " check (" + signed(entry.mod) + ")");
+        check.onclick = () => openDice(expr(entry.mod), entry.ability + " check");
+        const save = document.createElement("button");
+        save.type = "button";
+        save.className = "ability-save" + (entry.proficient ? " is-proficient" : "");
+        save.textContent = "save " + signed(entry.save);
+        save.setAttribute("aria-label", "Roll a " + entry.ability + " saving throw (" + signed(entry.save) + ")");
+        save.onclick = () => openDice(expr(entry.save), entry.ability + " save");
+        cell.append(name, check, save);
+        grid.append(cell);
+      }
+      box.append(grid);
+    }
+  }
   const stats = combatStats(sheets[partyName(index)], record);
   if (stats.length) {
     const strip = document.createElement(compact ? "p" : "div");
@@ -1733,6 +1764,7 @@ function drawHitReport() {
   const combat = state?.combat;
   const form = $("hit-report");
   form.hidden = !combat || isHost || ended || !backend.postAction || !Array.isArray(state?.actions);
+  drawAttack();
   if (form.hidden) return;
   const targets = (combat.enemies ?? []).filter(enemy => enemy.status !== "down");
   const select = $("hit-target");
@@ -1766,6 +1798,167 @@ $("hit-report").onsubmit = async event => {
   }
 };
 
+// ── The attack flow: pick one of your attacks, roll to hit (the DM calls
+// hit or miss; a natural 20 is a crit, a natural 1 misses), roll the right
+// damage, send it to the DM. Save spells skip the to-hit roll. ──
+const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [] };
+function resetAttack(keepChoice = true) {
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [] });
+  if (!keepChoice) Object.assign(attackFlow, { index: 0, options: new Set() });
+}
+function setDiceMode(mode) {
+  dice.mode = mode;
+  for (const button of $("dice-mode").children) button.classList.toggle("is-active", button.dataset.mode === mode);
+}
+const stepButton = (text, className, onclick) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = text;
+  button.onclick = onclick;
+  return button;
+};
+const stepText = (text, className = "") => {
+  const line = document.createElement("p");
+  line.className = "attack-line " + className;
+  line.textContent = text;
+  return line;
+};
+function drawAttack() {
+  const combat = state?.combat;
+  const card = $("attack-card");
+  card.hidden = !combat || isHost || ended;
+  if (card.hidden) return;
+  const me = Number($("character").value);
+  if (attackFlow.character !== me) { attackFlow.character = me; resetAttack(false); }
+  const sheet = sheets[partyName(me)] ?? {};
+  const attacks = sheet.attacks ?? [];
+  const attack = attacks[attackFlow.index];
+  $("attack-title").textContent = "Attack · " + partyName(me).replace(/^The /, "");
+
+  $("attack-list").replaceChildren(...attacks.map((entry, index) => {
+    const label = entry.save ? entry.name + " · DC " + entry.dc + " " + entry.save : entry.name + " +" + entry.hit + " · " + entry.damage;
+    const chip = stepButton(label, "chip" + (index === attackFlow.index ? " is-active" : ""), () => {
+      attackFlow.index = index;
+      resetAttack();
+      drawAttack();
+    });
+    chip.setAttribute("aria-pressed", String(index === attackFlow.index));
+    return chip;
+  }));
+  const options = attack && !attack.save ? sheet.attackOptions ?? [] : [];
+  if (attack) {
+    const math = attackBreakdown(attack, sheet, options.filter(option => attackFlow.options.has(option.name)));
+    const lines = [
+      math.hit ? "To hit: " + math.hit : "Save: " + math.dc,
+      "Damage: " + math.damage + (attack.type ? " " + attack.type : ""),
+      attack.note ?? ""
+    ].filter(Boolean);
+    $("attack-note").replaceChildren(...lines.map((text, index) => {
+      const line = document.createElement(index < 2 ? "strong" : "span");
+      line.textContent = text;
+      return line;
+    }));
+  } else {
+    $("attack-note").textContent = "No attacks on this sheet yet — use Other damage below.";
+  }
+  $("attack-options").replaceChildren(...options.map(option => {
+    const label = document.createElement("label");
+    label.className = "attack-option";
+    label.title = option.note ?? "";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = attackFlow.options.has(option.name);
+    box.onchange = () => {
+      if (box.checked) attackFlow.options.add(option.name); else attackFlow.options.delete(option.name);
+      drawAttack();
+    };
+    const text = document.createElement("span");
+    text.textContent = option.name;
+    label.append(box, text);
+    return label;
+  }));
+
+  const select = $("attack-target");
+  if (document.activeElement !== select) {
+    const chosen = select.value;
+    const targets = (combat.enemies ?? []).filter(enemy => enemy.status !== "down");
+    select.replaceChildren(new Option(targets.length ? "Which enemy?" : "No enemies standing", ""),
+      ...targets.map(enemy => new Option(enemy.name + " · " + (STATUS_TEXT[enemy.status] ?? ""), enemy.name)));
+    select.value = targets.some(enemy => enemy.name === chosen) ? chosen : "";
+  }
+
+  const steps = $("attack-steps");
+  if (!attack) { steps.replaceChildren(); return; }
+  const chosenOptions = options.filter(option => attackFlow.options.has(option.name));
+  const built = buildAttack(attack, chosenOptions, { crit: attackFlow.crit, extraCritDice: sheet.critExtraDice ?? 0 });
+  const parts = [];
+  const rollDamage = () => openDice(built.damage, attack.name + " damage", total => {
+    attackFlow.damage = total;
+    attackFlow.step = "damage";
+    drawAttack();
+    setTimeout(closeDice, 1200);
+  });
+  const next = stepButton("Next attack", "quiet", () => { resetAttack(); drawAttack(); });
+
+  if (attackFlow.step === "ready") {
+    if (built.save) {
+      parts.push(stepText("Targets make a " + built.save + ". The DM rolls their saves."),
+        stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+    } else {
+      parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
+        openDice(built.toHit, attack.name + " to hit", (total, result) => {
+          attackFlow.toHit = result;
+          attackFlow.crit = result.critical;
+          attackFlow.step = result.critical ? "hit" : result.fumble ? "miss" : "rolled";
+          drawAttack();
+          setTimeout(closeDice, 1200);
+        });
+        setDiceMode(built.mode);
+      }));
+    }
+  } else if (attackFlow.step === "rolled") {
+    const natural = attackFlow.toHit.natural;
+    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Tell the DM — does it hit?", "is-big"),
+      stepButton("Hit", "cta", () => { attackFlow.step = "hit"; drawAttack(); }),
+      stepButton("Miss", "ghost", () => { attackFlow.step = "miss"; drawAttack(); }));
+  } else if (attackFlow.step === "hit") {
+    parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
+      stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+  } else if (attackFlow.step === "miss") {
+    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"), next);
+  } else if (attackFlow.step === "damage") {
+    const detail = "with " + attack.name + (built.save ? ", " + built.save
+      : ", " + attackFlow.toHit.total + " to hit" + (attackFlow.crit ? ", critical" : ""));
+    parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
+    const target = select.value;
+    if (backend.postAction && Array.isArray(state?.actions)) {
+      const send = stepButton(target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
+        const name = $("attack-target").value;
+        if (!name) { $("attack-target").focus(); return; }
+        send.disabled = true;
+        try {
+          await backend.postAction(room, me, hitReportText(name, attackFlow.damage, detail));
+          attackFlow.sent.push(name);
+          sync();
+          drawAttack();
+        } catch (error) {
+          send.disabled = false;
+          send.textContent = error.message + " — tap to retry";
+        }
+      });
+      send.disabled = !target;
+      parts.push(send);
+      if (attackFlow.sent.length) parts.push(stepText("Sent to the DM for " + attackFlow.sent.join(", ") + (built.save ? ". Pick another target to send the same roll." : "."), "fineprint"));
+    } else {
+      parts.push(stepText("Tell the DM: " + attackFlow.damage + " damage.", "fineprint"));
+    }
+    parts.push(next);
+  }
+  steps.replaceChildren(...parts);
+}
+$("attack-target").onchange = () => drawAttack();
+
 function drawHitInbox() {
   const box = $("hit-inbox");
   const combat = state?.combat;
@@ -1780,7 +1973,11 @@ function drawHitInbox() {
     const item = document.createElement("li");
     const target = enemies.find(enemy => enemy.name === report.enemy);
     const text = document.createElement("span");
+    const versus = target && report.toHit !== null
+      ? (report.crit ? " · critical" : report.toHit >= target.ac ? " · " + report.toHit + " vs AC " + target.ac + " ✓" : " · ⚠ " + report.toHit + " vs AC " + target.ac + " — a miss?")
+      : "";
     text.textContent = action.name.replace(/^The /, "") + " hit " + report.enemy + " for " + report.amount
+      + (report.detail ? " " + report.detail.replace(/, \d+ to hit|, critical/g, "") : "") + versus
       + (target ? " (HP " + target.hp + "/" + target.maxHp + ")" : " — not in your encounter");
     const apply = document.createElement("button");
     apply.type = "button";
@@ -1798,7 +1995,25 @@ function drawHitInbox() {
     dismiss.className = "quiet";
     dismiss.textContent = "Dismiss";
     dismiss.onclick = () => { markHit(action.id); drawCombat(); };
-    item.append(text, apply, dismiss);
+    const buttons = document.createElement("div");
+    buttons.className = "hit-buttons";
+    buttons.append(apply);
+    if (report.halfOnSave) {
+      const half = document.createElement("button");
+      half.type = "button";
+      half.className = "ghost";
+      half.textContent = "Saved: " + Math.floor(report.amount / 2);
+      half.disabled = !target;
+      half.onclick = () => {
+        markHit(action.id);
+        enemies = enemies.map(enemy => enemy.name === report.enemy ? applyHp(enemy, -Math.floor(report.amount / 2)) : enemy);
+        saveEncounter();
+        drawEncounter();
+      };
+      buttons.append(half);
+    }
+    buttons.append(dismiss);
+    item.append(text, buttons);
     return item;
   }));
   if (pending.length && currentTab !== "combat") $("tab-combat").classList.add("has-news");

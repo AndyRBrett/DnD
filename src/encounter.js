@@ -1,6 +1,6 @@
 // DM encounter tracker: enemy templates and pure helpers. The live encounter
 // is kept on the DM's device (localStorage), never sent to players.
-import { roll, parse } from "./dice.js";
+import { roll, parse, critExpression } from "./dice.js";
 
 // Standard 5e (SRD 5.1) stat lines, summarized. attacks: [name, to-hit, damage].
 export const templates = [
@@ -198,10 +198,38 @@ export function attackOutcome(toHit, ac) {
 
 // Players tell the DM about damage they dealt through a story line in this
 // exact shape, which the DM's phone reads back to offer "Apply".
-export const hitReportText = (enemy, amount) => "🎯 hit " + enemy + " for " + amount + " damage";
+// The optional detail says how ("with Greataxe, 19 to hit" or "with
+// Fireball, DC 17 Dex save, half on a save").
+export const hitReportText = (enemy, amount, detail = "") =>
+  ("🎯 hit " + enemy + " for " + amount + " damage" + (detail ? " — " + detail : "")).slice(0, 300);
 export function parseHitReport(text) {
-  const match = String(text ?? "").match(/^🎯 hit (.+) for (\d{1,3}) damage$/u);
-  return match ? { enemy: match[1], amount: Number(match[2]) } : null;
+  const match = String(text ?? "").match(/^🎯 hit (.+?) for (\d{1,3}) damage(?: — (.+))?$/u);
+  if (!match) return null;
+  const detail = match[3] ?? "";
+  const toHit = detail.match(/(\d+) to hit/);
+  return {
+    enemy: match[1], amount: Number(match[2]), detail,
+    toHit: toHit ? Number(toHit[1]) : null,
+    crit: /critical/i.test(detail),
+    halfOnSave: /half on a save/i.test(detail)
+  };
+}
+
+// One of a character's attacks with the options they've switched on: the
+// to-hit roll (or the save the target makes), and the damage dice, doubled
+// on a critical hit.
+export function buildAttack(attack, options = [], { crit = false, extraCritDice = 0 } = {}) {
+  const usable = attack.hit === undefined || attack.hit === null ? [] : options; // options are for attack rolls
+  const hit = (attack.hit ?? 0) + usable.reduce((sum, option) => sum + (option.hit ?? 0), 0);
+  const mode = usable.some(option => option.mode === "advantage") ? "advantage" : "normal";
+  const base = attack.damage + usable.map(option => option.damage ?? "").join("");
+  return {
+    save: attack.save ? attack.save + " save, DC " + attack.dc + (attack.half ? ", half on a save" : ", nothing on a save") : null,
+    toHit: attack.save ? null : "d20" + (hit >= 0 ? "+" : "") + hit,
+    hitBonus: attack.save ? null : hit,
+    mode,
+    damage: crit ? critExpression(base, extraCritDice) : base
+  };
 }
 
 // ── Death saves (5e): d20, 10+ succeeds; a 1 counts as two failures; a 20
@@ -214,4 +242,46 @@ export function deathSave(saves, natural) {
     ? { ...current, successes: Math.min(3, current.successes + 1) }
     : { ...current, failures: Math.min(3, current.failures + (natural === 1 ? 2 : 1)) };
   return { ...next, outcome: next.failures >= 3 ? "dead" : next.successes >= 3 ? "stable" : null };
+}
+
+// ── Ability modifiers ──
+
+// The six abilities from a sheet: score, modifier, and saving throw.
+export function abilityMods(sheet) {
+  const saves = Object.fromEntries((sheet?.saves ?? []).map(([ability, value, note]) => [ability, { value, proficient: Boolean(note) }]));
+  return (sheet?.abilities ?? []).map(([ability, score, mod]) => {
+    const save = Number.parseInt(String(saves[ability]?.value ?? "").replace("−", "-"), 10);
+    return { ability, score, mod, save: Number.isFinite(save) ? save : mod, proficient: saves[ability]?.proficient ?? false };
+  });
+}
+
+const signed = value => (value >= 0 ? "+" : "−") + Math.abs(value);
+const proficiencyOf = sheet => Number.parseInt(Object.fromEntries(sheet?.combat ?? []).Proficiency ?? "0", 10) || 0;
+
+// How an attack's numbers are made: "d20 + STR +4 + Prof +4 = +8" and
+// "1d12 + STR +4". Options switched on are added at the end.
+export function attackBreakdown(attack, sheet, options = []) {
+  const mod = abilityMods(sheet).find(entry => entry.ability === attack.ability)?.mod ?? 0;
+  const parts = attack.ability ? [[attack.ability, mod]] : [];
+  if (attack.save) {
+    return {
+      hit: null,
+      dc: "DC " + attack.dc + " = 8 + " + (attack.ability ?? "") + " " + signed(mod) + " + Prof " + signed(proficiencyOf(sheet)),
+      damage: attack.damage + (attack.addMod === false || !attack.ability ? "" : " (includes " + attack.ability + " " + signed(mod) + ")")
+    };
+  }
+  parts.push(["Prof", proficiencyOf(sheet)], ...(attack.bonus ?? []));
+  const extraHit = options.filter(option => option.hit);
+  const total = parts.reduce((sum, [, value]) => sum + value, 0) + extraHit.reduce((sum, option) => sum + option.hit, 0);
+  const dice = attack.damage.match(/^\d*d\d+(?:\+\d*d\d+)*/)?.[0] ?? attack.damage;
+  const flat = attack.damage.slice(dice.length);
+  const damageParts = [dice];
+  if (attack.addMod !== false && attack.ability) damageParts.push(attack.ability + " " + signed(mod));
+  else if (flat) damageParts.push(flat.replace(/^\+/, "+"));
+  for (const option of options.filter(option => option.damage)) damageParts.push(option.name.replace(/ \(.*\)$/, "") + " " + option.damage);
+  return {
+    hit: "d20 + " + [...parts, ...extraHit.map(option => [option.name, option.hit])].map(([name, value]) => name + " " + signed(value)).join(" + ") + " = " + signed(total),
+    dc: null,
+    damage: damageParts.join(" + ")
+  };
 }

@@ -153,7 +153,8 @@ test("attacks against AC, hit reports, and death saves", async () => {
   assert.equal(attackOutcome({ total: 12, critical: false, fumble: false }, NaN), "unknown");
 
   const line = hitReportText("Bandit 2", 14);
-  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14 });
+  assert.equal(parseHitReport(line).enemy, "Bandit 2");
+  assert.equal(parseHitReport(line).amount, 14);
   assert.equal(parseHitReport("hit Bandit 2 for 14 damage"), null);
   assert.equal(parseHitReport("🎯 hit the wall for lots damage"), null);
 
@@ -164,4 +165,67 @@ test("attacks against AC, hit reports, and death saves", async () => {
   assert.equal(deathSave(saves, 5).outcome, "dead");
   assert.equal(deathSave({ successes: 2, failures: 2 }, 10).outcome, "stable");
   assert.deepEqual(deathSave({ successes: 1, failures: 2 }, 20), { successes: 0, failures: 0, outcome: "revived" });
+});
+
+test("character attacks: options, crits, Brutal Critical, and the report line", async () => {
+  const { critExpression } = await import("../src/dice.js");
+  const { buildAttack, hitReportText, parseHitReport } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  assert.equal(critExpression("1d8+5"), "2d8+5");
+  assert.equal(critExpression("1d12+4+3", 1), "3d12+4+3");
+  assert.equal(critExpression("4d6+4d6"), "8d6+8d6");
+
+  const logan = sheets["Logan Ninefingers"];
+  const [rage, reckless, gwm] = logan.attackOptions;
+  const greataxe = logan.attacks[0];
+  assert.deepEqual(buildAttack(greataxe, [rage]), { save: null, toHit: "d20+8", hitBonus: 8, mode: "normal", damage: "1d12+4+3" });
+  assert.equal(buildAttack(greataxe, [rage, reckless]).mode, "advantage");
+  assert.equal(buildAttack(greataxe, [rage, gwm]).toHit, "d20+3");
+  assert.equal(buildAttack(greataxe, [rage, gwm]).damage, "1d12+4+3+10");
+  assert.equal(buildAttack(greataxe, [rage], { crit: true, extraCritDice: logan.critExtraDice }).damage, "3d12+4+3"); // matches the sheet's 3d12+7
+
+  const fireball = sheets["The White Wizard"].attacks.find(attack => attack.name === "Fireball");
+  const built = buildAttack(fireball, []);
+  assert.equal(built.toHit, null);
+  assert.equal(built.save, "Dex save, DC 17, half on a save");
+
+  for (const sheet of Object.values(sheets)) {
+    for (const attack of sheet.attacks) {
+      assert.ok(attack.hit !== undefined || (attack.save && attack.dc), sheet.title + " " + attack.name);
+      assert.ok(buildAttack(attack, sheet.attackOptions, { crit: true }).damage.match(/^\d+d\d+/), attack.name);
+    }
+  }
+
+  const line = hitReportText("Bandit 2", 14, "with Greataxe, 19 to hit");
+  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14, detail: "with Greataxe, 19 to hit", toHit: 19, crit: false, halfOnSave: false });
+  assert.equal(parseHitReport(hitReportText("Guard 1", 30, "with Fireball, Dex save, DC 17, half on a save")).halfOnSave, true);
+  assert.deepEqual(parseHitReport(hitReportText("Bandit 2", 7)), { enemy: "Bandit 2", amount: 7, detail: "", toHit: null, crit: false, halfOnSave: false });
+});
+
+test("attacks show their ability modifier, and the math adds up", async () => {
+  const { abilityMods, attackBreakdown } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const logan = sheets["Logan Ninefingers"];
+  assert.deepEqual(abilityMods(logan).find(entry => entry.ability === "STR"), { ability: "STR", score: 18, mod: 4, save: 8, proficient: true });
+  assert.equal(abilityMods(sheets["The White Wizard"]).find(entry => entry.ability === "STR").save, -1);
+  const [rage] = logan.attackOptions;
+  const greataxe = attackBreakdown(logan.attacks[0], logan, [rage]);
+  assert.equal(greataxe.hit, "d20 + STR +4 + Prof +4 = +8");
+  assert.equal(greataxe.damage, "1d12 + STR +4 + Raging +3");
+  const arcturus = sheets.Arcturus;
+  assert.equal(attackBreakdown(arcturus.attacks[0], arcturus).hit, "d20 + DEX +5 + Prof +4 + Archery +2 = +11");
+  const wizard = sheets["The White Wizard"];
+  assert.equal(attackBreakdown(wizard.attacks.find(attack => attack.name === "Fireball"), wizard).dc, "DC 17 = 8 + WIS +5 + Prof +4");
+  // Every attack's listed bonus matches ability + proficiency + bonuses, and
+  // weapon damage includes the ability modifier.
+  for (const sheet of Object.values(sheets)) {
+    const prof = Number.parseInt(Object.fromEntries(sheet.combat).Proficiency, 10);
+    for (const attack of sheet.attacks) {
+      const mod = abilityMods(sheet).find(entry => entry.ability === attack.ability)?.mod;
+      assert.ok(Number.isFinite(mod), attack.name + " has an ability");
+      if (attack.save) assert.equal(attack.dc, 8 + mod + prof, attack.name + " DC");
+      else assert.equal(attack.hit, mod + prof + (attack.bonus ?? []).reduce((sum, [, value]) => sum + value, 0), attack.name + " to hit");
+      if (attack.addMod !== false) assert.ok(attack.damage.endsWith("+" + mod), attack.name + " damage includes " + attack.ability);
+    }
+  }
 });
