@@ -19,8 +19,7 @@ The terminal shows `Claude suggestions · on` at startup. Nothing is sent until 
 The app uses the UFC Picked Fight visual system: near-black cards, red primary and gold secondary, Barlow and Barlow Condensed type (SIL OFL, `src/fonts/`), and a fixed bottom tab bar. Inside a table:
 
 - **Scene:** the DM's current scene, *Since then* (players' actions, newest first), earlier updates, and *What is <character> doing?*.
-- **Moves:** quick keyword suggestions and a question for the DM.
-- **Claude:** Ask Claude about the scene or ask a question (hidden when Claude isn't available).
+- **Moves ("What can I do?"):** quick ideas from your sheet first (labeled *From your sheet*), then Ask Claude underneath (labeled *Claude reads the whole story*). When Claude is off, one line says so instead of a missing tab.
 - **Sheet:** roll tiles (tap one to roll it), the full character sheet, D&D basics, and copy-to-AI-chat.
 - **Combat** (only during a fight): initiative order, whose turn it is, and enemies as Healthy, Bloodied, or Down.
 - **DM** (host only): microphone, manual updates, the encounter tracker, actions for each character, character sheet editor, campaign history, and end table.

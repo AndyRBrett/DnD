@@ -92,7 +92,6 @@ let claudeFor = "";
 function resetClaude() {
   const key = $("character").value + ":" + (state?.scenes.at(-1)?.id ?? "");
   $("claude").hidden = !state?.ai || ended;
-  $("tab-claude").hidden = $("claude").hidden;
   $("claude-off").hidden = !$("claude").hidden;
   if (key === claudeFor) return;
   claudeFor = "";
@@ -124,6 +123,7 @@ async function askClaude(question = "") {
     $("claude-answer").hidden = false;
     $("claude-status").textContent = "";
     if (question) $("question-text").value = "";
+    if (currentTab === "moves") $("claude-answer").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     $("claude-status").textContent = error.message || "Claude could not answer. Try again.";
   } finally {
@@ -351,7 +351,8 @@ function drawChips() {
 const TAB_KEY = "dnd-tab";
 let currentTab = "scene";
 function showTab(name) {
-  if ($("tab-" + name)?.hidden) name = "scene";
+  if (name === "claude") name = "moves"; // Claude now lives on the Moves tab
+  if (!$("tab-" + name) || $("tab-" + name).hidden) name = "scene";
   if (state && (name === "sheet" || name === "combat")) queueMicrotask(drawHp);
   currentTab = name;
   for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
