@@ -76,6 +76,32 @@
     </section>
 
     <!-- ── Table ── -->
+    <!-- TV board (?room=…&board=1): read-only, big text, for a screen the whole table can see -->
+    <section id="board" class="board" hidden>
+      <div class="board-left">
+      <div class="board-main">
+        <p class="eyebrow red">THE ONYX JEWEL · CURRENT SCENE</p>
+        <p id="board-scene" class="board-scene" aria-live="polite">Waiting for the DM.</p>
+        <div id="board-actions-wrap" hidden>
+          <p class="eyebrow">SINCE THEN</p>
+          <ul id="board-actions" class="board-actions"></ul>
+        </div>
+      </div>
+      <div class="board-panel">
+        <p class="eyebrow">THE PARTY</p>
+        <ul id="board-party" class="board-party"></ul>
+      </div>
+      </div>
+      <div class="board-side">
+        <div id="board-combat" class="board-panel" hidden>
+          <p class="eyebrow red">COMBAT · ROUND <span id="board-round">1</span></p>
+          <h2 id="board-turn" class="display"></h2>
+          <p id="board-next" class="board-next"></p>
+          <ol id="board-order" class="board-order"></ol>
+        </div>
+      </div>
+    </section>
+
     <div id="table" hidden>
       <div class="table-head">
         <p class="eyebrow red">CAMPAIGN SESSION<span id="table-code"></span></p>
@@ -257,6 +283,7 @@
         <section id="host" class="card capture" hidden aria-labelledby="host-title">
           <p class="eyebrow red">HOST CONTROLS</p>
           <h2 id="host-title" class="display sm">DM microphone</h2>
+          <a id="board-link" class="board-link" target="_blank" rel="noopener">📺 Open the TV board</a>
           <button id="mic" class="cta" type="button">Start listening</button>
           <p id="mic-status" role="status">Set the phone or mic close to the DM. Keep this page open and in front while listening; the screen stays on.</p>
           <details id="manual-controls" class="fold">
