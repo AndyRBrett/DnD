@@ -58,6 +58,7 @@ function localBackend() {
     adjustHp: (code, character, change) => post(code, "hp-adjust", { character, change }, false),
     combatSet: (code, combat) => post(code, "combat", combat),
     combatEnd: code => post(code, "combat", { end: true }),
+    combatPassTurn: (code, character) => post(code, "pass-turn", { character }, false),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
   };
 }
@@ -162,6 +163,7 @@ function hostedBackend({ url, anonKey }) {
     editAction: (code, id, text) => rpc("dnd_edit_action", { p_code: code, p_id: id, p_text: text }),
     deleteAction: (code, id) => rpc("dnd_delete_action", { p_code: code, p_id: id }),
     combatInitiative: (code, character, value) => rpc("dnd_combat_initiative", { p_code: code, p_character: character, p_value: value }),
+    combatPassTurn: (code, character) => rpc("dnd_combat_pass_turn", { p_code: code, p_character: character }),
     postAction: (code, character, text) => rpc("dnd_post_action", { p_code: code, p_character: character, p_text: text }),
     myRooms: () => rpc("dnd_my_rooms"),
     postScene: (code, text, id) => rpc("dnd_post_scene", { p_code: code, p_text: text, p_id: id ?? null }),

@@ -123,6 +123,30 @@ const endpoints = {
       .bind(code, round, turn, JSON.stringify(enemies), partyInit).run();
     return json({ ok: true });
   },
+  // The player whose turn it is passes it on (same order as the app's
+  // combatOrder: highest initiative first, party first on ties, unrolled
+  // last, downed enemies skipped; past the last one starts a new round).
+  async passTurn(request, db, room, code) {
+    const body = await request.json();
+    const index = Number(body.character);
+    const row = await db.prepare("SELECT round, turn, enemies, party_init FROM combats WHERE code = ?").bind(code).first();
+    if (!row) return json({ error: "Combat has not started." }, 400);
+    if (row.turn !== "pc:" + index) return json({ error: "It isn't your turn anymore." }, 400);
+    const party = JSON.parse(room.party);
+    const rolls = JSON.parse(row.party_init);
+    const rank = value => Number.isFinite(value) ? value : -1000;
+    const entries = [
+      ...party.map((_, i) => ({ key: "pc:" + i, rank: rank(rolls[i]), kind: 0, ord: i })),
+      ...JSON.parse(row.enemies).filter(enemy => enemy.status !== "down")
+        .map((enemy, j) => ({ key: "en:" + enemy.id, rank: rank(enemy.initiative), kind: 1, ord: 1000 + j }))
+    ].sort((a, b) => b.rank - a.rank || a.kind - b.kind || a.ord - b.ord);
+    const at = entries.findIndex(entry => entry.key === row.turn);
+    const wraps = at < 0 || at >= entries.length - 1;
+    const turn = wraps ? entries[0].key : entries[at + 1].key;
+    const round = Math.min(999, row.round + (at >= 0 && wraps ? 1 : 0));
+    await db.prepare("UPDATE combats SET turn = ?, round = ? WHERE code = ?").bind(turn, round, code).run();
+    return json({ turn, round });
+  },
   async initiative(request, db, room, code) {
     const body = await request.json();
     const index = Number(body.character);
@@ -233,7 +257,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
@@ -241,6 +265,7 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
       if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
+      if (operation === "pass-turn" && request.method === "POST") return await endpoints.passTurn(request, env.DB, room, code);
       if (operation === "resources" && request.method === "POST") return await endpoints.resources(request, env.DB, room);
       if ((operation === "hp" || operation === "hp-adjust") && request.method === "POST") return await endpoints.hp(request, env.DB, room, operation === "hp-adjust");
       if (operation === "initiative" && request.method === "POST") return await endpoints.initiative(request, env.DB, room, code);
