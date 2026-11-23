@@ -399,7 +399,7 @@ function drawRoster() {
 }
 
 async function sync() {
-  if (!room || syncing || ended || $("table").hidden) return;
+  if (!room || syncing || ended || ($("table").hidden && !boardMode)) return;
   syncing = true;
   try {
     const fresh = await backend.room(room);
@@ -409,6 +409,7 @@ async function sync() {
       || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
     const previous = state;
     state = fresh;
+    if (boardMode) queueMicrotask(drawBoard);
     if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
     if (previous && JSON.stringify(previous.resources) !== JSON.stringify(fresh.resources) && !rosterChanged && !scenesChanged) showOptions();
@@ -449,6 +450,7 @@ async function sync() {
       $("copy").hidden = true;
       $("edit").hidden = true;
       $("connection").textContent = "ENDED";
+      drawBoard();
     } else if (error.status === 401) {
       clearInterval(poll);
       poll = undefined;
@@ -2786,6 +2788,7 @@ function setHost(value) {
   $("history-editor").hidden = !isHost || !backend.saveHistory;
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;
+  $("board-link").href = "?room=" + room + "&board=1";
   if (isHost) drawEncounter();
   drawCombat();
   if (!isHost && currentTab === "dm") showTab("scene");
@@ -2867,17 +2870,90 @@ for (const id of ["character-library", "rules-basics"]) {
   $(id).addEventListener("toggle", () => storage.set("dnd-open:" + id, $(id).open ? "1" : "0"));
 }
 
+// ── TV board: ?room=…&board=1 shows a read-only, big-text view of the table
+// (scene, combat order, party HP) for a screen everyone can see. Enemies show
+// only as Healthy, Bloodied, or Down, even when the DM's account opens it. ──
+const boardMode = new URLSearchParams(location.search).get("board") === "1";
+function drawBoard() {
+  if (!boardMode || !state) return;
+  $("board-scene").textContent = ended ? "Session ended." : state.scenes.at(-1)?.text || "Waiting for the DM.";
+  const latest = state.scenes.at(-1);
+  const recent = (state.actions ?? []).filter(action => !latest || action.created >= latest.created)
+    .filter(action => !/^⏭️|^🎯/u.test(action.text)).slice(-6).reverse();
+  $("board-actions-wrap").hidden = !recent.length;
+  $("board-actions").replaceChildren(...recent.map(action => {
+    const item = document.createElement("li");
+    const who = document.createElement("strong");
+    who.textContent = action.name.replace(/^The /, "") + " ";
+    item.append(who, action.text);
+    return item;
+  }));
+
+  const combat = state.combat;
+  $("board-combat").hidden = !combat;
+  if (combat) {
+    const order = combatOrder(combat, state.party);
+    const current = order.find(entry => entry.key === combat.turn);
+    const next = order.find(entry => entry.key === upNext(order, combat.turn));
+    $("board-round").textContent = String(combat.round);
+    $("board-turn").textContent = current ? current.name.replace(/^The /, "") + (current.kind === "enemy" ? " acts" : "'s turn") : "Roll initiative";
+    $("board-next").textContent = current && next ? "Up next: " + next.name.replace(/^The /, "") : "";
+    $("board-order").replaceChildren(...order.map(entry => {
+      const item = document.createElement("li");
+      item.className = "is-" + entry.kind + (entry.key === combat.turn ? " is-turn" : "") + (entry.status === "down" ? " is-down" : "");
+      const score = document.createElement("b");
+      score.textContent = entry.initiative ?? "–";
+      const name = document.createElement("span");
+      name.textContent = entry.name.replace(/^The /, "");
+      const note = document.createElement("em");
+      if (entry.kind === "enemy") note.textContent = (STATUS_TEXT[entry.status] ?? "") + (entry.conditions.length ? " · " + entry.conditions.join(", ") : "");
+      else {
+        const record = state.hp?.[entry.name];
+        note.textContent = record ? (record.hp <= 0 ? "Down" : "HP " + record.hp + "/" + record.max) : "";
+      }
+      item.append(score, name, note);
+      return item;
+    }));
+  }
+
+  $("board-party").replaceChildren(...state.party.map((member, index) => {
+    const item = document.createElement("li");
+    const record = state.hp?.[member.name];
+    const health = partyHpStatus(record);
+    item.className = "is-" + health;
+    const name = document.createElement("strong");
+    name.textContent = member.name.replace(/^The /, "");
+    const numbers = document.createElement("span");
+    const ac = partyAc(index);
+    numbers.textContent = (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP not set") + (ac ? " · AC " + ac : "");
+    const bar = document.createElement("div");
+    bar.className = "hp-bar";
+    const fill = document.createElement("i");
+    fill.style.width = record ? Math.round(record.hp / record.max * 100) + "%" : "0%";
+    bar.append(fill);
+    const raging = state.resources?.[member.name]?.raging;
+    if (raging) numbers.textContent += " · 😤 Raging";
+    item.append(name, numbers, bar);
+    return item;
+  }));
+}
+
 function enterRoom() {
   $("tabbar").hidden = false;
   $("copy").hidden = false;
   $("dice-fab").hidden = false;
-  $("help").hidden = false;
-  setTimeout(maybeWelcome, 600);
+  $("help").hidden = boardMode;
+  if (!boardMode) setTimeout(maybeWelcome, 600);
   document.body.classList.add("in-table");
   showTab(storage.get(TAB_KEY) ?? "scene");
   $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + (isPractice() ? " · PRACTICE" : "");
   $("lobby").hidden = true;
-  $("table").hidden = false;
+  $("table").hidden = boardMode;
+  $("board").hidden = !boardMode;
+  if (boardMode) {
+    document.body.classList.add("board-mode");
+    for (const id of ["tabbar", "dice-fab", "copy", "help"]) $(id).hidden = true;
+  }
   setHost(false);
   sync();
   poll ??= setInterval(sync, 1500);
