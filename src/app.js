@@ -3291,8 +3291,11 @@ const shortTime = ms => new Date(ms).toLocaleString([], { weekday: "short", hour
 // A DM deletes tables they started (a finished test, a practice run) without
 // opening each one; a real table can save its session to the history first,
 // as ending it from inside does.
+// practice: true, false, or null when unknown (the hosted list before
+// migration 0014): unknown never offers the history save, so a test table's
+// updates can't land in the campaign.
 async function deleteTable(code, practice) {
-  if (practice) {
+  if (practice !== false) {
     await backend.closeRoom(code);
   } else {
     const save = Boolean(backend.endTable)
@@ -3303,7 +3306,10 @@ async function deleteTable(code, practice) {
   storage.remove("practice:" + code);
   storage.set(RECENT_KEY, JSON.stringify(recentTables().filter(entry => entry.code !== code)));
 }
-function drawMyRooms(rooms) {
+function drawMyRooms(found) {
+  // Practice status from the server, else this phone's marker, else unknown.
+  const rooms = found.map(entry => ({ ...entry,
+    practice: typeof entry.practice === "boolean" ? entry.practice : storage.get("practice:" + entry.code) === "1" ? true : null }));
   $("my-rooms").hidden = !rooms.length;
   // Your own tables are listed here, not again under "Tables you joined".
   const mine = new Set(rooms.map(entry => entry.code));
@@ -3321,7 +3327,8 @@ function drawMyRooms(rooms) {
         label: "Delete " + tableLabel(code),
         onclick: async button => {
           if (!window.confirm(practice ? "Delete this practice table? Nothing from it is saved."
-            : "Delete " + tableLabel(code) + " for everyone? Its updates and player entries are removed.")) return;
+            : "Delete " + tableLabel(code) + " for everyone? Its updates and player entries are removed"
+              + (practice === null ? " without saving them to the campaign history (to save them, open the table and end it there)." : "."))) return;
           button.disabled = true;
           try {
             await deleteTable(code, practice);
@@ -3334,7 +3341,7 @@ function drawMyRooms(rooms) {
         }
       }
     })));
-  const practiceRooms = rooms.filter(entry => entry.practice);
+  const practiceRooms = rooms.filter(entry => entry.practice === true);
   $("delete-practice").hidden = practiceRooms.length < 2;
   $("delete-practice").textContent = "Delete all " + practiceRooms.length + " practice tables";
   $("delete-practice").onclick = async () => {
