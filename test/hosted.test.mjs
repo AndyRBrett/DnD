@@ -81,3 +81,21 @@ test("every tab panel and tab button pair up", async () => {
   const tabs = [...html.matchAll(/data-tab="(\w+)"/g)].map(match => match[1]);
   assert.deepEqual(panels.sort(), tabs.sort());
 });
+
+test("the site can be added to the home screen: manifest, icons, service worker", async () => {
+  execFileSync(process.execPath, ["scripts/build-site.mjs"], { cwd: new URL("..", import.meta.url) });
+  const site = name => readFile(new URL("../site/" + name, import.meta.url), "utf8");
+  const manifest = JSON.parse(await site("manifest.json"));
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.start_url, "./");
+  const icons = new Set(await readdir(new URL("../site/icons", import.meta.url)));
+  for (const icon of manifest.icons) assert.ok(icons.has(icon.src.replace("icons/", "")), icon.src);
+  assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
+  const html = await site("index.html");
+  assert.match(html, /rel="manifest" href="manifest.json"/);
+  for (const [, file] of html.matchAll(/href="icons\/([\w-]+\.png)"/g)) assert.ok(icons.has(file), file);
+  const sw = await site("sw.js");
+  const version = (await site("version.txt")).trim();
+  assert.ok(sw.includes('const VERSION = "' + version + '"'), "sw.js is stamped with the release");
+  assert.match(sw, /\/api\//, "the live table is never cached");
+});

@@ -20,6 +20,11 @@ await rm("site", { recursive: true, force: true });
 await mkdir("site", { recursive: true });
 await Promise.all(files.map(async name => writeFile("site/" + name, stamp(await readFile("src/" + name, "utf8")))));
 await cp("src/fonts", "site/fonts", { recursive: true });
+await cp("src/icons", "site/icons", { recursive: true });
+await writeFile("site/manifest.json", await readFile("src/manifest.json", "utf8"));
+// The service worker's cache is named after the release, so each deploy
+// replaces the saved copy.
+await writeFile("site/sw.js", (await readFile("src/sw.js", "utf8")).replace('const VERSION = "local";', "const VERSION = " + JSON.stringify(version) + ";"));
 await writeFile("site/.nojekyll", "");
 await writeFile("site/version.txt", version + "\n");
 console.log("Built site/ (" + files.length + " files, version " + version + ")");

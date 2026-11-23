@@ -24,6 +24,9 @@ test("serves the app shell and assets", async () => {
   assert.equal(font.status, 200);
   assert.equal(font.headers.get("content-type"), "font/woff2");
   assert.equal(new TextDecoder().decode((await font.arrayBuffer()).slice(0, 4)), "wOF2");
+  const icon = await worker.fetch(new Request("http://local/icons/icon-192.png"), env);
+  assert.equal(icon.headers.get("content-type"), "image/png");
+  for (const name of ["manifest.json", "sw.js"]) assert.equal((await worker.fetch(new Request("http://local/" + name), env)).status, 200, name);
 });
 
 test("room lifecycle: create, read, publish, correct, edit party, close", async () => {

@@ -16,7 +16,7 @@ function importHistory(currentParty) {
   });
 }
 const roomAge = 8 * 60 * 60 * 1000;
-const types = {"index.html":"text/html", "app.js":"text/javascript", "scene-options.js":"text/javascript", "backend.js":"text/javascript", "campaign.js":"text/javascript", "rules.js":"text/javascript", "dice.js":"text/javascript", "dice3d.js":"text/javascript", "theme.js":"text/javascript", "encounter.js":"text/javascript", "config.js":"text/javascript", "style.css":"text/css"};
+const types = {"index.html":"text/html", "app.js":"text/javascript", "scene-options.js":"text/javascript", "backend.js":"text/javascript", "campaign.js":"text/javascript", "rules.js":"text/javascript", "dice.js":"text/javascript", "dice3d.js":"text/javascript", "theme.js":"text/javascript", "encounter.js":"text/javascript", "config.js":"text/javascript", "style.css":"text/css", "manifest.json":"application/manifest+json", "sw.js":"text/javascript"};
 
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -266,7 +266,7 @@ export default {
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
       if (Object.hasOwn(fonts, name)) {
         return new Response(Uint8Array.from(atob(fonts[name]), char => char.charCodeAt(0)), { headers: {
-          "Content-Type": "font/woff2",
+          "Content-Type": name.endsWith(".png") ? "image/png" : "font/woff2",
           "Cache-Control": "public, max-age=604800",
           "X-Content-Type-Options": "nosniff"
         } });
