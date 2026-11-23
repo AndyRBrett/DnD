@@ -40,6 +40,7 @@ export const adviceSystem = [
   "big_picture is one or two short sentences on what the DM seems to be building toward right now. Present theories as possibilities (\"maybe\", \"seems\"), never as facts the DM has not revealed, and do not spoil or decide secrets.",
   "The player reads your answer on a phone mid-game, so be brief and concrete. For each option: action is a short title (one sentence); why is one short sentence on why it fits the story; explain says how the move works in plain words for someone new to D&D (whether it uses the action, bonus action, reaction, or movement; range or area; who rolls what, such as an attack roll or the target's saving throw; and any cost, uses, or concentration), in one or two sentences, from the sheet line and standard 5th edition rules, adding \"check with the DM\" where the table's version may differ; declare is how the player would announce it at the table, one sentence in third person present tense starting with the character's name (for example \"The White Wizard casts Bless on Logan, Dum Dum, and Arcturus.\"), with no outcome.",
   "If the player asks a question, answer it directly in answer: two to four plain sentences that use the story, the sheet, and standard 5th edition rules, saying where the DM's ruling decides it. Then make the three options fit the question. If there is no question, answer is an empty string.",
+  "Never recommend anything listed under SPENT: the character has no uses or spell slots left for it until a rest.",
   "Only recommend abilities listed under READY on the character's sheet, or ordinary actions any adventurer could attempt (move, hide, help, talk, search, shove). Never recommend anything listed under UNCONFIRMED; if one looks relevant, put it in ask_dm as something to confirm with the DM.",
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM, ideally one that would clarify the bigger picture or the immediate options.",
@@ -48,14 +49,24 @@ export const adviceSystem = [
   "The campaign history is the group's own notes and may mention stats or abilities; those never count as available unless the character's sheet lists them as READY."
 ].join("\n");
 
+// character.spent (optional): "Fireball: no 3rd-level or higher spell slot
+// left" lines from the player's phone. Those abilities leave READY and are
+// listed as spent until a rest.
 export function sheetText(character) {
   const lines = String(character.moves ?? "").split("\n").map(line => line.trim()).filter(Boolean);
   const body = line => line.includes("|") ? line.slice(line.indexOf("|") + 1).trim() : line;
-  const ready = lines.filter(line => !/^check\s*\|/i.test(line)).map(line => "- " + body(line));
+  const spent = (Array.isArray(character.spent) ? character.spent : []).map(String);
+  const spentNames = spent.map(item => item.split(":")[0].trim().toLowerCase()).filter(Boolean);
+  const isSpent = line => {
+    const names = body(line).split(" — ")[0].split(/,\s*/).map(name => name.trim().toLowerCase());
+    return names.length > 0 && names.every(name => spentNames.includes(name));
+  };
+  const ready = lines.filter(line => !/^check\s*\|/i.test(line) && !isSpent(line)).map(line => "- " + body(line));
   const check = lines.filter(line => /^check\s*\|/i.test(line)).map(line => "- " + body(line));
   return [
     "Character: " + character.name + (character.role ? " (" + character.role + ")" : ""),
     "READY abilities:\n" + (ready.join("\n") || "- none recorded"),
+    ...(spent.length ? ["SPENT right now, out of uses until a rest (do not recommend):\n" + spent.map(item => "- " + item).join("\n")] : []),
     "UNCONFIRMED abilities (do not recommend):\n" + (check.join("\n") || "- none")
   ].join("\n\n");
 }

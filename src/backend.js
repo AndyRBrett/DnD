@@ -51,7 +51,8 @@ function localBackend() {
       await post(code, "close", {});
       storage.remove("host:" + code);
     },
-    advise: (code, character, question = "") => post(code, "advise", { character, question }, false),
+    advise: (code, character, question = "", spent = []) => post(code, "advise", { character, question, spent }, false),
+    setResources: (code, character, state) => post(code, "resources", { character, state }, false),
     deleteScene: (code, id) => post(code, "scene", { id, delete: true }),
     setHp: (code, character, { hp, max, temp, ac }) => post(code, "hp", { character, hp, max, temp, ac }, false),
     adjustHp: (code, character, change) => post(code, "hp-adjust", { character, change }, false),
@@ -68,7 +69,7 @@ function hostedBackend({ url, anonKey }) {
   let session = null;
   try { session = JSON.parse(storage.get(SESSION_KEY) ?? "null"); } catch {}
   let refreshing;
-  let roomVersion = 4;
+  let roomVersion = 5;
 
   function save(raw) {
     session = raw ? {
@@ -136,7 +137,7 @@ function hostedBackend({ url, anonKey }) {
     createRoom: (party, recap) => rpc("dnd_create_room", { p_party: party, p_recap: recap }),
     // dnd_room_v3 adds combat (supabase/migrations/0004). Until that migration
     // runs, fall back to dnd_room_v2 and combat stays unavailable.
-    // Newest room function first: v4 adds party HP (migration 0006), v3 adds
+    // Newest room function first: v5 adds party resources (0007), v4 party HP (0006), v3
     // combat (0004). Until a migration runs, fall back to the one before.
     async room(code) {
       while (roomVersion > 2) {
@@ -152,6 +153,7 @@ function hostedBackend({ url, anonKey }) {
     },
     setHp: (code, character, { hp, max, temp, ac }) => rpc("dnd_hp_set", { p_code: code, p_character: character, p_hp: hp, p_max: max, p_temp: temp ?? 0, p_ac: ac ?? null }),
     adjustHp: (code, character, change) => rpc("dnd_hp_adjust", { p_code: code, p_character: character, p_change: change }),
+    setResources: (code, character, state) => rpc("dnd_resources_set", { p_code: code, p_character: character, p_state: state }),
     combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
     combatEnd: code => rpc("dnd_combat_end", { p_code: code }),
     deleteScene: (code, id) => rpc("dnd_delete_scene", { p_code: code, p_id: id }),
@@ -166,11 +168,11 @@ function hostedBackend({ url, anonKey }) {
     endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
-    async advise(code, character, question = "") {
+    async advise(code, character, question = "", spent = []) {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
         headers: { apikey: anonKey, Authorization: "Bearer " + await token(), "content-type": "application/json" },
-        body: JSON.stringify({ code, character, question })
+        body: JSON.stringify({ code, character, question, spent })
       });
       const data = await readJson(response);
       if (!response.ok) throw failure(data?.error ?? data?.message, response.status);

@@ -32,7 +32,7 @@ Deno.serve(async req => {
   if (req.method !== "POST") return reply({ error: "Method unavailable." }, 405);
   if (!ANTHROPIC_API_KEY) return reply({ error: "Claude suggestions are off on this server." }, 503);
 
-  let input: { code?: unknown; character?: unknown; question?: unknown };
+  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown };
   try {
     input = await req.json();
   } catch {
@@ -42,7 +42,10 @@ Deno.serve(async req => {
   const character = Number(input.character);
   if (!code || !Number.isInteger(character) || character < 0 || character > 4) return reply({ error: "Invalid request." }, 400);
   const question = typeof input.question === "string" ? input.question.trim().slice(0, 300) : "";
-  if (question) return await answerQuestion(req, reply, code, character, question);
+  // Abilities the player's phone says are out of uses ("Fireball: no 3rd-level
+  // or higher spell slot left"). Advice that depends on them skips the cache.
+  const spent = Array.isArray(input.spent) ? input.spent.slice(0, 40).map(item => String(item).slice(0, 120)) : [];
+  if (question || spent.length) return await answerQuestion(req, reply, code, character, question, spent);
 
   const begin = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_advise_begin_v2", {
     method: "POST",
@@ -81,8 +84,9 @@ Deno.serve(async req => {
   }
 });
 
-// ── Questions ("Can I cast Silence with one arm held?") ──
-// Not cached (every question is different). The player's own token reads the
+// ── Questions ("Can I cast Silence with one arm held?"), and advice when
+// something is spent ──
+// Not cached (every question is different, and spent abilities change). The player's own token reads the
 // room through dnd_room_v2, which checks they are signed in and the table is
 // live; the same limits as dnd_advise_begin are then applied with the service
 // role, which also reads the history and the full session.
@@ -106,7 +110,7 @@ function tokenSubject(req: Request): string {
   }
 }
 
-async function answerQuestion(req: Request, reply: (body: unknown, status?: number) => Response, code: string, character: number, question: string) {
+async function answerQuestion(req: Request, reply: (body: unknown, status?: number) => Response, code: string, character: number, question: string, spent: string[] = []) {
   const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
     method: "POST",
     headers: { apikey: ANON_KEY, Authorization: req.headers.get("Authorization") ?? "", "Content-Type": "application/json" },
@@ -114,7 +118,7 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
   });
   const room = await roomResponse.json().catch(() => ({}));
   if (!roomResponse.ok) return reply({ error: room.message ?? "Could not reach the room." }, roomResponse.status);
-  const sheet = room.party?.[character];
+  const sheet = room.party?.[character] ? { ...room.party[character], spent } : null;
   const uid = tokenSubject(req);
   if (!sheet || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Pick a character." }, 400);
 
@@ -142,7 +146,7 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
       ...claudeRequest(ANTHROPIC_API_KEY, sheet, scenes.length ? scenes : room.scenes, historyRows[0]?.history ?? "", room.actions ?? [], question),
       signal: AbortSignal.timeout(60000)
     }));
-    return reply({ ...advice, sceneId: room.scenes?.at(-1)?.id ?? null, asked: question });
+    return reply({ ...advice, sceneId: room.scenes?.at(-1)?.id ?? null, ...(question ? { asked: question } : {}) });
   } catch (error) {
     if (!(error instanceof AdviceError)) console.error(error);
     return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
