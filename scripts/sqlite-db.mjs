@@ -13,6 +13,9 @@ export function openDatabase(file = ":memory:") {
   sql.exec(readFileSync(new URL("../drizzle/0002_party_hp.sql", import.meta.url), "utf8"));
   sql.exec(readFileSync(new URL("../drizzle/0003_party_resources.sql", import.meta.url), "utf8"));
   if (!sql.prepare("SELECT 1 FROM pragma_table_info('party_hp') WHERE name = 'ac'").get()) sql.exec("ALTER TABLE party_hp ADD COLUMN ac INTEGER");
+  if (!sql.prepare("SELECT 1 FROM pragma_table_info('rooms') WHERE name = 'last_active'").get()) {
+    sql.exec(readFileSync(new URL("../drizzle/0004_room_activity.sql", import.meta.url), "utf8").replace(/--> statement-breakpoint/g, ""));
+  }
 
   function wrap(statement, bindings = []) {
     return {

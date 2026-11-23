@@ -403,7 +403,10 @@ async function sync() {
   syncing = true;
   try {
     const fresh = await backend.room(room);
-    const hostChanged = fresh.isHost !== isHost;
+    // The TV board only shows the table: even signed in as the DM it never
+    // acts as host (no encounter publishing, no automatic turn advancing).
+    const asHost = Boolean(fresh.isHost) && !boardMode;
+    const hostChanged = asHost !== isHost;
     const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
     const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes)
       || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
@@ -413,7 +416,7 @@ async function sync() {
     if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
     if (previous && JSON.stringify(previous.resources) !== JSON.stringify(fresh.resources) && !rosterChanged && !scenesChanged) showOptions();
-    if (hostChanged) setHost(fresh.isHost);
+    if (hostChanged) setHost(asHost);
     if (!previous) rememberTable(room);
     if (rosterChanged || hostChanged) drawRoster();
     if (scenesChanged) {
@@ -1696,8 +1699,11 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   const [hpLabel, hpInput] = field("Current", record?.hp ?? fallbackMax);
   const [maxLabel, maxInput] = field("Max", fallbackMax);
   const [tempLabel, tempInput] = field("Temp", record?.temp ?? 0);
-  const sheetAc = combatStats(sheets[partyName(index)]).find(stat => stat.label === "AC")?.value;
-  const [acLabel, acInput] = field("AC", record?.ac ?? sheetAc ?? "");
+  // An unconfirmed sheet AC ("20 or 16?") stays blank, so saving HP never
+  // confirms it by accident; the DM types the real number to confirm it.
+  const sheetAc = combatStats(sheets[partyName(index)]).find(stat => stat.label === "AC");
+  const [acLabel, acInput] = field("AC", record?.ac ?? (sheetAc && !sheetAc.unconfirmed ? sheetAc.value : ""));
+  if (!record?.ac && sheetAc?.unconfirmed) acInput.placeholder = sheetAc.value + "?";
   const save = document.createElement("button");
   save.type = "submit";
   save.className = "ghost";
@@ -3149,6 +3155,8 @@ $("join-form").onsubmit = event => {
 async function showLobby(message = "") {
   $("lobby").hidden = false;
   $("table").hidden = true;
+  $("board").hidden = true;
+  document.body.classList.remove("board-mode");
   $("lobby-status").textContent = message;
   const user = backend.user();
   $("signin").hidden = !backend.hosted || Boolean(user);
