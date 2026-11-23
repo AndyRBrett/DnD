@@ -164,6 +164,18 @@ function hostedBackend({ url, anonKey }) {
     deleteAction: (code, id) => rpc("dnd_delete_action", { p_code: code, p_id: id }),
     combatInitiative: (code, character, value) => rpc("dnd_combat_initiative", { p_code: code, p_character: character, p_value: value }),
     combatPassTurn: (code, character) => rpc("dnd_combat_pass_turn", { p_code: code, p_character: character }),
+    // Who can start tables (migration 0010). Before it runs, everyone can.
+    async canStartTables() {
+      try {
+        return await rpc("dnd_is_host");
+      } catch (error) {
+        if (error.status === 404 || /could not find the function/i.test(error.message)) return true;
+        throw error;
+      }
+    },
+    hostList: () => rpc("dnd_host_list"),
+    addHost: email => rpc("dnd_add_host", { p_email: email }),
+    removeHost: email => rpc("dnd_remove_host", { p_email: email }),
     postAction: (code, character, text) => rpc("dnd_post_action", { p_code: code, p_character: character, p_text: text }),
     myRooms: () => rpc("dnd_my_rooms"),
     postScene: (code, text, id) => rpc("dnd_post_scene", { p_code: code, p_text: text, p_id: id ?? null }),

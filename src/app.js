@@ -2867,6 +2867,48 @@ function drawEncounter() {
   drawCombat();
 }
 
+// ── DMs who can start tables (hosted, migration 0010) ──
+async function drawDmList() {
+  if (!isHost || !backend.hostList) { $("dm-list").hidden = true; return; }
+  try {
+    const hosts = await backend.hostList();
+    $("dm-list").hidden = false;
+    $("dm-emails").replaceChildren(...hosts.map(({ email, you }) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = email + (you ? " (you)" : "");
+      item.append(name);
+      if (!you && hosts.length > 1) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "quiet";
+        remove.textContent = "Remove";
+        remove.onclick = async () => {
+          if (!window.confirm("Stop " + email + " from starting tables?")) return;
+          try { await backend.removeHost(email); drawDmList(); } catch (error) { $("dm-status").textContent = error.message; }
+        };
+        item.append(remove);
+      }
+      return item;
+    }));
+  } catch {
+    $("dm-list").hidden = true; // not run yet (0010) or not a listed DM
+  }
+}
+$("dm-add").onsubmit = async event => {
+  event.preventDefault();
+  const email = $("dm-add-email").value.trim();
+  if (!email) return;
+  try {
+    await backend.addHost(email);
+    $("dm-add-email").value = "";
+    $("dm-status").textContent = email + " can now start tables.";
+    drawDmList();
+  } catch (error) {
+    $("dm-status").textContent = error.message;
+  }
+};
+
 function setHost(value) {
   isHost = value;
   $("table").classList.toggle("player-room", !isHost);
@@ -2876,6 +2918,7 @@ function setHost(value) {
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;
   $("board-link").href = "?room=" + room + "&board=1";
+  drawDmList();
   if (isHost) drawEncounter();
   drawCombat();
   if (!isHost && currentTab === "dm") showTab("scene");
@@ -3091,6 +3134,12 @@ async function showLobby(message = "") {
   try {
     const rooms = await backend.myRooms();
     myRoomCount = rooms.length;
+    if (backend.canStartTables) {
+      const canStart = await backend.canStartTables().catch(() => true);
+      for (const id of ["create", "create-practice"]) $(id).hidden = !canStart;
+      $("not-dm").hidden = canStart;
+      $("dm-card").querySelector(".fineprint:not(#not-dm)").hidden = !canStart;
+    }
     $("my-rooms").hidden = !rooms.length;
     $("my-room-list").replaceChildren(...rooms.map(({ code, created }) =>
       tableLink(code, tableLabel(code) + " · started " + new Date(created).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))));
