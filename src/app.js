@@ -1336,6 +1336,14 @@ function combatChanged(previous) {
 }
 async function publishCombat(changes = {}) {
   clearTimeout(combatTimer);
+  if (!("turn" in changes) && state?.combat) {
+    // Only the enemies changed: re-read the turn first, so a turn a player
+    // just passed isn't put back.
+    try {
+      const fresh = await backend.room(room);
+      if (fresh.combat) state.combat = { ...state.combat, turn: fresh.combat.turn, round: fresh.combat.round, party: fresh.combat.party };
+    } catch {}
+  }
   const current = state?.combat ?? { round: 1, turn: null };
   const payload = {
     round: changes.round ?? current.round,
@@ -2380,17 +2388,45 @@ $("combat-init").onsubmit = event => {
 // A player ends their own turn with a story line; the DM's phone (which
 // runs the turn order) sees it and moves to the next turn.
 const END_TURN = "⏭️ ends their turn";
+// Passing the turn goes through the database (migration 0009, or the local
+// server), so it works even when the DM's phone is asleep. Until 0009 runs,
+// it falls back to asking the DM's phone with a story line.
+let passTurnFallback = false;
+let passTurnTimer;
 $("combat-end-turn").onclick = async () => {
   const button = $("combat-end-turn");
+  const me = Number($("character").value);
   button.disabled = true;
   button.textContent = "Passing the turn…";
+  $("combat-status").textContent = "";
+  clearTimeout(passTurnTimer);
   try {
-    await backend.postAction(room, Number($("character").value), END_TURN);
+    if (backend.combatPassTurn && !passTurnFallback) {
+      try {
+        const next = await backend.combatPassTurn(room, me);
+        state.combat = { ...state.combat, turn: next.turn, round: next.round };
+        drawCombat();
+        sync();
+        return;
+      } catch (error) {
+        if (!(error.status === 404 || /could not find the function/i.test(error.message))) throw error;
+        passTurnFallback = true;
+      }
+    }
+    await backend.postAction(room, me, END_TURN);
     sync();
+    // If the DM's phone doesn't pick it up, say so instead of spinning forever.
+    passTurnTimer = setTimeout(() => {
+      if (state?.combat?.turn !== "pc:" + me) return;
+      button.disabled = false;
+      button.textContent = "End my turn ▶";
+      $("combat-status").textContent = "The DM's phone hasn't moved the turn on. It needs the app open, or the DM can tap Next turn.";
+    }, 8000);
   } catch (error) {
     button.disabled = false;
     button.textContent = "End my turn ▶";
     $("combat-status").textContent = error.message;
+    sync();
   }
 };
 let advancing = false;

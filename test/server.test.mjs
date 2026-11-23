@@ -116,3 +116,19 @@ test("party resources are shared through the room", async () => {
   assert.equal((await post(room + "/resources", { character: 2, state: [] })).status, 400);
   assert.equal((await post(room + "/resources", { character: 9, state: { used: {} } })).status, 400);
 });
+
+test("the player whose turn it is can pass it, in initiative order", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  const enemies = [{ id: "a", name: "Bandit 1", initiative: 15 }, { id: "b", name: "Bandit 2", initiative: 12 }, { id: "c", name: "Bandit 3", initiative: 20, status: "down" }];
+  await post(room + "/combat", { round: 1, turn: "pc:0", enemies, reset: true }, { "x-table-host": host });
+  await post(room + "/initiative", { character: 0, value: 18 });
+  await post(room + "/initiative", { character: 2, value: 12 });
+  assert.equal((await post(room + "/pass-turn", { character: 1 })).status, 400); // not your turn
+  assert.deepEqual((await post(room + "/pass-turn", { character: 0 })).body, { turn: "en:a", round: 1 }); // skips downed Bandit 3
+  await post(room + "/combat", { round: 1, turn: "pc:2", enemies }, { "x-table-host": host });
+  assert.deepEqual((await post(room + "/pass-turn", { character: 2 })).body, { turn: "en:b", round: 1 }); // party first on ties
+  await post(room + "/combat", { round: 3, turn: "pc:4", enemies }, { "x-table-host": host });
+  assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "pc:0", round: 4 }); // new round
+  assert.equal((await call(room)).body.combat.turn, "pc:0");
+});
