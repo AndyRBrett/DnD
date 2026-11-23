@@ -94,3 +94,16 @@ export function rollableFrom(value) {
   if (/^d20[+-]\d+$/.test(text) && /^[+\-−]/.test(String(value).trim())) return text;
   return /\d*d\d+/.test(text) && parse(text) ? text : null;
 }
+
+// Critical-hit damage: every damage die is rolled twice (modifiers once),
+// plus `extra` more of the first die (Brutal Critical). "1d12+7" → "3d12+7"
+// with one extra.
+export function critExpression(expression, extra = 0) {
+  const text = normalize(expression);
+  let first = null;
+  const doubled = text.replace(/(\d*)d(\d+)/g, (_, count, sides) => {
+    first ??= sides;
+    return Number(count || 1) * 2 + "d" + sides;
+  });
+  return extra > 0 && first ? doubled.replace(new RegExp("(\\d+)d" + first), (_, count) => (Number(count) + extra) + "d" + first) : doubled;
+}

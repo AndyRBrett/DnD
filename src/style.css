@@ -414,3 +414,36 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .death-row .pip{width:38px;height:38px;min-height:0;padding:0;border-radius:50%;background:#0f1114;border:2px solid var(--border2);font-weight:700}
 .death-row.is-successes .pip.is-on{background:var(--green);border-color:var(--green);color:#06210f}
 .death-row.is-failures .pip.is-on{background:var(--red);border-color:var(--red);color:#fff}
+
+/* ── Attack flow ── */
+.attack-list{display:flex;flex-wrap:wrap;gap:6px}
+.attack-list .chip{min-height:40px;font-size:.9rem}
+.attack-options{display:flex;flex-wrap:wrap;gap:6px}
+.attack-options:empty{display:none}
+.attack-option{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--border2);border-radius:99px;padding:6px 12px;font-size:.9rem}
+.attack-option input{width:18px;height:18px;margin:0;accent-color:var(--red)}
+.attack-option:has(input:checked){border-color:var(--red);background:var(--red-dim)}
+.attack-target{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--muted2)}
+.attack-steps{display:flex;flex-direction:column;gap:8px}
+.attack-steps:empty{display:none}
+.attack-line{margin:0}
+.attack-line.is-big{font:700 1.4rem var(--font-display);letter-spacing:.02em}
+.attack-line.is-crit{font:700 1.2rem var(--font-display);color:var(--gold);text-transform:uppercase}
+.attack-line.is-hit{font:700 1.2rem var(--font-display);color:var(--green);text-transform:uppercase}
+.attack-line.is-miss{font:700 1.2rem var(--font-display);color:var(--muted2);text-transform:uppercase}
+.hit-list li{flex-wrap:wrap}
+.hit-buttons{display:flex;gap:6px}
+.hit-list li{flex-direction:column;align-items:stretch;gap:8px}
+.hit-list li>span{flex:none}
+.hit-buttons{flex-wrap:wrap}
+.hit-buttons button{flex:1 1 auto}
+#attack-note{display:flex;flex-direction:column;gap:2px;margin:0}
+#attack-note strong{color:var(--text);font-weight:600;font-size:.92rem}
+.ability-roll-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.ability-roll{display:flex;flex-direction:column;align-items:stretch;gap:3px;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:6px 3px;text-align:center}
+.ability-roll span{font:700 .72rem var(--font-display);letter-spacing:.1em;color:var(--muted)}
+.ability-roll button{min-height:0;padding:3px 0;border:0;background:none;border-radius:8px}
+.ability-check{font:700 1.25rem var(--font-display)!important}
+.ability-save{font-size:.72rem;color:var(--muted2)}
+.ability-save.is-proficient{color:var(--gold)}
+.ability-roll button:active{background:var(--red-dim)}
