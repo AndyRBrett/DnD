@@ -485,3 +485,13 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .welcome-dots i.is-on{background:var(--red);width:22px;border-radius:99px}
 .welcome .action-row{display:grid;grid-template-columns:1fr 2fr;gap:8px}
 .stat-line{white-space:pre-line}
+
+/* ── Labeled Roll button and preset rolls ── */
+.fab{width:auto;height:52px;padding:0 16px 0 10px;border-radius:99px;grid-auto-flow:column;gap:6px}
+.fab svg{width:28px;height:28px}
+.fab span{font:700 1rem var(--font-display);letter-spacing:.06em;text-transform:uppercase;color:#fff}
+.dice-presets{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;flex-shrink:0}
+.dice-presets::-webkit-scrollbar{display:none}
+.dice-presets .chip{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:0;padding:7px 12px;line-height:1.15}
+.dice-presets .chip span{font-weight:600;font-size:.88rem}
+.dice-presets .chip small{font:700 .78rem var(--font-display);letter-spacing:.04em;opacity:.75}

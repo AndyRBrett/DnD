@@ -1162,6 +1162,45 @@ function syncDiceExpression() {
   $("mod-value").textContent = (dice.modifier >= 0 ? "+" : "−") + Math.abs(dice.modifier);
   previewDice();
 }
+// One-tap rolls from the character's roll tiles and proficient saves, so
+// nobody has to type "d20+9".
+function drawDicePresets() {
+  const character = isHost ? null : selectedCharacter();
+  const sheet = sheets[character?.name];
+  const presets = [];
+  for (const [label, value] of sheet?.rolls ?? []) {
+    const expression = rollableFrom(value);
+    if (expression && !/^AC$/i.test(label)) presets.push([label, expression]);
+  }
+  for (const entry of abilityMods(sheet)) {
+    if (entry.proficient && !presets.some(([label]) => label.toUpperCase() === entry.ability + " SAVE")) {
+      presets.push([entry.ability + " save", "d20" + (entry.save >= 0 ? "+" : "-") + Math.abs(entry.save)]);
+    }
+  }
+  $("dice-presets").hidden = !presets.length;
+  $("dice-presets").replaceChildren(...presets.slice(0, 10).map(([label, expression]) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip" + (label === dice.label ? " is-active" : "");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const shown = document.createElement("small");
+    shown.textContent = expression;
+    chip.append(name, shown);
+    chip.onclick = () => {
+      dice.pool = {};
+      dice.modifier = 0;
+      dice.label = label;
+      $("mod-value").textContent = "+0";
+      $("dice-expression").value = expression;
+      $("dice-label").textContent = label + " · " + expression;
+      $("dice-result").hidden = true;
+      for (const other of $("dice-presets").children) other.classList.toggle("is-active", other === chip);
+      previewDice();
+    };
+    return chip;
+  }));
+}
 function openDice(expression = "", label = "", onResult = null) {
   dice.onResult = onResult;
   dice.pool = {};
@@ -1178,6 +1217,9 @@ function openDice(expression = "", label = "", onResult = null) {
   $("dice-conditions").hidden = !notes.length;
   $("dice-conditions").textContent = notes.join(" ");
   $("dice-tray").hidden = false;
+  drawDicePresets();
+  // Nothing chosen yet: start from a plain d20 so Roll always works.
+  if (!expression) $("dice-expression").value = "d20";
   previewDice();
   document.body.classList.add("no-scroll");
 }
