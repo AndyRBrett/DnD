@@ -17,6 +17,7 @@
     </div>
     <div class="hdr-right">
       <span id="connection" class="role-pill" aria-live="polite"></span>
+      <button id="help" class="icon-btn" type="button" aria-label="How to play" title="How to play" hidden>?</button>
       <button id="copy" class="icon-btn" type="button" aria-label="Share player link" title="Share player link" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
       </button>
@@ -32,17 +33,23 @@
         <p class="sub">The DM narrates once. Every player sees the scene, their character, and what they could do next.</p>
         <div id="signin" hidden>
           <form id="email-form" class="stack">
+            <p id="joining-note" class="callout gold" hidden>You're joining a table. Sign in once with your email, and you'll go straight to it.</p>
             <label for="email">Sign in with your email</label>
             <input id="email" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com">
             <button type="submit" class="cta">Email me a code</button>
           </form>
           <form id="code-form" class="stack" hidden>
             <label for="code">Enter the code sent to <span id="code-email"></span></label>
+            <p class="fineprint">It comes from <strong>UFC Picks</strong> (our login service). Not there? Check spam or promotions.</p>
             <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required>
             <button type="submit" class="cta">Sign in</button>
             <button id="code-back" class="quiet" type="button">Use a different email</button>
           </form>
-          <p class="fineprint">Same account as the UFC Picks app; the code email comes from UFC Picks.</p>
+          <ol class="signin-steps">
+            <li>Enter any email you check. No password.</li>
+            <li>Look for an email from <strong>UFC Picks</strong> with a sign-in code. That's the login service this app shares; if it isn't there in a minute, check spam or promotions.</li>
+            <li>Type the code here. You stay signed in on this phone.</li>
+          </ol>
         </div>
         <div id="account" hidden>
           <button id="join" class="cta" type="button" hidden>Join the table</button>
@@ -226,7 +233,7 @@
           <p id="character-role" class="role-line"></p>
           <div id="quick-rolls" hidden><div class="stat-grid" id="quick-roll-chips"></div><p class="fineprint">Dashed = not yet confirmed by the DM.</p></div>
         </section>
-        <details id="character-library" class="card" open>
+        <details id="character-library" class="card">
           <summary class="card-summary">Character sheet</summary>
           <div id="sheet-stats" class="chips"></div>
           <div id="sheet-full" hidden></div>
@@ -319,6 +326,19 @@
     </div>
   </main>
 
+  <div id="welcome" class="overlay" hidden>
+    <div class="sheet welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <p id="welcome-step" class="eyebrow red"></p>
+      <h2 id="welcome-title" class="display sm"></h2>
+      <p id="welcome-text" class="welcome-text"></p>
+      <div id="welcome-dots" class="welcome-dots" aria-hidden="true"></div>
+      <div class="action-row">
+        <button id="welcome-back" class="ghost" type="button">Back</button>
+        <button id="welcome-next" class="cta" type="button">Next</button>
+      </div>
+      <button id="welcome-skip" class="quiet" type="button">Skip</button>
+    </div>
+  </div>
   <button id="dice-fab" class="fab" type="button" aria-label="Roll dice" hidden>
     <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13z"/><path class="d20-lines" d="M16 2 9 13h14zM9 13 3 22.5M23 13l6 9.5M9 13l7 11 7-11M16 24v6M3 9.5 9 13M29 9.5 23 13"/></svg>
   </button>
