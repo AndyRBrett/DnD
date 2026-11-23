@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -352,6 +352,7 @@ const TAB_KEY = "dnd-tab";
 let currentTab = "scene";
 function showTab(name) {
   if ($("tab-" + name)?.hidden) name = "scene";
+  if (state && (name === "sheet" || name === "combat")) queueMicrotask(drawHp);
   currentTab = name;
   for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
   for (const button of document.querySelectorAll(".tab-btn")) {
@@ -1579,6 +1580,21 @@ function hpWidget(index, { compact = false, open = false } = {}) {
     row.onsubmit = event => { event.preventDefault(); go(-1); };
     heal.onclick = () => go(1);
     row.append(amount, damage, heal);
+    if (!compact && !isHost && readRes(index).raging) {
+      const halfDamage = document.createElement("button");
+      halfDamage.type = "button";
+      halfDamage.className = "danger-soft rage-half";
+      halfDamage.textContent = "½ (rage)";
+      halfDamage.title = "Raging: half damage from bludgeoning, piercing, or slashing";
+      halfDamage.onclick = () => {
+        const value = Math.abs(Math.round(Number(amount.value)));
+        if (!value) { amount.focus(); return; }
+        amount.value = "";
+        adjustHp(index, -Math.floor(value / 2), status);
+      };
+      row.classList.add("has-rage");
+      row.append(halfDamage);
+    }
     box.append(row, status);
   } else {
     const max = sheetMaxHp(index);
@@ -1702,6 +1718,173 @@ function deathSaveBox(index) {
   return box;
 }
 
+// ── Resources: spell slots and per-rest features (Rage, Channel Divinity,
+// superiority dice…), kept on this phone for each character. Campaign tables
+// share one record (so it carries between sessions); a practice table has its
+// own. Rage and rests are posted to the story so the DM sees them. ──
+const ORDINAL = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th", 6: "6th", 7: "7th", 8: "8th", 9: "9th" };
+const resKey = index => "dnd-res:" + (isPractice() ? room : "campaign") + ":" + partyName(index);
+const readRes = index => readJson(resKey(index), { used: {}, raging: false });
+function writeRes(index, value) {
+  storage.set(resKey(index), JSON.stringify(value));
+  drawCombat();
+}
+function tellTable(index, text) {
+  if (backend.postAction && Array.isArray(state?.actions) && !ended) backend.postAction(room, index, text).then(sync).catch(() => {});
+}
+function pips(total, left, onSet, label) {
+  const row = document.createElement("div");
+  row.className = "pips";
+  for (let n = 0; n < total; n++) {
+    const pip = document.createElement("button");
+    pip.type = "button";
+    pip.className = "pip" + (n < left ? " is-on" : "");
+    pip.setAttribute("aria-label", label + ": " + (n < left ? "available — tap to use" : "used — tap to get back"));
+    pip.onclick = () => onSet(n < left ? left - 1 : left + 1);
+    row.append(pip);
+  }
+  return row;
+}
+function resourcesWidget(index) {
+  const sheet = sheets[partyName(index)];
+  const res = readRes(index);
+  const box = document.createElement("div");
+  box.className = "res-widget";
+  const head = document.createElement("div");
+  head.className = "res-head";
+  const title = document.createElement("p");
+  title.className = "eyebrow red";
+  title.textContent = "RESOURCES · " + partyName(index).toUpperCase();
+  head.append(title);
+  box.append(head);
+  const set = (key, left) => {
+    const max = resourceLeft(sheet, { used: {} }, key);
+    writeRes(index, { ...res, used: { ...res.used, [key]: Math.max(0, Math.min(max, max - left)) } });
+  };
+  for (const resource of sheet.resources) {
+    const block = document.createElement("div");
+    block.className = "res-block";
+    const name = document.createElement("strong");
+    name.textContent = resource.name;
+    const per = document.createElement("span");
+    per.className = "res-per";
+    per.textContent = resource.per === "short" ? "back on a short or long rest" : "back on a long rest";
+    const top = document.createElement("div");
+    top.className = "res-top";
+    top.append(name, per);
+    block.append(top);
+    if (resource.slots) {
+      for (const [level, max] of Object.entries(resource.slots)) {
+        const key = slotKey(level);
+        const left = resourceLeft(sheet, res, key);
+        const row = document.createElement("div");
+        row.className = "slot-row";
+        const label = document.createElement("span");
+        label.textContent = ORDINAL[level];
+        const count = document.createElement("span");
+        count.className = "slot-count";
+        count.textContent = left + "/" + max;
+        row.append(label, pips(max, left, value => set(key, value), ORDINAL[level] + "-level slot"), count);
+        block.append(row);
+      }
+      const how = document.createElement("details");
+      how.className = "fold how-slots";
+      const summary = document.createElement("summary");
+      summary.textContent = "How spell slots work";
+      const list = document.createElement("ul");
+      for (const text of [
+        "Cantrips (like Sacred Flame) are free: cast them as often as you like.",
+        "Every other spell uses one slot of its level or higher. Fireball is 3rd level, so it needs a 3rd-, 4th-, or 5th-level slot.",
+        "A higher slot makes some spells stronger (Fireball and Guiding Bolt: +1d6 for each level above their own).",
+        "Casting from the Attack card spends the slot for you. Tap a dot to mark one used, or tap again to get it back.",
+        "All slots come back after a long rest."
+      ]) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        list.append(item);
+      }
+      how.append(summary, list);
+      block.append(how);
+    } else {
+      const left = resourceLeft(sheet, res, resource.name);
+      const row = document.createElement("div");
+      row.className = "slot-row";
+      const count = document.createElement("span");
+      count.className = "slot-count";
+      count.textContent = left + "/" + resource.max;
+      row.append(pips(resource.max, left, value => set(resource.name, value), resource.name), count);
+      block.append(row);
+      if (resource.rage) {
+        const rage = document.createElement("div");
+        rage.className = "rage-box" + (res.raging ? " is-raging" : "");
+        if (res.raging) {
+          const text = document.createElement("p");
+          text.textContent = "😤 RAGING: advantage on Strength checks and saves, +3 melee damage, half damage from bludgeoning, piercing, and slashing. Lasts 1 minute; ends early if you're knocked out or go a turn without attacking or taking damage.";
+          const end = document.createElement("button");
+          end.type = "button";
+          end.className = "ghost";
+          end.textContent = "End rage";
+          end.onclick = () => {
+            writeRes(index, { ...readRes(index), raging: false });
+            tellTable(index, "😤 ends the rage");
+          };
+          rage.append(text, end);
+        } else {
+          const start = document.createElement("button");
+          start.type = "button";
+          start.className = "cta";
+          start.disabled = left < 1;
+          start.textContent = left < 1 ? "No rages left — long rest" : "Start rage (bonus action)";
+          start.onclick = () => {
+            const next = { ...spendResource(sheet, readRes(index), resource.name), raging: true };
+            writeRes(index, next);
+            tellTable(index, "😤 starts raging (" + resourceLeft(sheet, next, resource.name) + " of " + resource.max + " rages left)");
+          };
+          rage.append(start);
+        }
+        block.append(rage);
+      }
+    }
+    if (resource.note) {
+      const note = document.createElement("p");
+      note.className = "fineprint";
+      note.textContent = resource.note;
+      block.append(note);
+    }
+    box.append(block);
+  }
+  const rests = document.createElement("div");
+  rests.className = "action-row rest-row";
+  const shortRest = document.createElement("button");
+  shortRest.type = "button";
+  shortRest.className = "ghost";
+  shortRest.textContent = "Short rest";
+  shortRest.onclick = () => {
+    writeRes(index, restResources(sheet, readRes(index), "short"));
+    tellTable(index, "🏕️ takes a short rest");
+  };
+  const longRest = document.createElement("button");
+  longRest.type = "button";
+  longRest.className = "ghost";
+  longRest.textContent = "Long rest";
+  longRest.onclick = () => {
+    if (!window.confirm("Long rest: refill all slots and features, and restore full HP?")) return;
+    writeRes(index, restResources(sheet, readRes(index), "long"));
+    const record = hpRecord(index);
+    if (record) saveHp(index, { hp: record.max, max: record.max, temp: 0, ac: record.ac }, document.createElement("p"));
+    tellTable(index, "🛌 takes a long rest");
+  };
+  rests.append(shortRest, longRest);
+  box.append(rests);
+  return box;
+}
+function fillResources(container, index) {
+  const open = container.querySelector(".how-slots")?.open ?? false;
+  container.replaceChildren(resourcesWidget(index));
+  const how = container.querySelector(".how-slots");
+  if (how) how.open = open;
+}
+
 // Redraws a widget unless someone is typing in it (the poll would wipe it).
 function fillHp(container, index, options = {}) {
   if (container.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName)) return;
@@ -1716,6 +1899,7 @@ function drawHp() {
   const me = Number($("character").value);
   const ready = available && state?.party?.[me];
   $("hp-badge").hidden = !ready || isHost;
+  if (!ready) for (const id of ["res-sheet", "res-combat", "rage-badge"]) $(id).hidden = true;
   $("hp-sheet").hidden = !ready;
   $("hp-combat").hidden = !ready || !state?.combat || isHost;
   $("party-hp").hidden = !isHost || !state || ended || !backend.setHp;
@@ -1734,6 +1918,14 @@ function drawHp() {
     $("hp-badge").textContent = "❤️ " + (record ? (health === "down" ? "DOWN" : record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Set HP");
     fillHp($("hp-sheet"), me);
     if (!$("hp-combat").hidden) fillHp($("hp-combat"), me);
+    const hasResources = Boolean(sheets[partyName(me)]?.resources?.length) && !isHost;
+    $("res-sheet").hidden = !hasResources;
+    $("res-combat").hidden = !hasResources || $("hp-combat").hidden;
+    if (hasResources) {
+      fillResources($("res-sheet"), me);
+      if (!$("res-combat").hidden) fillResources($("res-combat"), me);
+    }
+    $("rage-badge").hidden = isHost || !readRes(me).raging;
   }
   if (isHost) {
     const list = $("party-hp-list");
@@ -1801,9 +1993,9 @@ $("hit-report").onsubmit = async event => {
 // ── The attack flow: pick one of your attacks, roll to hit (the DM calls
 // hit or miss; a natural 20 is a crit, a natural 1 misses), roll the right
 // damage, send it to the DM. Save spells skip the to-hit roll. ──
-const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [] };
+const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [], level: null, spent: false, spentManeuver: false, notes: [] };
 function resetAttack(keepChoice = true) {
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [] });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [] });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, options: new Set() });
 }
 function setDiceMode(mode) {
@@ -1833,13 +2025,19 @@ function drawAttack() {
   if (attackFlow.character !== me) { attackFlow.character = me; resetAttack(false); }
   const sheet = sheets[partyName(me)] ?? {};
   const attacks = sheet.attacks ?? [];
-  const attack = attacks[attackFlow.index];
+  const baseAttack = attacks[attackFlow.index];
+  const res = readRes(me);
+  const levels = castableLevels(baseAttack, sheet, res);
+  if (baseAttack?.slot && !attackFlow.spent && !levels.includes(attackFlow.level)) attackFlow.level = levels[0] ?? null;
+  const attack = baseAttack?.slot && attackFlow.level ? upcastAttack(baseAttack, attackFlow.level) : baseAttack;
+  const isOn = option => attackFlow.options.has(option.name) || Boolean(option.rage && res.raging);
   $("attack-title").textContent = "Attack · " + partyName(me).replace(/^The /, "");
 
   $("attack-list").replaceChildren(...attacks.map((entry, index) => {
     const label = entry.save ? entry.name + " · DC " + entry.dc + " " + entry.save : entry.name + " +" + entry.hit + " · " + entry.damage;
     const chip = stepButton(label, "chip" + (index === attackFlow.index ? " is-active" : ""), () => {
       attackFlow.index = index;
+      attackFlow.level = null;
       resetAttack();
       drawAttack();
     });
@@ -1848,14 +2046,15 @@ function drawAttack() {
   }));
   const options = attack && !attack.save ? sheet.attackOptions ?? [] : [];
   if (attack) {
-    const math = attackBreakdown(attack, sheet, options.filter(option => attackFlow.options.has(option.name)));
+    const math = attackBreakdown(attack, sheet, options.filter(isOn));
     const lines = [
       math.hit ? "To hit: " + math.hit : "Save: " + math.dc,
+      baseAttack.slot ? ORDINAL[baseAttack.slot] + "-level spell: uses a spell slot" : baseAttack.spends ? "Uses " + baseAttack.spends + " (" + resourceLeft(sheet, res, baseAttack.spends) + " left)" : "",
       "Damage: " + math.damage + (attack.type ? " " + attack.type : ""),
       attack.note ?? ""
     ].filter(Boolean);
     $("attack-note").replaceChildren(...lines.map((text, index) => {
-      const line = document.createElement(index < 2 ? "strong" : "span");
+      const line = document.createElement(index < 1 || text.startsWith("Damage") ? "strong" : "span");
       line.textContent = text;
       return line;
     }));
@@ -1868,13 +2067,15 @@ function drawAttack() {
     label.title = option.note ?? "";
     const box = document.createElement("input");
     box.type = "checkbox";
-    box.checked = attackFlow.options.has(option.name);
+    box.checked = isOn(option);
+    const spentOut = option.spends && resourceLeft(sheet, res, option.spends) < 1 && !box.checked;
+    box.disabled = spentOut;
     box.onchange = () => {
       if (box.checked) attackFlow.options.add(option.name); else attackFlow.options.delete(option.name);
       drawAttack();
     };
     const text = document.createElement("span");
-    text.textContent = option.name;
+    text.textContent = option.name + (option.rage && res.raging ? " 😤" : "") + (spentOut ? " (none left)" : option.spends ? " · " + resourceLeft(sheet, res, option.spends) + " left" : "");
     label.append(box, text);
     return label;
   }));
@@ -1890,23 +2091,75 @@ function drawAttack() {
 
   const steps = $("attack-steps");
   if (!attack) { steps.replaceChildren(); return; }
-  const chosenOptions = options.filter(option => attackFlow.options.has(option.name));
+  const chosenOptions = options.filter(isOn);
   const built = buildAttack(attack, chosenOptions, { crit: attackFlow.crit, extraCritDice: sheet.critExtraDice ?? 0 });
   const parts = [];
-  const rollDamage = () => openDice(built.damage, attack.name + " damage", total => {
+  // Spend the slot (or Channel Divinity) when the spell is cast, and a
+  // superiority die when its maneuver is used on a hit.
+  const spend = stage => {
+    let next = readRes(me);
+    const notes = [];
+    if (!attackFlow.spent) {
+      if (baseAttack.slot && attackFlow.level) {
+        next = spendResource(sheet, next, slotKey(attackFlow.level));
+        notes.push("Used a " + ORDINAL[attackFlow.level] + "-level slot (" + resourceLeft(sheet, next, slotKey(attackFlow.level)) + " left)");
+      }
+      if (baseAttack.spends) {
+        next = spendResource(sheet, next, baseAttack.spends);
+        notes.push("Used " + baseAttack.spends + " (" + resourceLeft(sheet, next, baseAttack.spends) + " left)");
+      }
+      attackFlow.spent = true;
+    }
+    if (stage === "damage" && !attackFlow.spentManeuver) {
+      for (const option of chosenOptions.filter(option => option.spends)) {
+        next = spendResource(sheet, next, option.spends);
+        notes.push("Used a " + option.spends.replace(/ dice$/, " die") + " (" + resourceLeft(sheet, next, option.spends) + " left)");
+      }
+      attackFlow.spentManeuver = true;
+    }
+    if (notes.length) {
+      attackFlow.notes = [...(attackFlow.notes ?? []), ...notes];
+      storage.set(resKey(me), JSON.stringify(next));
+      drawHp();
+    }
+  };
+  let blocked = "";
+  if (baseAttack.slot && !attackFlow.spent && !levels.length) {
+    blocked = "No spell slots left for " + baseAttack.name + " (it needs a " + ORDINAL[baseAttack.slot] + "-level slot or higher). Take a long rest, or fix the dots under Resources.";
+  } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
+    blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
+  }
+  const rollDamage = () => { spend("damage"); openDice(built.damage, attack.name + " damage", total => {
     attackFlow.damage = total;
     attackFlow.step = "damage";
     drawAttack();
     setTimeout(closeDice, 1200);
-  });
+  }); };
   const next = stepButton("Next attack", "quiet", () => { resetAttack(); drawAttack(); });
 
-  if (attackFlow.step === "ready") {
+  for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
+  if (attackFlow.step === "ready" && baseAttack.slot && levels.length) {
+    const pick = document.createElement("label");
+    pick.className = "attack-target";
+    pick.textContent = "Cast with";
+    const levelSelect = document.createElement("select");
+    levelSelect.append(...levels.map(level => new Option(
+      ORDINAL[level] + "-level slot · " + resourceLeft(sheet, res, slotKey(level)) + " left"
+        + (baseAttack.upcast && level > baseAttack.slot ? " · +" + (level - baseAttack.slot) + baseAttack.upcast.replace(/^1/, "") + " damage" : ""), String(level))));
+    levelSelect.value = String(attackFlow.level);
+    levelSelect.onchange = () => { attackFlow.level = Number(levelSelect.value); drawAttack(); };
+    pick.append(levelSelect);
+    parts.push(pick);
+  }
+  if (attackFlow.step === "ready" && blocked) {
+    parts.push(stepText(blocked, "is-miss"));
+  } else if (attackFlow.step === "ready") {
     if (built.save) {
       parts.push(stepText("Targets make a " + built.save + ". The DM rolls their saves."),
         stepButton("Roll damage · " + built.damage, "cta", rollDamage));
     } else {
       parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
+        spend("hit");
         openDice(built.toHit, attack.name + " to hit", (total, result) => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
@@ -1928,7 +2181,7 @@ function drawAttack() {
   } else if (attackFlow.step === "miss") {
     parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"), next);
   } else if (attackFlow.step === "damage") {
-    const detail = "with " + attack.name + (built.save ? ", " + built.save
+    const detail = "with " + attack.name + (attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "") + (built.save ? ", " + built.save
       : ", " + attackFlow.toHit.total + " to hit" + (attackFlow.crit ? ", critical" : ""));
     parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
     const target = select.value;

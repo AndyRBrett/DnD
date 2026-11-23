@@ -111,14 +111,20 @@ export const sheets = {
     // unless addMod is false, damage). bonus: other to-hit bonuses.
     // options: toggles that change the roll.
     attacks: [
-      { name: "Spiritual Weapon", ability: "WIS", hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration." },
-      { name: "Guiding Bolt", ability: "WIS", hit: 9, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
+      { name: "Spiritual Weapon", ability: "WIS", slot: 2, hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration." },
+      { name: "Guiding Bolt", ability: "WIS", slot: 1, upcast: "1d6", hit: 9, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
       { name: "Sacred Flame", ability: "WIS", save: "Dex", dc: 17, damage: "2d8+5", type: "radiant", note: "Cantrip; nothing on a save." },
-      { name: "Fireball", ability: "WIS", addMod: false, save: "Dex", dc: 17, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
-      { name: "Flame Strike", ability: "WIS", addMod: false, save: "Dex", dc: 17, damage: "4d6+4d6", type: "fire + radiant", half: true, note: "5th-level slot." },
-      { name: "Radiance of the Dawn", ability: "WIS", addMod: false, save: "Con", dc: 17, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
+      { name: "Fireball", ability: "WIS", slot: 3, upcast: "1d6", addMod: false, save: "Dex", dc: 17, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
+      { name: "Flame Strike", ability: "WIS", slot: 5, addMod: false, save: "Dex", dc: 17, damage: "4d6+4d6", type: "fire + radiant", half: true, note: "5th-level slot." },
+      { name: "Radiance of the Dawn", ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 17, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
     ],
     attackOptions: [],
+    // Limited uses: spell slots by level, and features with uses per rest.
+    resources: [
+      { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
+      { name: "Channel Divinity", max: 2, per: "short", note: "Radiance of the Dawn or Turn Undead." },
+      { name: "Warding Flare", max: 5, per: "long", note: "Reaction: impose disadvantage on an attack against you (or an ally within 30 ft)." }
+    ],
     rolls: [["Spell attack", "+9"], ["Spell save DC", "17"], ["Sacred Flame", "2d8+5"], ["AC", "17"], ["Initiative", "+1"], ["WIS save", "+9"], ["Perception", "+9*"], ["Intimidation", "+2"]],
     title: "The White Wizard — Light Domain Cleric",
     note: "Proposed Level 10 build from prior chats (2014 rules), not a DM-approved sheet. Wisdom 20 is assumed; if the DM didn't approve it, use DC 16, +8, and Wisdom-based values 1 lower.",
@@ -196,11 +202,14 @@ export const sheets = {
       { name: "Greataxe", ability: "STR", hit: 8, damage: "1d12+4", type: "slashing", note: "Two swings per Attack action; Frenzy adds a bonus-action swing while raging." }
     ],
     attackOptions: [
-      { name: "Raging", damage: "+3", note: "+3 damage on Strength attacks." },
+      { name: "Raging", damage: "+3", note: "+3 damage on Strength attacks.", rage: true },
       { name: "Reckless", mode: "advantage", note: "Advantage on your attacks; enemies get advantage on you." },
       { name: "Great Weapon Master", hit: -5, damage: "+10", note: "Only if the DM approved the feat." }
     ],
     critExtraDice: 1, // Brutal Critical
+    resources: [
+      { name: "Rage", max: 4, per: "long", rage: true, note: "Bonus action. Lasts 1 minute (10 rounds)." }
+    ],
     rolls: [["Greataxe", "+8"], ["Raging hit", "1d12+7"], ["AC", "16"], ["Initiative", "+2 adv."], ["STR save", "+8"], ["CON save", "+8"], ["Athletics", "+8*"], ["Perception", "+5*"]],
     title: "Logan Ninefingers — Berserker Barbarian",
     note: "Proposed build leveled to 10 (2014 rules), played by Derek. Not a DM-approved sheet.",
@@ -254,8 +263,14 @@ export const sheets = {
       { name: "Weapon attack", ability: "STR", hit: 8, damage: "1d8+4", type: "slashing or bludgeoning", note: "Longsword or warhammer; two attacks per Attack action, four with Action Surge." }
     ],
     attackOptions: [
-      { name: "Maneuver (+1d10)", damage: "+1d10", note: "Spend a superiority die: Trip, Goading, or Menacing Attack (DC 16 save)." },
+      { name: "Maneuver (+1d10)", damage: "+1d10", spends: "Superiority dice", note: "Spends a superiority die: Trip, Goading, or Menacing Attack (DC 16 save)." },
       { name: "Dueling (+2)", damage: "+2", note: "Only if the DM approved the Dueling style." }
+    ],
+    resources: [
+      { name: "Superiority dice", max: 5, per: "short", note: "d10 each: Trip, Goading, or Menacing Attack (DC 16)." },
+      { name: "Action Surge", max: 1, per: "short", note: "One extra action on your turn (four attacks)." },
+      { name: "Second Wind", max: 1, per: "short", note: "Bonus action: regain 1d10+10 HP." },
+      { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." }
     ],
     rolls: [["Attack", "+8"], ["Damage", "1d8+4"], ["Maneuver DC", "16"], ["Superiority", "5 × d10"], ["AC", "18–20*"], ["Initiative", "+1"], ["STR save", "+8"], ["Athletics", "+8*"]],
     title: "Dum Dum the Gladiator — Battle Master Fighter",
@@ -315,8 +330,11 @@ export const sheets = {
       { name: "Dagger", ability: "DEX", hit: 9, damage: "1d4+5", type: "piercing", note: "Finesse; can be thrown 20/60 ft." }
     ],
     attackOptions: [
-      { name: "Hunter's Mark", damage: "+1d6", note: "Bonus action to cast; concentration." },
+      { name: "Hunter's Mark", damage: "+1d6", note: "Bonus action to cast (a 1st-level slot, once); concentration." },
       { name: "Dread Ambusher shot", damage: "+1d8", note: "The extra first-turn attack only." }
+    ],
+    resources: [
+      { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 2 }, per: "long" }
     ],
     rolls: [["Longbow", "+11"], ["Damage", "1d8+5"], ["Initiative", "+7"], ["Stealth", "+9"], ["Perception", "+6*"], ["Spell DC", "14"], ["DEX save", "+9"], ["AC", "16–17*"]],
     title: "Arcturus — The Exiled Star",

@@ -447,3 +447,27 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .ability-save{font-size:.72rem;color:var(--muted2)}
 .ability-save.is-proficient{color:var(--gold)}
 .ability-roll button:active{background:var(--red-dim)}
+
+/* ── Resources: spell slots, rage, per-rest features ── */
+.res-widget{display:flex;flex-direction:column;gap:12px}
+.res-widget .eyebrow{margin:0}
+.res-block{display:flex;flex-direction:column;gap:6px;background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:10px 12px}
+.res-block .fineprint{margin:0}
+.res-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.res-top strong{font:700 1.1rem var(--font-display);text-transform:uppercase;letter-spacing:.02em}
+.res-per{font-size:.78rem;color:var(--muted)}
+.slot-row{display:flex;align-items:center;gap:8px}
+.slot-row>span:first-child{width:34px;font:700 .9rem var(--font-display);color:var(--muted2)}
+.slot-count{margin-left:auto;font:700 .95rem var(--font-display);color:var(--muted2)}
+.pips{display:flex;flex-wrap:wrap;gap:6px}
+.pips .pip{width:30px;height:30px;min-height:0;padding:0;border-radius:50%;background:#0f1114;border:2px solid var(--border2)}
+.pips .pip.is-on{background:var(--gold);border-color:var(--gold);box-shadow:0 0 8px -2px var(--gold)}
+.how-slots ul{margin:6px 0 0;padding-left:18px;color:var(--muted2);font-size:.9rem;display:flex;flex-direction:column;gap:4px}
+.rage-box{display:flex;flex-direction:column;gap:8px}
+.rage-box.is-raging{background:var(--red-dim);border:1px solid var(--red);border-radius:12px;padding:10px}
+.rage-box.is-raging p{margin:0;font-size:.92rem}
+.rage-badge{background:var(--red);border-color:var(--red);animation:rage-pulse 1.8s ease-in-out infinite}
+@keyframes rage-pulse{50%{box-shadow:0 0 0 4px var(--red-dim)}}
+@media (prefers-reduced-motion:reduce){.rage-badge{animation:none}}
+.hp-adjust.has-rage{grid-template-columns:minmax(0,1fr) auto auto auto}
+.rest-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
