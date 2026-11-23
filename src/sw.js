@@ -4,12 +4,17 @@
 // The hosted build stamps VERSION, so each release gets a fresh cache.
 const VERSION = "local";
 const CACHE = "dnd-" + VERSION;
+// Everything the page needs to start, at the exact URLs it asks for (the
+// hosted build rewrites this list with each release's ?v= URLs), so the app
+// opens offline after a single visit.
+const SHELL = ["./", "index.html", "style.css", "theme.js", "app.js", "backend.js", "campaign.js", "config.js", "dice.js", "dice3d.js", "encounter.js", "rules.js", "scene-options.js", "manifest.json", "icons/icon-192.png", "fonts/barlow-400-latin.woff2", "fonts/barlow-500-latin.woff2", "fonts/barlow-600-latin.woff2", "fonts/barlow-700-latin.woff2", "fonts/barlow-condensed-600-latin.woff2", "fonts/barlow-condensed-700-latin.woff2"];
 
+// The new release's shell is saved in full before it takes over (addAll
+// fails the install if any file is missing, and the old one keeps running).
 self.addEventListener("install", event => {
-  self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then(cache => Promise.all(
-    ["./", "manifest.json", "icons/icon-192.png"].map(url => cache.add(url).catch(() => {}))
-  )));
+  event.waitUntil(caches.open(CACHE)
+    .then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: "no-cache" }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", event => {
