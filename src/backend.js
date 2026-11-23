@@ -146,7 +146,7 @@ function hostedBackend({ url, anonKey }) {
           const data = await rpc("dnd_room_v" + roomVersion, { p_code: code });
           return { ...data, hpUnavailable: roomVersion < 4 };
         } catch (error) {
-          if (error.status !== 404 && !/could not find the function/i.test(error.message)) throw error;
+          if (!/could not find the function/i.test(error.message)) throw error;
           roomVersion -= 1;
         }
       }
@@ -169,7 +169,7 @@ function hostedBackend({ url, anonKey }) {
       try {
         return await rpc("dnd_is_host");
       } catch (error) {
-        if (error.status === 404 || /could not find the function/i.test(error.message)) return true;
+        if (/could not find the function/i.test(error.message)) return true;
         throw error;
       }
     },

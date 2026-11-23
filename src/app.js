@@ -432,10 +432,12 @@ async function sync() {
     if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
     $("connection").textContent = isHost ? "HOST" : "PLAYER";
   } catch (error) {
-    if (error.status === 404) {
+    // The server says the table is gone (ended, or past its 8 hours). It can
+    // answer with 404 or 400 depending on the error code, so read the message.
+    if (error.status === 404 || /ended or expired/i.test(error.message)) {
       ended = true;
       stopMic();
-      $("notice").textContent = error.message;
+      $("notice").textContent = "This table has ended. Tables close 8 hours after they start. The DM can start a new one from the home screen; HP, spell slots, and the campaign carry over.";
       $("scene").textContent = "Session ended.";
       $("history").replaceChildren();
       $("action-form").hidden = true;
@@ -2460,7 +2462,7 @@ $("combat-end-turn").onclick = async () => {
         sync();
         return;
       } catch (error) {
-        if (!(error.status === 404 || /could not find the function/i.test(error.message))) throw error;
+        if (!/could not find the function/i.test(error.message)) throw error;
         passTurnFallback = true;
       }
     }
@@ -2567,7 +2569,7 @@ function saveEncounter() {
     backend.encounterSave(room, enemies)
       .then(() => { $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM."; })
       .catch(error => {
-        if (/could not find the function/i.test(error.message) || error.status === 404) encounterCloud = false;
+        if (/could not find the function/i.test(error.message)) encounterCloud = false;
         $("encounter-sync").textContent = encounterCloud ? "Couldn't save to the table: " + error.message
           : "Saved on this device only. Run supabase/migrations/0008_dnd_encounter.sql to keep it with the table.";
       });
@@ -2589,7 +2591,7 @@ async function loadCloudEncounter() {
     }
     $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
   } catch (error) {
-    if (/could not find the function/i.test(error.message) || error.status === 404) {
+    if (/could not find the function/i.test(error.message)) {
       encounterCloud = false;
       $("encounter-sync").textContent = "Saved on this device only. Run supabase/migrations/0008_dnd_encounter.sql to keep it with the table.";
     }
