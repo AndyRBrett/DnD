@@ -188,23 +188,21 @@
         </section>
       </section>
 
-      <!-- Moves -->
+      <!-- Moves: "What can I do?" — quick ideas from the sheet, then Claude -->
       <section class="tab-panel" data-panel="moves" hidden>
         <section class="card options-panel" aria-labelledby="options-title">
+          <p class="eyebrow red">FROM YOUR SHEET · INSTANT</p>
           <h2 id="options-title" class="display sm">What can I do?</h2>
           <p id="situation" class="pill-label" role="status"></p>
           <p id="responding-to" class="fineprint"></p>
           <ul id="options" class="option-list"></ul>
           <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="ask-dm"></p></div>
-          <p class="fineprint">Quick suggestions from the scene's keywords and your sheet. For ones that follow the whole story, use the Claude tab.</p>
+          <p class="fineprint">Quick ideas from the latest update and your sheet. Anything you're out of (spell slots, rages…) is left out.</p>
         </section>
-      </section>
-
-      <!-- Claude -->
-      <section class="tab-panel" data-panel="claude" hidden>
         <div id="claude" class="card" hidden>
-          <p class="eyebrow red">ASK CLAUDE</p>
-          <h2 class="display sm">Read the story with me</h2>
+          <p class="eyebrow red">CLAUDE READS THE WHOLE STORY</p>
+          <h2 class="display sm">Want a deeper read?</h2>
+          <p class="fineprint">Claude reads the campaign history, everything said this session, and your sheet, then suggests three options that fit where the story is going.</p>
           <button id="ask-claude" class="cta" type="button">Ask Claude about this scene</button>
           <form id="question-form" class="stack">
             <label for="question-text">Or ask Claude a question</label>
@@ -215,14 +213,15 @@
         <div id="claude-answer" class="stack-gap" hidden>
           <div id="claude-reply" class="card" hidden><p class="fineprint" id="claude-asked"></p><p class="eyebrow">CLAUDE'S ANSWER</p><p><span></span></p></div>
           <div class="card">
+            <p class="eyebrow red">CLAUDE READ THE WHOLE STORY</p>
             <p class="pill-label" id="claude-situation"></p>
             <div id="claude-big-picture" class="callout gold" hidden><p class="eyebrow">THE BIGGER PICTURE</p><p><span></span></p></div>
             <ul id="claude-options" class="option-list"></ul>
             <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="claude-ask"></p></div>
-            <p class="fineprint">Claude reads the campaign history, everything the DM has said this session, and this character’s sheet. Its read of the bigger picture is a guess; the DM decides what actually happens.</p>
+            <p class="fineprint">Claude's read of the bigger picture is a guess; the DM decides what actually happens.</p>
           </div>
         </div>
-        <div id="claude-off" class="card"><p class="fineprint">Claude isn't available on this table.</p></div>
+        <p id="claude-off" class="card fineprint">Ask Claude is off on this table — the quick ideas above still work.</p>
       </section>
 
       <!-- Sheet -->
@@ -371,7 +370,6 @@
     <button class="tab-btn" id="tab-scene" data-tab="scene" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Scene</span><i class="dot" aria-hidden="true"></i></button>
     <button class="tab-btn" id="tab-combat" data-tab="combat" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l10 10M4 4h4M4 4v4M20 4L10 14M20 4h-4M20 4v4"/><path d="M12 16l-3 3M6 15l3 3M12 16l3 3M18 15l-3 3M5 20l1-1M19 20l-1-1"/></svg><span>Combat</span><i class="dot" aria-hidden="true"></i></button>
     <button class="tab-btn" id="tab-moves" data-tab="moves" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5L9 20H4v-5z"/><path d="M12 7l5 5"/></svg><span>Moves</span></button>
-    <button class="tab-btn" id="tab-claude" data-tab="claude" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg><span>Claude</span></button>
     <button class="tab-btn" id="tab-sheet" data-tab="sheet" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Sheet</span></button>
     <button class="tab-btn" id="tab-dm" data-tab="dm" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>DM</span></button>
   </nav>
