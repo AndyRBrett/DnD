@@ -119,10 +119,11 @@ export const sheets = {
       { name: "Radiance of the Dawn", ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 17, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
     ],
     attackOptions: [],
-    // Limited uses: spell slots by level, and features with uses per rest.
+    // Limited uses: spell slots by level, and features with uses per rest
+    // (covers: the sheet abilities that need it; default is its own name).
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
-      { name: "Channel Divinity", max: 2, per: "short", note: "Radiance of the Dawn or Turn Undead." },
+      { name: "Channel Divinity", max: 2, per: "short", covers: ["Radiance of the Dawn", "Turn Undead"], note: "Radiance of the Dawn or Turn Undead." },
       { name: "Warding Flare", max: 5, per: "long", note: "Reaction: impose disadvantage on an attack against you (or an ally within 30 ft)." }
     ],
     rolls: [["Spell attack", "+9"], ["Spell save DC", "17"], ["Sacred Flame", "2d8+5"], ["AC", "17"], ["Initiative", "+1"], ["WIS save", "+9"], ["Perception", "+9*"], ["Intimidation", "+2"]],
@@ -267,7 +268,7 @@ export const sheets = {
       { name: "Dueling (+2)", damage: "+2", note: "Only if the DM approved the Dueling style." }
     ],
     resources: [
-      { name: "Superiority dice", max: 5, per: "short", note: "d10 each: Trip, Goading, or Menacing Attack (DC 16)." },
+      { name: "Superiority dice", max: 5, per: "short", covers: ["Combat Superiority", "Trip Attack", "Goading Attack", "Menacing Attack", "Precision Attack"], note: "d10 each: Trip, Goading, or Menacing Attack (DC 16)." },
       { name: "Action Surge", max: 1, per: "short", note: "One extra action on your turn (four attacks)." },
       { name: "Second Wind", max: 1, per: "short", note: "Bonus action: regain 1d10+10 HP." },
       { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." }

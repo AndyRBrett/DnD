@@ -149,6 +149,20 @@ function parseMoves(character) {
   });
 }
 
+// The character with spent abilities ("Fireball: no 3rd-level…" lines from
+// spentAbilities) taken off their sheet, so nothing out of uses is suggested.
+export function withoutSpent(character, spent = []) {
+  const names = spent.map(item => String(item).split(":")[0].trim().toLowerCase());
+  if (!names.length) return character;
+  const keep = line => {
+    if (/^check\s*\|/i.test(line)) return true;
+    const body = line.includes("|") ? line.slice(line.indexOf("|") + 1) : line;
+    const abilities = body.split(" — ")[0].split(/,\s*/).map(name => name.trim().toLowerCase()).filter(Boolean);
+    return !abilities.length || !abilities.every(name => names.includes(name));
+  };
+  return { ...character, moves: String(character.moves ?? "").split("\n").filter(keep).join("\n") };
+}
+
 export function characterAbilities(character) {
   const moves = parseMoves(character).filter(([, move]) => move);
   return {

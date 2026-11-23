@@ -1,6 +1,7 @@
 // DM encounter tracker: enemy templates and pure helpers. The live encounter
 // is kept on the DM's device (localStorage), never sent to players.
 import { roll, parse, critExpression } from "./dice.js";
+import { lookupRule } from "./rules.js";
 
 // Standard 5e (SRD 5.1) stat lines, summarized. attacks: [name, to-hit, damage].
 export const templates = [
@@ -335,4 +336,34 @@ export function upcastAttack(attack, level) {
   const [, count, sides] = attack.upcast.match(/(\d*)d(\d+)/);
   return { ...attack, damage: attack.damage.replace(/^(\d*)d(\d+)/, (_, base, baseSides) =>
     baseSides === sides ? (Number(base || 1) + extra * Number(count || 1)) + "d" + sides : _ + "+" + extra * Number(count || 1) + "d" + sides) };
+}
+
+// The sheet abilities a character can't use right now, as "Name: why" lines:
+// leveled spells with no slot of that level or higher left, and features
+// whose uses are spent (resource.covers lists which abilities need them).
+const ORDINALS = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th", 6: "6th", 7: "7th", 8: "8th", 9: "9th" };
+export function moveNames(character) {
+  return String(character?.moves ?? "").split("\n")
+    .filter(line => line.trim() && !/^check\s*\|/i.test(line))
+    .flatMap(line => (line.includes("|") ? line.slice(line.indexOf("|") + 1) : line).split(" — ")[0].split(/,\s*/))
+    .map(name => name.trim()).filter(Boolean);
+}
+export function spentAbilities(character, sheet, state) {
+  const spent = new Map();
+  const slots = (sheet?.resources ?? []).find(resource => resource.slots)?.slots;
+  if (slots) {
+    for (const name of moveNames(character)) {
+      const rule = lookupRule(name);
+      if (rule?.section !== "spells" || !(rule.level > 0)) continue;
+      const open = Object.keys(slots).map(Number).some(level => level >= rule.level && resourceLeft(sheet, state, slotKey(level)) > 0);
+      if (!open) spent.set(name, name + ": no " + ORDINALS[rule.level] + "-level or higher spell slot left");
+    }
+  }
+  for (const resource of sheet?.resources ?? []) {
+    if (resource.slots || resourceLeft(sheet, state, resource.name) > 0) continue;
+    for (const name of resource.covers ?? [resource.name]) {
+      spent.set(name, name + ": no " + resource.name + " left until a " + (resource.per === "short" ? "short or long" : "long") + " rest");
+    }
+  }
+  return [...spent.values()];
 }

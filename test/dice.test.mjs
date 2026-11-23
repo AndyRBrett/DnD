@@ -262,3 +262,42 @@ test("spell slots, rage, and rests", async () => {
   assert.deepEqual(rest(logan, rage, "long"), { used: {}, raging: false });
   assert.equal(resourceLeft(logan, spendResource(logan, rage, "Rage", 10), "Rage"), 0);
 });
+
+test("a spent ability is never suggested, by Moves or to Claude", async () => {
+  const { spentAbilities, spendResource, slotKey } = await import("../src/encounter.js");
+  const { withoutSpent, recommend } = await import("../src/scene-options.js");
+  const { sheetText } = await import("../src/advice.js");
+  const { party, sheets } = await import("../src/campaign.js");
+  const wizard = party.find(member => member.name === "The White Wizard");
+  const sheet = sheets["The White Wizard"];
+  assert.deepEqual(spentAbilities(wizard, sheet, {}), []);
+
+  // Every 3rd-, 4th-, and 5th-level slot used, and Channel Divinity spent.
+  let state = {};
+  for (const level of [3, 4, 5]) state = spendResource(sheet, state, slotKey(level), 9);
+  state = spendResource(sheet, state, "Channel Divinity", 2);
+  const spent = spentAbilities(wizard, sheet, state);
+  const names = spent.map(line => line.split(":")[0]);
+  for (const name of ["Fireball", "Flame Strike", "Wall of Fire", "Spirit Guardians", "Radiance of the Dawn", "Turn Undead"]) assert.ok(names.includes(name), name + " is spent");
+  for (const name of ["Sacred Flame", "Bless", "Healing Word"]) assert.ok(!names.includes(name), name + " still has slots or is a cantrip");
+  assert.match(spent.find(line => line.startsWith("Fireball")), /no 3rd-level or higher spell slot left/);
+
+  const usable = withoutSpent(wizard, spent);
+  for (let id = 1; id <= 40; id++) {
+    const scenes = [{ id, text: "Roll initiative! Guards open fire on the party." }];
+    const { options } = recommend(usable, scenes);
+    for (const option of options) {
+      for (const name of ["Fireball", "Flame Strike", "Radiance of the Dawn"]) assert.ok(!option.includes(name), "suggested spent " + name + ": " + option);
+    }
+  }
+  const text = sheetText({ ...wizard, spent });
+  const [ready, rest] = text.split("SPENT right now");
+  assert.ok(!/- Fireball/.test(ready), "Fireball is not READY");
+  assert.match(rest, /- Fireball: no 3rd-level/);
+  assert.match(ready, /- Sacred Flame/);
+
+  const logan = party.find(member => member.name === "Logan Ninefingers");
+  const noRage = spentAbilities(logan, sheets["Logan Ninefingers"], spendResource(sheets["Logan Ninefingers"], {}, "Rage", 4));
+  assert.deepEqual(noRage, ["Rage: no Rage left until a long rest"]);
+  assert.ok(!withoutSpent(logan, noRage).moves.includes("combat | Rage —"));
+});

@@ -106,3 +106,13 @@ test("party HP: anyone at the table sets and adjusts it, temp HP first", async (
   assert.deepEqual((await call(room)).body.hp["The White Wizard"], { hp: 60, max: 75, temp: 0, ac: 19 });
   assert.equal((await post(room + "/hp", { character: 0, hp: 60, max: 75, ac: 99 })).status, 400);
 });
+
+test("party resources are shared through the room", async () => {
+  const { code } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  assert.deepEqual((await call(room)).body.resources, {});
+  assert.equal((await post(room + "/resources", { character: 2, state: { used: { Rage: 1, "slot:3": "x" }, raging: true } })).status, 200);
+  assert.deepEqual((await call(room)).body.resources["Logan Ninefingers"], { used: { Rage: 1 }, raging: true });
+  assert.equal((await post(room + "/resources", { character: 2, state: [] })).status, 400);
+  assert.equal((await post(room + "/resources", { character: 9, state: { used: {} } })).status, 400);
+});

@@ -177,3 +177,15 @@ test("local server: a question gets its own answer, not the cached scene answer"
   assert.match(asked.body.answer, /shadow/);
   assert.match(requests.at(-1).body.messages[0].content.at(-1).text, /Can Roan swap/);
 });
+
+test("spent abilities from the player's phone reach Claude", async () => {
+  const { post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "k" });
+  const spent = ["Fireball: no 3rd-level or higher spell slot left"];
+  assert.equal((await post("/advise", { character: 0, spent })).status, 200);
+  assert.equal(requests.length, 1);
+  const prompt = requests[0].body.messages[0].content.map(block => block.text).join("\n");
+  const [ready, rest] = prompt.split("SPENT right now");
+  assert.ok(rest && /- Fireball: no 3rd-level/.test(rest));
+  assert.ok(!/- Fireball —/.test(ready), "Fireball isn't listed as READY");
+  assert.match(requests[0].body.system, /Never recommend anything listed under SPENT/);
+});

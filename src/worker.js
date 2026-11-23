@@ -59,9 +59,11 @@ const endpoints = {
     const party = importHistory(JSON.parse(room.party));
     const { results: hpRows } = await db.prepare("SELECT name, hp, max_hp, temp, ac FROM party_hp").all();
     const names = new Set(party.map(member => member.name));
+    const { results: resourceRows } = await db.prepare("SELECT name, state FROM party_resources").all();
+    const resources = Object.fromEntries(resourceRows.filter(row => names.has(row.name)).map(row => [row.name, JSON.parse(row.state)]));
     const hp = Object.fromEntries(hpRows.filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp, ...(row.ac ? { ac: row.ac } : {}) }]));
     return json({
-      party, hp, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      party, hp, resources, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
     });
   },
@@ -76,7 +78,9 @@ const endpoints = {
     const scenes = results.reverse();
     if (!scenes.length) return json({ error: "Wait for a scene update." }, 400);
     const question = typeof body.question === "string" ? body.question.trim().slice(0, 300) : "";
-    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves, question].join("\u0000");
+    const spent = Array.isArray(body.spent) ? body.spent.slice(0, 40).map(item => String(item).slice(0, 120)) : [];
+    if (spent.length) character.spent = spent;
+    const key = [code, index, scenes.at(-1).id, scenes.at(-1).text, character.moves, question, spent.join("|")].join("\u0000");
     const cached = aiCache.get(key);
     if (cached) return json({ ...(await cached), sceneId: scenes.at(-1).id });
     const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
@@ -158,6 +162,20 @@ const endpoints = {
     await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp, ac) VALUES (?, ?, ?, ?, ?)").bind(name, hp, max, temp, ac ?? kept).run();
     return json({ ok: true });
   },
+  // Resources used (spell slots, rages…): anyone at the table can save them.
+  async resources(request, db, room) {
+    const body = await request.json();
+    const name = JSON.parse(room.party)[Number(body.character)]?.name;
+    if (!Number.isInteger(Number(body.character)) || !name) return json({ error: "Pick a character." }, 400);
+    const used = body.state?.used;
+    if (!used || typeof used !== "object" || Array.isArray(used)) return json({ error: "Invalid resources." }, 400);
+    const clean = Object.fromEntries(Object.entries(used).slice(0, 40)
+      .filter(([, value]) => /^\d{1,3}$/.test(String(value)))
+      .map(([key, value]) => [String(key).slice(0, 40), Math.min(99, Number(value))]));
+    const state = JSON.stringify({ used: clean, raging: body.state.raging === true });
+    await db.prepare("INSERT OR REPLACE INTO party_resources (name, state) VALUES (?, ?)").bind(name, state).run();
+    return json({ ok: true });
+  },
   async scene(request, db, code) {
     const body = await request.json();
     if (body.delete) {
@@ -215,7 +233,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
@@ -223,6 +241,7 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
       if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
+      if (operation === "resources" && request.method === "POST") return await endpoints.resources(request, env.DB, room);
       if ((operation === "hp" || operation === "hp-adjust") && request.method === "POST") return await endpoints.hp(request, env.DB, room, operation === "hp-adjust");
       if (operation === "initiative" && request.method === "POST") return await endpoints.initiative(request, env.DB, room, code);
       if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);

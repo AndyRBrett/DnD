@@ -484,3 +484,4 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .welcome-dots i{width:8px;height:8px;border-radius:50%;background:var(--border2)}
 .welcome-dots i.is-on{background:var(--red);width:22px;border-radius:99px}
 .welcome .action-row{display:grid;grid-template-columns:1fr 2fr;gap:8px}
+.stat-line{white-space:pre-line}

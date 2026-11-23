@@ -1,4 +1,4 @@
-import { recommend, coachingPrompt, characterAbilities } from "./scene-options.js";
+import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./scene-options.js";
 // A practice table is marked by its opening update (no database change), and
 // the device that started it also remembers it, in case 30+ updates push the
 // opening line out of view.
@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -53,7 +53,7 @@ function showOptions() {
   updateChips();
   $("action-label").textContent = "What is " + character.name + " doing?";
   const recent = state.scenes;
-  const advice = recommend(character, recent);
+  const advice = recommend(withoutSpent(character, spentFor(Number($("character").value))), recent);
   const latest = recent.at(-1);
   $("situation").textContent = advice.situation + (latest ? " · Updated " +
     new Date(latest.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "");
@@ -107,7 +107,7 @@ async function askClaude(question = "") {
   for (const button of buttons) button.disabled = true;
   $("claude-status").textContent = question ? "Claude is thinking about your question…" : "Claude is reading the story…";
   try {
-    const advice = await backend.advise(room, Number(index), question);
+    const advice = await backend.advise(room, Number(index), question, spentFor(Number(index)));
     if ($("character").value !== index || (!question && state.scenes.at(-1)?.id !== sceneId)) {
       $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
       return;
@@ -410,6 +410,7 @@ async function sync() {
     state = fresh;
     if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
+    if (previous && JSON.stringify(previous.resources) !== JSON.stringify(fresh.resources) && !rosterChanged && !scenesChanged) showOptions();
     if (hostChanged) setHost(fresh.isHost);
     if (!previous) rememberTable(room);
     if (rosterChanged || hostChanged) drawRoster();
@@ -656,7 +657,7 @@ $("ask-claude").onclick = () => askClaude();
 $("copy-coach").onclick = async () => {
   const character = selectedCharacter();
   if (!character || ended) return;
-  const prompt = coachingPrompt(character, state.scenes);
+  const prompt = coachingPrompt(withoutSpent(character, spentFor(Number($("character").value))), state.scenes);
   try {
     await navigator.clipboard.writeText(prompt);
     $("coach-status").textContent = "Copied. Paste into your D&D chat for a deeper answer.";
@@ -1526,7 +1527,8 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   if (stats.length) {
     const strip = document.createElement(compact ? "p" : "div");
     strip.className = compact ? "stat-line" : "stat-grid combat-stats";
-    if (compact) strip.textContent = stats.map(stat => stat.label.replace("Passive Perc.", "PP") + " " + stat.value + (stat.unconfirmed ? "?" : "")).join(" · ");
+    if (compact) strip.textContent = stats.map(stat => stat.label.replace("Passive Perc.", "PP") + " " + stat.value + (stat.unconfirmed ? "?" : "")).join(" · ")
+      + (sheets[partyName(index)]?.resources?.length ? "\n" + resourceSummary(index) : "");
     else {
       strip.replaceChildren(...stats.map(stat => {
         const tile = document.createElement("div");
@@ -1728,10 +1730,36 @@ function deathSaveBox(index) {
 // own. Rage and rests are posted to the story so the DM sees them. ──
 const ORDINAL = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th", 6: "6th", 7: "7th", 8: "8th", 9: "9th" };
 const resKey = index => "dnd-res:" + (isPractice() ? room : "campaign") + ":" + partyName(index);
-const readRes = index => readJson(resKey(index), { used: {}, raging: false });
-function writeRes(index, value) {
+// Shared through the room (migration 0007 / the local server) when
+// available, with this phone's copy as the fallback.
+const resShared = () => Boolean(backend.setResources) && state?.resources !== undefined && state?.resources !== null;
+function readRes(index) {
+  const shared = resShared() ? state.resources[partyName(index)] : undefined;
+  return shared ?? readJson(resKey(index), null) ?? { used: {}, raging: false };
+}
+function saveRes(index, value) {
   storage.set(resKey(index), JSON.stringify(value));
-  drawCombat();
+  if (!resShared()) return;
+  state.resources = { ...state.resources, [partyName(index)]: value };
+  backend.setResources(room, index, value).catch(error => { $("notice").textContent = "Couldn't save resources: " + error.message; });
+}
+function writeRes(index, value) {
+  saveRes(index, value);
+  showOptions();
+}
+// What this character can't use right now (out of slots or uses), so the
+// suggestions and Ask Claude leave it out.
+function spentFor(index) {
+  const character = state?.party?.[index];
+  const sheet = sheets[character?.name];
+  return character && sheet ? spentAbilities(character, sheet, readRes(index)) : [];
+}
+function resourceSummary(index) {
+  const sheet = sheets[partyName(index)];
+  const res = readRes(index);
+  return (sheet?.resources ?? []).map(resource => resource.slots
+    ? "Slots " + Object.keys(resource.slots).map(level => resourceLeft(sheet, res, slotKey(level))).join("·")
+    : resource.name + " " + resourceLeft(sheet, res, resource.name) + "/" + resource.max + (resource.rage && res.raging ? " 😤" : "")).join(" · ");
 }
 function tellTable(index, text) {
   if (backend.postAction && Array.isArray(state?.actions) && !ended) backend.postAction(room, index, text).then(sync).catch(() => {});
@@ -1917,6 +1945,10 @@ function drawHp() {
   if (ready) {
     const record = hpRecord(me);
     if (record?.hp > 0 && storage.get(deathKey(me))) storage.remove(deathKey(me));
+    if (resShared() && !state.resources[partyName(me)]) {
+      const local = readJson(resKey(me), null);
+      if (local && (Object.keys(local.used ?? {}).length || local.raging)) saveRes(me, local);
+    }
     const health = partyHpStatus(record);
     $("hp-badge").className = "badge hp-badge is-" + health;
     $("hp-badge").textContent = "❤️ " + (record ? (health === "down" ? "DOWN" : record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Set HP");
@@ -2123,7 +2155,7 @@ function drawAttack() {
     }
     if (notes.length) {
       attackFlow.notes = [...(attackFlow.notes ?? []), ...notes];
-      storage.set(resKey(me), JSON.stringify(next));
+      saveRes(me, next);
       drawHp();
     }
   };
