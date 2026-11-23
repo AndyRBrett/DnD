@@ -2,7 +2,7 @@
 // as strings plus the worker, with src/campaign.js and src/advice.js inlined.
 // The local server always runs without Supabase, so it serves a config.js that
 // turns hosted mode off.
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 
 const unexport = source => source.replace(/^export (?=(?:const|function|async function|class) )/gm, "");
 
@@ -14,7 +14,10 @@ const assets = Object.fromEntries(await Promise.all(
 assets["config.js"] = "// Local server: no Supabase, rooms live in this server's SQLite.\nexport const SUPABASE = null;\n";
 const shared = (await Promise.all(["campaign.js", "advice.js"].map(name => readFile("src/" + name, "utf8")))).map(unexport).join("\n");
 const worker = await readFile("src/worker.js", "utf8");
-await writeFile("dist/server/index.js", "const assets = " + JSON.stringify(assets) + ";\n" + shared + "\n" + worker);
+// The web fonts (base64; the worker decodes them when served).
+const fonts = Object.fromEntries(await Promise.all((await readdir("src/fonts")).filter(name => name.endsWith(".woff2"))
+  .map(async name => ["fonts/" + name, (await readFile("src/fonts/" + name)).toString("base64")])));
+await writeFile("dist/server/index.js", "const assets = " + JSON.stringify(assets) + ";\nconst fonts = " + JSON.stringify(fonts) + ";\n" + shared + "\n" + worker);
 try {
   await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
 } catch (error) {

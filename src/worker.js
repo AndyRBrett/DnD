@@ -264,6 +264,13 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) {
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+      if (Object.hasOwn(fonts, name)) {
+        return new Response(Uint8Array.from(atob(fonts[name]), char => char.charCodeAt(0)), { headers: {
+          "Content-Type": "font/woff2",
+          "Cache-Control": "public, max-age=604800",
+          "X-Content-Type-Options": "nosniff"
+        } });
+      }
       if (!Object.hasOwn(types, name)) return new Response("Not found", { status: 404 });
       return new Response(assets[name], { headers: {
         "Content-Type": types[name] + "; charset=utf-8",

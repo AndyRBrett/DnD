@@ -20,6 +20,10 @@ test("serves the app shell and assets", async () => {
     assert.equal((await call(path)).status, 200, path);
   }
   assert.equal((await call("/secret")).status, 404);
+  const font = await worker.fetch(new Request("http://local/fonts/barlow-400-latin.woff2"), env);
+  assert.equal(font.status, 200);
+  assert.equal(font.headers.get("content-type"), "font/woff2");
+  assert.equal(new TextDecoder().decode((await font.arrayBuffer()).slice(0, 4)), "wOF2");
 });
 
 test("room lifecycle: create, read, publish, correct, edit party, close", async () => {
