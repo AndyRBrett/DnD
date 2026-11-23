@@ -143,3 +143,25 @@ test("combat stats come from the sheet, with a confirmed AC on top", async () =>
   assert.equal(concentrationDc(7), 10);
   assert.equal(concentrationDc(31), 15);
 });
+
+test("attacks against AC, hit reports, and death saves", async () => {
+  const { attackOutcome, hitReportText, parseHitReport, deathSave } = await import("../src/encounter.js");
+  assert.equal(attackOutcome({ total: 16, critical: false, fumble: false }, 16), "hit");
+  assert.equal(attackOutcome({ total: 15, critical: false, fumble: false }, 16), "miss");
+  assert.equal(attackOutcome({ total: 25, critical: false, fumble: true }, 16), "miss");
+  assert.equal(attackOutcome({ total: 21, critical: true, fumble: false }, 30), "crit");
+  assert.equal(attackOutcome({ total: 12, critical: false, fumble: false }, NaN), "unknown");
+
+  const line = hitReportText("Bandit 2", 14);
+  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14 });
+  assert.equal(parseHitReport("hit Bandit 2 for 14 damage"), null);
+  assert.equal(parseHitReport("🎯 hit the wall for lots damage"), null);
+
+  let saves = deathSave(null, 12);
+  assert.deepEqual(saves, { successes: 1, failures: 0, outcome: null });
+  saves = deathSave(saves, 1);
+  assert.deepEqual(saves, { successes: 1, failures: 2, outcome: null });
+  assert.equal(deathSave(saves, 5).outcome, "dead");
+  assert.equal(deathSave({ successes: 2, failures: 2 }, 10).outcome, "stable");
+  assert.deepEqual(deathSave({ successes: 1, failures: 2 }, 20), { successes: 0, failures: 0, outcome: "revived" });
+});

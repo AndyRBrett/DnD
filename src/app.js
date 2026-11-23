@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -419,6 +419,7 @@ async function sync() {
     $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
     if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
     if (rosterChanged || scenesChanged) showOptions();
+    if (scenesChanged && !rosterChanged) drawHitInbox();
     if (isPractice()) {
       $("practice-banner").hidden = false;
       $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + " · PRACTICE";
@@ -1226,6 +1227,9 @@ $("dice-roll").onclick = async () => {
   $("dice-breakdown").textContent = result.expression + " → " + result.breakdown;
   $("dice-result").hidden = false;
   $("dice-result").animate?.([{ transform: "scale(.92)", opacity: .4 }, { transform: "scale(1)", opacity: 1 }], { duration: 220, easing: "ease-out" });
+  if (!(result.groups.length === 1 && result.groups[0].sides === 20 && result.groups[0].count === 1)) {
+    lastDamageRoll = { total: result.total, label: dice.label || result.expression };
+  }
   const name = dice.label || result.expression;
   dice.log.unshift(name + ": " + result.total + " (" + result.breakdown + ")");
   dice.log = dice.log.slice(0, 8);
@@ -1303,6 +1307,8 @@ function schedulePublish() {
 
 function drawCombat() {
   drawHp();
+  drawHitReport();
+  drawHitInbox();
   const combat = state?.combat;
   const available = Boolean(backend.combatSet) && !ended;
   $("tab-combat").hidden = !combat;
@@ -1417,6 +1423,12 @@ function sheetMaxHp(index) {
   const line = (sheets[partyName(index)]?.combat ?? []).find(([label]) => label === "HP");
   return line ? maxHpFromSheet(line[1]) : null;
 }
+const enemyTargets = new Map(); // enemy id → party index the DM picked
+function partyAc(index) {
+  const value = combatStats(sheets[partyName(index)], hpRecord(index)).find(stat => stat.label === "AC")?.value;
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) ? number : null;
+}
 function hpText(record) {
   return record ? record.hp + " / " + record.max + (record.temp ? " (+" + record.temp + " temp)" : "") : "Not set";
 }
@@ -1430,7 +1442,7 @@ async function adjustHp(index, change, status) {
     ? "🧠 Concentration save: DC " + concentrationDc(-change) + " Constitution — or the spell ends." : "";
   try {
     await backend.adjustHp(room, index, change);
-    status.textContent = reminder;
+    if (reminder) status.textContent = reminder;
   } catch (error) {
     status.textContent = error.message;
   }
@@ -1506,6 +1518,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
       note.textContent = HP_LABEL[health];
       box.append(note);
     }
+    if (health === "down" && !compact && !isHost && index === Number($("character").value)) box.append(deathSaveBox(index));
   }
   const status = document.createElement("p");
   status.className = "fineprint hp-status";
@@ -1599,6 +1612,65 @@ function hpWidget(index, { compact = false, open = false } = {}) {
   if (!status.isConnected && !record) box.append(status);
   return box;
 }
+// ── Death saves, kept on the player's phone; each roll is posted so the DM
+// sees it. Cleared when the character is back above 0 HP. ──
+const deathKey = index => "dnd-death:" + room + ":" + index;
+const readDeath = index => readJson(deathKey(index), { successes: 0, failures: 0 });
+function deathSaveBox(index) {
+  const saves = readDeath(index);
+  const box = document.createElement("div");
+  box.className = "death-saves";
+  const row = (label, key, mark) => {
+    const line = document.createElement("div");
+    line.className = "death-row is-" + key;
+    const name = document.createElement("span");
+    name.textContent = label;
+    line.append(name);
+    for (let n = 1; n <= 3; n++) {
+      const pip = document.createElement("button");
+      pip.type = "button";
+      pip.className = "pip" + (saves[key] >= n ? " is-on" : "");
+      pip.textContent = saves[key] >= n ? mark : "";
+      pip.setAttribute("aria-label", label + " " + n);
+      pip.onclick = () => {
+        const next = { ...readDeath(index), [key]: saves[key] >= n ? n - 1 : n };
+        storage.set(deathKey(index), JSON.stringify(next));
+        drawHp();
+      };
+      line.append(pip);
+    }
+    return line;
+  };
+  const outcome = saves.failures >= 3 ? "dead" : saves.successes >= 3 ? "stable" : null;
+  const title = document.createElement("p");
+  title.className = "death-title";
+  title.textContent = outcome === "dead" ? "☠️ Dead — talk to the DM" : outcome === "stable" ? "Stable — unconscious at 0 HP" : "Death saves";
+  const rollButton = document.createElement("button");
+  rollButton.type = "button";
+  rollButton.className = "cta";
+  rollButton.textContent = "Roll death save";
+  rollButton.hidden = Boolean(outcome);
+  rollButton.onclick = () => openDice("d20", "Death save", async natural => {
+    const result = deathSave(readDeath(index), natural);
+    const { outcome: what, ...counts } = result;
+    storage.set(deathKey(index), JSON.stringify(counts));
+    const summary = what === "revived" ? "natural 20 — back up with 1 HP!"
+      : what === "dead" ? "fails — dead" : what === "stable" ? "succeeds — stable"
+      : (natural >= 10 ? "success" : natural === 1 ? "natural 1, two failures" : "failure") + " (" + counts.successes + " ✓ / " + counts.failures + " ✗)";
+    $("dice-status").textContent = "Death save " + natural + ": " + summary;
+    if (what === "revived") await adjustHp(index, 1, $("dice-status"));
+    if (backend.postAction && Array.isArray(state?.actions)) {
+      backend.postAction(room, index, "💀 death save " + natural + ": " + summary).then(sync).catch(() => {});
+    }
+    drawHp();
+  });
+  const hint = document.createElement("p");
+  hint.className = "fineprint";
+  hint.textContent = "Taking damage while down is a failure (a critical hit is two) — tap a box. Any healing brings you back.";
+  box.append(title, row("Successes", "successes", "✓"), row("Failures", "failures", "✗"), rollButton, hint);
+  return box;
+}
+
 // Redraws a widget unless someone is typing in it (the poll would wipe it).
 function fillHp(container, index, options = {}) {
   if (container.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName)) return;
@@ -1625,6 +1697,7 @@ function drawHp() {
   if (!available) return;
   if (ready) {
     const record = hpRecord(me);
+    if (record?.hp > 0 && storage.get(deathKey(me))) storage.remove(deathKey(me));
     const health = partyHpStatus(record);
     $("hp-badge").className = "badge hp-badge is-" + health;
     $("hp-badge").textContent = "❤️ " + (record ? (health === "down" ? "DOWN" : record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Set HP");
@@ -1647,6 +1720,89 @@ $("hp-badge").onclick = () => {
   showTab("sheet");
   $("hp-sheet").scrollIntoView({ behavior: "smooth", block: "start" });
 };
+
+// ── Hit reports: a player tells the DM "🎯 hit Bandit 2 for 14 damage"
+// (a story line); the DM's phone offers to apply it to that enemy. ──
+let lastDamageRoll = null;
+const HANDLED_KEY = () => "dnd-hits-handled:" + room;
+const handledHits = () => new Set(readJson(HANDLED_KEY(), []));
+function markHit(id) {
+  storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), id].slice(-300)));
+}
+function drawHitReport() {
+  const combat = state?.combat;
+  const form = $("hit-report");
+  form.hidden = !combat || isHost || ended || !backend.postAction || !Array.isArray(state?.actions);
+  if (form.hidden) return;
+  const targets = (combat.enemies ?? []).filter(enemy => enemy.status !== "down");
+  const select = $("hit-target");
+  if (document.activeElement !== select) {
+    const chosen = select.value;
+    select.replaceChildren(new Option(targets.length ? "Which enemy?" : "No enemies standing", ""),
+      ...targets.map(enemy => new Option(enemy.name + " · " + (STATUS_TEXT[enemy.status] ?? ""), enemy.name)));
+    select.value = targets.some(enemy => enemy.name === chosen) ? chosen : "";
+  }
+  $("hit-last").hidden = !lastDamageRoll;
+  if (lastDamageRoll) $("hit-last").textContent = "Use last roll: " + lastDamageRoll.total + " (" + lastDamageRoll.label + ")";
+}
+$("hit-last").onclick = () => { if (lastDamageRoll) $("hit-amount").value = lastDamageRoll.total; };
+$("hit-report").onsubmit = async event => {
+  event.preventDefault();
+  const enemy = $("hit-target").value;
+  const amount = Math.round(Number($("hit-amount").value));
+  if (!enemy) { $("hit-status").textContent = "Pick the enemy you hit."; return; }
+  if (!(amount >= 1 && amount <= 999)) { $("hit-status").textContent = "Enter the damage (1–999)."; return; }
+  const button = $("hit-report").querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    await backend.postAction(room, Number($("character").value), hitReportText(enemy, amount));
+    $("hit-status").textContent = "Sent: " + amount + " damage to " + enemy + ". The DM applies it.";
+    $("hit-amount").value = "";
+    sync();
+  } catch (error) {
+    $("hit-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+
+function drawHitInbox() {
+  const box = $("hit-inbox");
+  const combat = state?.combat;
+  if (!isHost || !combat || !encounterLoaded) { box.hidden = true; return; }
+  const since = Number(storage.get("dnd-combat-start:" + room) ?? 0); // last action id before the fight
+  const handled = handledHits();
+  const pending = (state.actions ?? [])
+    .map(action => ({ action, report: parseHitReport(action.text) }))
+    .filter(({ action, report }) => report && !handled.has(action.id) && Number(action.id) > since);
+  box.hidden = !pending.length;
+  $("hit-list").replaceChildren(...pending.map(({ action, report }) => {
+    const item = document.createElement("li");
+    const target = enemies.find(enemy => enemy.name === report.enemy);
+    const text = document.createElement("span");
+    text.textContent = action.name.replace(/^The /, "") + " hit " + report.enemy + " for " + report.amount
+      + (target ? " (HP " + target.hp + "/" + target.maxHp + ")" : " — not in your encounter");
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "danger-soft";
+    apply.textContent = "Apply";
+    apply.disabled = !target;
+    apply.onclick = () => {
+      markHit(action.id);
+      enemies = enemies.map(enemy => enemy.name === report.enemy ? applyHp(enemy, -report.amount) : enemy);
+      saveEncounter();
+      drawEncounter();
+    };
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "quiet";
+    dismiss.textContent = "Dismiss";
+    dismiss.onclick = () => { markHit(action.id); drawCombat(); };
+    item.append(text, apply, dismiss);
+    return item;
+  }));
+  if (pending.length && currentTab !== "combat") $("tab-combat").classList.add("has-news");
+}
 
 async function setInitiative(character, value, status) {
   const number = Math.round(Number(value));
@@ -1704,6 +1860,7 @@ $("enc-combat").onclick = async () => {
       enemies = enemies.map(enemy => enemy.initiative === null
         ? { ...enemy, initiative: roll("d20" + (enemy.init >= 0 ? "+" : "") + enemy.init).total } : enemy);
       storage.set(encounterKey(), JSON.stringify(enemies));
+      storage.set("dnd-combat-start:" + room, String(Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0))));
       await publishCombat({ round: 1, turn: null, reset: true });
       drawEncounter();
       showTab("combat");
@@ -1800,8 +1957,8 @@ $("enc-clear").onclick = () => {
 
 function enemyCard(enemy) {
   const card = document.createElement("article");
-  const state = enemyStatus(enemy);
-  card.className = "enemy is-" + state;
+  const health = enemyStatus(enemy);
+  card.className = "enemy is-" + health;
   const head = document.createElement("div");
   head.className = "enemy-head";
   const name = document.createElement("strong");
@@ -1813,10 +1970,10 @@ function enemyCard(enemy) {
     chip.textContent = text;
     tags.append(chip);
   }
-  if (state !== "ok") {
+  if (health !== "ok") {
     const chip = document.createElement("span");
     chip.className = "state";
-    chip.textContent = state === "down" ? "DOWN" : "BLOODIED";
+    chip.textContent = health === "down" ? "DOWN" : "BLOODIED";
     tags.append(chip);
   }
   for (const condition of enemy.conditions ?? []) {
@@ -1875,6 +2032,19 @@ function enemyCard(enemy) {
   result.hidden = true;
   const attacks = document.createElement("div");
   attacks.className = "attack-buttons";
+  // Who this enemy is attacking: the roll is checked against their AC.
+  if (enemy.attacks.length && state?.party) {
+    const target = document.createElement("select");
+    target.className = "enemy-target";
+    target.setAttribute("aria-label", enemy.name + " attacks");
+    target.append(new Option("🎯 Target…", ""), ...state.party.map(({ name }, index) => {
+      const ac = partyAc(index);
+      return new Option(name.replace(/^The /, "") + (ac ? " · AC " + ac : ""), String(index));
+    }));
+    target.value = enemyTargets.get(enemy.id) ?? "";
+    target.onchange = () => enemyTargets.set(enemy.id, target.value);
+    attacks.append(target);
+  }
   for (const [label, hit, damage] of enemy.attacks) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1885,8 +2055,49 @@ function enemyCard(enemy) {
       const harm = damage ? roll(damage) : null;
       const critDamage = harm && toHit.critical ? roll(damage.replace(/(\d*)d(\d+)/g, (_, count, sides) => (Number(count || 1) * 2) + "d" + sides)) : null;
       const shown = critDamage ?? harm;
-      result.textContent = label + ": " + toHit.total + " to hit" + (toHit.critical ? " (CRIT)" : toHit.fumble ? " (nat 1)" : "")
+      const line = document.createElement("span");
+      line.textContent = label + ": " + toHit.total + " to hit" + (toHit.critical ? " (CRIT)" : toHit.fumble ? " (nat 1)" : "")
         + " [" + toHit.breakdown + "]" + (shown ? " · " + shown.total + " damage [" + shown.breakdown + "]" : "");
+      const parts = [line];
+      const choice = enemyTargets.get(enemy.id);
+      if (choice !== undefined && choice !== "") {
+        const index = Number(choice);
+        const who = partyName(index).replace(/^The /, "");
+        const ac = partyAc(index);
+        const outcome = attackOutcome(toHit, ac);
+        const verdict = document.createElement("strong");
+        verdict.className = "verdict is-" + outcome;
+        verdict.textContent = outcome === "crit" ? "CRITICAL HIT on " + who + "!"
+          : outcome === "hit" ? "HIT " + who + " (AC " + ac + ")"
+          : outcome === "miss" ? "MISS " + who + (ac ? " (AC " + ac + ")" : "")
+          : who + "'s AC isn't set — the DM decides.";
+        parts.push(verdict);
+        if (shown && (outcome === "hit" || outcome === "crit" || outcome === "unknown")) {
+          const row = document.createElement("div");
+          row.className = "apply-row";
+          const status = document.createElement("span");
+          status.className = "fineprint";
+          const apply = amount => {
+            for (const button of row.querySelectorAll("button")) button.disabled = true;
+            status.textContent = "Applied " + amount + " to " + who + ".";
+            adjustHp(index, -amount, status);
+          };
+          const full = document.createElement("button");
+          full.type = "button";
+          full.className = "danger-soft";
+          full.textContent = "Apply " + shown.total + " to " + who;
+          full.onclick = () => apply(shown.total);
+          const half = document.createElement("button");
+          half.type = "button";
+          half.className = "quiet";
+          half.textContent = "Half (" + Math.floor(shown.total / 2) + ")";
+          half.title = "Resistance";
+          half.onclick = () => apply(Math.floor(shown.total / 2));
+          row.append(full, half, status);
+          parts.push(row);
+        }
+      }
+      result.replaceChildren(...parts);
       result.hidden = false;
     };
     attacks.append(button);

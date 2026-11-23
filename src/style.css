@@ -389,3 +389,28 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .hp-fields{grid-template-columns:repeat(4,1fr)}
 .hp-status:empty{display:none}
 .hp-status{margin:0;color:var(--gold);font-weight:600}
+
+/* ── Attacks vs AC, hit reports, death saves ── */
+.enemy-target{width:auto;min-height:40px;font-size:.9rem}
+.enemy-roll{display:flex;flex-direction:column;gap:6px}
+.verdict{font:700 1rem var(--font-display);letter-spacing:.06em;text-transform:uppercase}
+.verdict.is-hit{color:var(--red)}
+.verdict.is-crit{color:var(--gold)}
+.verdict.is-miss{color:var(--green)}
+.verdict.is-unknown{color:var(--muted2)}
+.apply-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.apply-row button{min-height:38px;font-size:.88rem}
+.hit-row{display:grid;grid-template-columns:minmax(0,1fr) 76px auto;gap:8px}
+.hit-row input{min-width:0}
+#hit-inbox{border-color:var(--red-border)}
+.hit-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.hit-list li{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:8px 10px}
+.hit-list li span{flex:1;min-width:0}
+.hit-list li button{min-height:36px;font-size:.88rem}
+.death-saves{display:flex;flex-direction:column;gap:8px;background:var(--red-dim);border:1px solid var(--red-border);border-radius:14px;padding:12px}
+.death-title{margin:0;font:700 1.1rem var(--font-display);text-transform:uppercase;letter-spacing:.04em}
+.death-row{display:flex;align-items:center;gap:8px}
+.death-row span{width:88px;color:var(--muted2);font-size:.9rem}
+.death-row .pip{width:38px;height:38px;min-height:0;padding:0;border-radius:50%;background:#0f1114;border:2px solid var(--border2);font-weight:700}
+.death-row.is-successes .pip.is-on{background:var(--green);border-color:var(--green);color:#06210f}
+.death-row.is-failures .pip.is-on{background:var(--red);border-color:var(--red);color:#fff}

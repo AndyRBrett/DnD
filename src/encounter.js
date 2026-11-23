@@ -184,3 +184,34 @@ export function combatStats(sheet, record) {
 
 // 5e concentration save after damage: DC 10 or half the damage, if higher.
 export const concentrationDc = damage => Math.max(10, Math.floor(damage / 2));
+
+// ── Attacks against the party ──
+
+// Did an enemy's attack hit? A natural 20 always hits (a critical); a
+// natural 1 always misses; otherwise it hits if the total meets the AC.
+export function attackOutcome(toHit, ac) {
+  if (toHit.critical) return "crit";
+  if (toHit.fumble) return "miss";
+  if (!Number.isFinite(ac)) return "unknown";
+  return toHit.total >= ac ? "hit" : "miss";
+}
+
+// Players tell the DM about damage they dealt through a story line in this
+// exact shape, which the DM's phone reads back to offer "Apply".
+export const hitReportText = (enemy, amount) => "🎯 hit " + enemy + " for " + amount + " damage";
+export function parseHitReport(text) {
+  const match = String(text ?? "").match(/^🎯 hit (.+) for (\d{1,3}) damage$/u);
+  return match ? { enemy: match[1], amount: Number(match[2]) } : null;
+}
+
+// ── Death saves (5e): d20, 10+ succeeds; a 1 counts as two failures; a 20
+// brings the character back with 1 HP. Three successes: stable. Three
+// failures: dead. ──
+export function deathSave(saves, natural) {
+  const current = { successes: saves?.successes ?? 0, failures: saves?.failures ?? 0 };
+  if (natural === 20) return { successes: 0, failures: 0, outcome: "revived" };
+  const next = natural >= 10
+    ? { ...current, successes: Math.min(3, current.successes + 1) }
+    : { ...current, failures: Math.min(3, current.failures + (natural === 1 ? 2 : 1)) };
+  return { ...next, outcome: next.failures >= 3 ? "dead" : next.successes >= 3 ? "stable" : null };
+}
