@@ -11,7 +11,7 @@ const flag = name => {
 // a restart of this server; rooms still expire eight hours after creation.
 const dbFile = flag("--db") || process.env.TABLE_DB || ":memory:";
 const DB = openDatabase(dbFile);
-DB.sql.prepare("DELETE FROM rooms WHERE created < ?").run(Date.now() - 8 * 60 * 60 * 1000);
+DB.sql.prepare("DELETE FROM rooms WHERE MAX(created, COALESCE((SELECT MAX(scenes.created) FROM scenes WHERE scenes.code = rooms.code), 0)) < ?").run(Date.now() - 8 * 60 * 60 * 1000);
 const env = { DB, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" };
 const port = Number(process.env.PORT ?? flag("--port")) || 4173;
 let lanAddresses = [];

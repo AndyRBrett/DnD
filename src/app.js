@@ -432,12 +432,12 @@ async function sync() {
     if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
     $("connection").textContent = isHost ? "HOST" : "PLAYER";
   } catch (error) {
-    // The server says the table is gone (ended, or past its 8 hours). It can
+    // The server says the table is gone (ended, or idle for 8 hours). It can
     // answer with 404 or 400 depending on the error code, so read the message.
     if (error.status === 404 || /ended or expired/i.test(error.message)) {
       ended = true;
       stopMic();
-      $("notice").textContent = "This table has ended. Tables close 8 hours after they start. The DM can start a new one from the home screen; HP, spell slots, and the campaign carry over.";
+      $("notice").textContent = "This table has ended. Tables close after 8 hours without any activity. The DM can start a new one from the home screen; HP, spell slots, and the campaign carry over.";
       $("scene").textContent = "Session ended.";
       $("history").replaceChildren();
       $("action-form").hidden = true;

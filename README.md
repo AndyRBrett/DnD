@@ -61,7 +61,7 @@ Character chips under the header switch characters. A red dot on Scene means the
 - **Player actions:** under *What can I do?*, each player types (or dictates) what their character is doing and taps **Add to story**. The host also gets **Actions for each character** (one box per character) for players without a phone out. Everyone sees it under the current scene, Ask Claude reads it, and it's saved into the campaign history with the session (`DM:` and `<Character>:` lines in order).
 - **Practice table:** works like a normal table but never adds anything to the campaign history. It shows a PRACTICE label for everyone. Use it to test without touching the story.
 - **Export for ChatGPT** (in Campaign history): downloads one .txt file with the history, the current character sheets (ready versus check-with-the-DM), and this table's updates, and also copies it. Attach the file in a ChatGPT thread to continue there. To bring a ChatGPT recap back, paste it into Campaign history and save.
-- Tables expire 8 hours after they start. **End room and delete session** removes everything right away.
+- Tables close after 8 hours with no activity (no update, action, shared roll, or change to the fight; `supabase/migrations/0011_dnd_rolling_expiry.sql`), so a long session is never cut off. **End room and delete session** removes everything right away.
 
 How it's built: GitHub Pages serves the files in `src/` (`.github/workflows/pages.yml` runs the tests, then publishes on every push to `main`). Rooms, logins, and the campaign history live in the UFC app's Supabase project, in tables prefixed `dnd_` (`supabase/migrations/`). Clients can only reach them through database functions that check the signed-in account. **Ask Claude** runs in the `dnd-advise` edge function (`supabase/functions/dnd-advise/`).
 
@@ -95,7 +95,7 @@ npm run table   # rooms saved to table.sqlite, so a restart mid-session keeps th
 2. Send players the **Share player link** URL. It uses the laptop's LAN address; if the laptop has several connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part.
 3. Use **Character sheets and abilities** to edit the five profiles (The White Wizard, Arcturus, Logan Ninefingers, Dum Dum, Roan the Last Shadow). One ability per line: `tag | Name — cost, limits`. Tags: `combat`, `danger`, `explore`, `social`, `aid`, `any`, or `check` for anything not yet confirmed.
 4. Host controls: pause listening, type an update, correct the latest transcript, or turn off auto-publish. Host control survives closing and reopening the tab on the host laptop.
-5. **End room and delete session** when finished. Rooms expire eight hours after creation either way.
+5. **End room and delete session** when finished. Rooms close after eight hours with no new updates either way.
 
 ### Host from a phone (local)
 

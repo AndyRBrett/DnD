@@ -132,3 +132,15 @@ test("the player whose turn it is can pass it, in initiative order", async () =>
   assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "pc:0", round: 4 }); // new round
   assert.equal((await call(room)).body.combat.turn, "pc:0");
 });
+
+test("tables stay open while there's activity, and close after 8 idle hours", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  const hour = 60 * 60 * 1000;
+  env.DB.sql.prepare("UPDATE rooms SET created = ? WHERE code = ?").run(Date.now() - 10 * hour, code);
+  env.DB.sql.prepare("UPDATE scenes SET created = ? WHERE code = ?").run(Date.now() - 10 * hour, code);
+  assert.equal((await call(room)).status, 404, "started 10h ago with no activity since: closed");
+  env.DB.sql.prepare("INSERT INTO scenes (code, text, created) VALUES (?, ?, ?)").run(code, "Still playing.", Date.now() - hour);
+  assert.equal((await call(room)).status, 200, "an update an hour ago keeps it open");
+  assert.equal((await post(room + "/scene", { text: "Roll initiative." }, { "x-table-host": host })).status, 200);
+});

@@ -47,7 +47,7 @@ const endpoints = {
     const host = randomToken(24);
     const now = Date.now();
     await db.batch([
-      db.prepare("DELETE FROM rooms WHERE created < ?").bind(now - roomAge),
+      db.prepare("DELETE FROM rooms WHERE MAX(created, COALESCE((SELECT MAX(scenes.created) FROM scenes WHERE scenes.code = rooms.code), 0)) < ?").bind(now - roomAge),
       db.prepare("INSERT INTO rooms VALUES (?, ?, ?, ?)").bind(code, host, now, JSON.stringify(party)),
       db.prepare("INSERT INTO scenes (code, text, created) VALUES (?, ?, ?)").bind(code, recap, now)
     ]);
@@ -261,7 +261,8 @@ export default {
       const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
-      const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND created > ?")
+      // Open until 8 hours after the last activity (the latest update).
+      const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND MAX(created, COALESCE((SELECT MAX(scenes.created) FROM scenes WHERE scenes.code = rooms.code), 0)) > ?")
         .bind(code, Date.now() - roomAge).first();
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
