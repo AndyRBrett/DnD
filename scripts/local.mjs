@@ -8,10 +8,10 @@ const flag = name => {
   return index > 0 ? process.argv[index + 1] : undefined;
 };
 // In-memory by default. `--db table.sqlite` (npm run table) keeps rooms across
-// a restart of this server; rooms still expire eight hours after creation.
+// a restart of this server; rooms still close after eight idle hours.
 const dbFile = flag("--db") || process.env.TABLE_DB || ":memory:";
 const DB = openDatabase(dbFile);
-DB.sql.prepare("DELETE FROM rooms WHERE MAX(created, COALESCE((SELECT MAX(scenes.created) FROM scenes WHERE scenes.code = rooms.code), 0)) < ?").run(Date.now() - 8 * 60 * 60 * 1000);
+DB.sql.prepare("DELETE FROM rooms WHERE last_active < ?").run(Date.now() - 8 * 60 * 60 * 1000);
 const env = { DB, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" };
 const port = Number(process.env.PORT ?? flag("--port")) || 4173;
 let lanAddresses = [];

@@ -137,10 +137,13 @@ test("tables stay open while there's activity, and close after 8 idle hours", as
   const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
   const room = "/api/rooms/" + code;
   const hour = 60 * 60 * 1000;
-  env.DB.sql.prepare("UPDATE rooms SET created = ? WHERE code = ?").run(Date.now() - 10 * hour, code);
+  env.DB.sql.prepare("UPDATE rooms SET created = ?, last_active = ? WHERE code = ?").run(Date.now() - 10 * hour, Date.now() - 10 * hour, code);
   env.DB.sql.prepare("UPDATE scenes SET created = ? WHERE code = ?").run(Date.now() - 10 * hour, code);
   assert.equal((await call(room)).status, 404, "started 10h ago with no activity since: closed");
-  env.DB.sql.prepare("INSERT INTO scenes (code, text, created) VALUES (?, ?, ?)").run(code, "Still playing.", Date.now() - hour);
-  assert.equal((await call(room)).status, 200, "an update an hour ago keeps it open");
+  env.DB.sql.prepare("UPDATE rooms SET last_active = ? WHERE code = ?").run(Date.now() - hour, code);
+  assert.equal((await call(room)).status, 200, "activity an hour ago keeps it open");
   assert.equal((await post(room + "/scene", { text: "Roll initiative." }, { "x-table-host": host })).status, 200);
+  const latest = (await call(room)).body.scenes.at(-1);
+  assert.equal((await post(room + "/scene", { delete: true, id: latest.id }, { "x-table-host": host })).status, 200);
+  assert.equal((await call(room)).status, 200, "deleting the newest scene doesn't end the table");
 });
