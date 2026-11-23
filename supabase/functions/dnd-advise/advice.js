@@ -4,7 +4,7 @@
 // checks they match). Raw HTTP rather than the SDK: the project installs no
 // dependencies and both runtimes ship single files.
 
-export const CLAUDE_MODEL = "claude-opus-5-5";
+export const CLAUDE_MODEL = "claude-sonnet-5-5";
 export const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
 
 export const adviceSchema = {
@@ -41,6 +41,7 @@ export const adviceSystem = [
   "The player reads your answer on a phone mid-game, so be brief and concrete. For each option: action is a short title (one sentence); why is one short sentence on why it fits the story; explain says how the move works in plain words for someone new to D&D (whether it uses the action, bonus action, reaction, or movement; range or area; who rolls what, such as an attack roll or the target's saving throw; and any cost, uses, or concentration), in one or two sentences, from the sheet line and standard 5th edition rules, adding \"check with the DM\" where the table's version may differ; declare is how the player would announce it at the table, one sentence in third person present tense starting with the character's name (for example \"The White Wizard casts Bless on Logan, Dum Dum, and Arcturus.\"), with no outcome.",
   "If the player asks a question, answer it directly in answer: two to four plain sentences that use the story, the sheet, and standard 5th edition rules, saying where the DM's ruling decides it. Then make the three options fit the question. If there is no question, answer is an empty string.",
   "Never recommend anything listed under SPENT: the character has no uses or spell slots left for it until a rest.",
+  "TABLE STATE comes from the app and is current: the round and whose turn it is, this character's HP, AC, conditions, and what is left of their spell slots and limited uses, the party's HP, and the enemies. When it is this character's turn in a fight, make the three options things to do this turn (action, bonus action, movement), weighing their HP, conditions, and what they have left, and protecting allies who are low. Enemy HP and AC are hidden: never guess numbers; Bloodied means about half or less.",
   "Only recommend abilities listed under READY on the character's sheet, or ordinary actions any adventurer could attempt (move, hide, help, talk, search, shove). Never recommend anything listed under UNCONFIRMED; if one looks relevant, put it in ask_dm as something to confirm with the DM.",
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM, ideally one that would clarify the bigger picture or the immediate options.",
@@ -91,7 +92,8 @@ export function sessionWindow(scenes) {
 // campaign's notes so far (may be empty). The history and the session so far
 // come first with cache breakpoints, so every character asking about the same
 // moment reuses them; only the sheet, latest update, and newest actions vary.
-export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "") {
+// table (optional): a short TABLE STATE snapshot from the player's phone.
+export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "", table = "") {
   const session = sessionWindow(scenes);
   const latest = session.at(-1);
   const earlier = session.slice(0, -1);
@@ -120,6 +122,7 @@ export function claudeRequest(apiKey, character, scenes, history = "", actions =
   }
   content.push({ type: "text", text: sheetText(character) + "\n\nLATEST DM UPDATE:\n" + (latest?.text ?? "(none yet)")
     + (newest.length ? "\n\nPLAYER ACTIONS SINCE THAT UPDATE (declared, not yet resolved by the DM):\n" + newest.map(action => "- " + action.name + ": " + action.text).join("\n") : "")
+    + (String(table).trim() ? "\n\nTABLE STATE (from the app, right now):\n" + String(table).trim().slice(0, 2000) : "")
     + (question.trim() ? "\n\nTHE PLAYER'S QUESTION:\n" + question.trim().slice(0, 300) : "") });
   return {
     method: "POST",

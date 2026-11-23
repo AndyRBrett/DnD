@@ -106,7 +106,7 @@ async function askClaude(question = "") {
   for (const button of buttons) button.disabled = true;
   $("claude-status").textContent = question ? "Claude is thinking about your question…" : "Claude is reading the story…";
   try {
-    const advice = await backend.advise(room, Number(index), question, spentFor(Number(index)));
+    const advice = await backend.advise(room, Number(index), question, spentFor(Number(index)), tableContext(Number(index)));
     if ($("character").value !== index || (!question && state.scenes.at(-1)?.id !== sceneId)) {
       $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
       return;
@@ -1394,6 +1394,7 @@ function drawCombat() {
   $("combat-foes").textContent = foes.length ? up + " of " + foes.length + " enemies standing" : "No enemies yet";
   $("combat-dm").hidden = !isHost;
   const myTurn = Boolean(current && current.key === myKey);
+  $("combat-ask").hidden = !myTurn || !state?.ai || ended;
   $("combat-end-turn").hidden = !myTurn || !backend.postAction || !Array.isArray(state?.actions);
   if (!myTurn) { $("combat-end-turn").disabled = false; $("combat-end-turn").textContent = "End my turn ▶"; }
 
@@ -1807,6 +1808,52 @@ function spentFor(index) {
   const sheet = sheets[character?.name];
   return character && sheet ? spentAbilities(character, sheet, readRes(index)) : [];
 }
+// What Claude should know about the table right now: the fight (round, whose
+// turn, the order, enemies only as Healthy/Bloodied/Down), this character's
+// HP, AC, conditions, and what's left, and the party's HP.
+function tableContext(index) {
+  if (!state) return "";
+  const name = partyName(index);
+  const short = text => String(text).replace(/^The /, "");
+  const lines = [];
+  const combat = state.combat;
+  if (combat) {
+    const order = liveOrder();
+    const current = order.find(entry => entry.key === combat.turn);
+    lines.push("In combat, round " + combat.round + ". " + (!current ? "Initiative is still being rolled."
+      : current.key === "pc:" + index ? "It is " + name + "'s turn right now." : "It is " + current.name + "'s turn (not " + short(name) + "'s)."));
+    lines.push("Initiative order: " + order.map(entry => short(entry.name) + (entry.initiative !== null ? " " + entry.initiative : "")
+      + (entry.kind === "enemy" ? " [enemy, " + (STATUS_TEXT[entry.status] ?? "Healthy") + (entry.conditions.length ? ", " + entry.conditions.join(", ") : "") + "]" : "")).join("; ") + ".");
+  } else {
+    lines.push("Not in combat right now.");
+  }
+  const record = hpRecord(index);
+  const ac = partyAc(index);
+  const res = readRes(index);
+  const me = [
+    record ? "HP " + record.hp + "/" + record.max + (record.temp ? " (+" + record.temp + " temp)" : "") + (record.hp <= 0 ? ", down and making death saves" : "") : "HP not tracked",
+    ac ? "AC " + ac : "",
+    res.raging ? "raging" : ""
+  ].filter(Boolean);
+  if (Number($("character").value) === index && !isHost) {
+    const conditionsNow = Object.entries(activeConditions()).map(([condition, level]) => condition + (condition === "Exhaustion" ? " " + level : ""));
+    if (conditionsNow.length) me.push("conditions: " + conditionsNow.join(", "));
+  }
+  lines.push(short(name) + ": " + me.join("; ") + ".");
+  const sheet = sheets[name];
+  const left = (sheet?.resources ?? []).map(resource => resource.slots
+    ? "spell slots left by level (1st up): " + Object.keys(resource.slots).map(level => resourceLeft(sheet, res, slotKey(level)) + "/" + resource.slots[level]).join(", ")
+    : resource.name + " " + resourceLeft(sheet, res, resource.name) + "/" + resource.max);
+  if (left.length) lines.push("Left until a rest: " + left.join("; ") + ".");
+  const others = state.party.map((member, other) => ({ member, other })).filter(({ other }) => other !== index)
+    .map(({ member }) => {
+      const hp = state.hp?.[member.name];
+      return short(member.name) + (hp ? " " + (hp.hp <= 0 ? "DOWN" : hp.hp + "/" + hp.max) : "");
+    });
+  lines.push("Party HP: " + others.join(", ") + ".");
+  return lines.join("\n").slice(0, 2000);
+}
+
 function resourceSummary(index) {
   const sheet = sheets[partyName(index)];
   const res = readRes(index);
@@ -2393,6 +2440,10 @@ const END_TURN = "⏭️ ends their turn";
 // it falls back to asking the DM's phone with a story line.
 let passTurnFallback = false;
 let passTurnTimer;
+$("combat-ask").onclick = () => {
+  showTab("moves");
+  askClaude("It's my turn in this fight. What are my best options this turn?");
+};
 $("combat-end-turn").onclick = async () => {
   const button = $("combat-end-turn");
   const me = Number($("character").value);

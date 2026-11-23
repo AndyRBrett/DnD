@@ -51,7 +51,7 @@ function localBackend() {
       await post(code, "close", {});
       storage.remove("host:" + code);
     },
-    advise: (code, character, question = "", spent = []) => post(code, "advise", { character, question, spent }, false),
+    advise: (code, character, question = "", spent = [], table = "") => post(code, "advise", { character, question, spent, table }, false),
     setResources: (code, character, state) => post(code, "resources", { character, state }, false),
     deleteScene: (code, id) => post(code, "scene", { id, delete: true }),
     setHp: (code, character, { hp, max, temp, ac }) => post(code, "hp", { character, hp, max, temp, ac }, false),
@@ -172,11 +172,11 @@ function hostedBackend({ url, anonKey }) {
     endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
-    async advise(code, character, question = "", spent = []) {
+    async advise(code, character, question = "", spent = [], table = "") {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
         headers: { apikey: anonKey, Authorization: "Bearer " + await token(), "content-type": "application/json" },
-        body: JSON.stringify({ code, character, question, spent })
+        body: JSON.stringify({ code, character, question, spent, table })
       });
       const data = await readJson(response);
       if (!response.ok) throw failure(data?.error ?? data?.message, response.status);
