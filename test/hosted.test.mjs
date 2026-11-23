@@ -81,3 +81,30 @@ test("every tab panel and tab button pair up", async () => {
   const tabs = [...html.matchAll(/data-tab="(\w+)"/g)].map(match => match[1]);
   assert.deepEqual(panels.sort(), tabs.sort());
 });
+
+test("the site can be added to the home screen: manifest, icons, service worker", async () => {
+  execFileSync(process.execPath, ["scripts/build-site.mjs"], { cwd: new URL("..", import.meta.url) });
+  const site = name => readFile(new URL("../site/" + name, import.meta.url), "utf8");
+  const manifest = JSON.parse(await site("manifest.json"));
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.start_url, "./");
+  const icons = new Set(await readdir(new URL("../site/icons", import.meta.url)));
+  for (const icon of manifest.icons) assert.ok(icons.has(icon.src.replace("icons/", "")), icon.src);
+  assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
+  const html = await site("index.html");
+  assert.match(html, /rel="manifest" href="manifest.json"/);
+  for (const [, file] of html.matchAll(/href="icons\/([\w-]+\.png)"/g)) assert.ok(icons.has(file), file);
+  const sw = await site("sw.js");
+  const version = (await site("version.txt")).trim();
+  assert.ok(sw.includes('const VERSION = "' + version + '"'), "sw.js is stamped with the release");
+  assert.match(sw, /\/api\//, "the live table is never cached");
+  // Every file the page loads is precached at the exact URL it asks for.
+  const shell = JSON.parse(sw.match(/^const SHELL = (\[.*\]);$/m)[1]);
+  const wanted = [...html.matchAll(/(?:src|href)="([\w-]+\.(?:js|css)\?v=[\w]+)"/g)].map(match => match[1]);
+  for (const name of ["app.js", "backend.js", "config.js"]) {
+    for (const [, ref] of (await site(name)).matchAll(/from\s*"\.\/([\w-]+\.js\?v=\w+)"/g)) wanted.push(ref);
+  }
+  assert.ok(wanted.length > 5);
+  for (const url of wanted) assert.ok(shell.includes(url), url + " is precached");
+  for (const url of shell.filter(url => url !== "./")) assert.ok((await readdir(new URL("../site/" + url.split("?")[0].replace(/[^/]+$/, ""), import.meta.url))).includes(url.split("?")[0].split("/").pop()), url + " exists");
+});

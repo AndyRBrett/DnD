@@ -3415,5 +3415,8 @@ function returnToTable() {
   if (isHost && encounterLoaded) loadCloudEncounter();
 }
 
+// Home-screen app (manifest.json + sw.js): installable, and opens offline.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
 if (room && (!backend.hosted || backend.user())) enterRoom();
 else showLobby(room ? "Sign in to join the table." : "");
