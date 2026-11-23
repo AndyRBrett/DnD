@@ -2696,10 +2696,69 @@ function rememberTable(code) {
 }
 const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
 
+// ── First visit: a short "how this works" walkthrough, once per phone. ──
+const WELCOME_KEY = "dnd-welcomed";
+const WELCOME_STEPS = [
+  ["Pick your character", "Tap your name in the row of chips at the top. Your sheet, rolls, HP, and suggestions all follow that choice."],
+  ["Watch the Scene", "The DM narrates out loud and the latest update shows on the Scene tab. Tell the table what you do in the box under it."],
+  ["When a fight starts", "The Combat tab opens by itself. Roll initiative there, use the Attack card to roll to hit and damage, and tap End my turn when you're done."],
+  ["Stuck? Help is one tap away", "Moves suggests things your character can do right now. The round 🎲 Roll button rolls any dice. HP, spell slots, and rages are on the Sheet tab. Tap ? at the top to see this again."]
+];
+let welcomeStep = 0;
+function drawWelcome() {
+  const [title, text] = WELCOME_STEPS[welcomeStep];
+  $("welcome-step").textContent = "HOW IT WORKS · " + (welcomeStep + 1) + " OF " + WELCOME_STEPS.length;
+  $("welcome-title").textContent = title;
+  $("welcome-text").textContent = text;
+  $("welcome-dots").replaceChildren(...WELCOME_STEPS.map((_, index) => {
+    const dot = document.createElement("i");
+    if (index === welcomeStep) dot.className = "is-on";
+    return dot;
+  }));
+  $("welcome-back").disabled = welcomeStep === 0;
+  $("welcome-next").textContent = welcomeStep === WELCOME_STEPS.length - 1 ? "Let's play" : "Next";
+}
+function openWelcome() {
+  welcomeStep = 0;
+  drawWelcome();
+  $("welcome").hidden = false;
+  document.body.classList.add("no-scroll");
+  $("welcome-next").focus();
+}
+// Players only (the DM can open it with ?), once the table has loaded.
+function maybeWelcome() {
+  if (storage.get(WELCOME_KEY) || ended || $("table").hidden) return;
+  if (!state) return void setTimeout(maybeWelcome, 500);
+  if (!isHost) openWelcome();
+}
+function closeWelcome() {
+  $("welcome").hidden = true;
+  document.body.classList.remove("no-scroll");
+  storage.set(WELCOME_KEY, "1");
+}
+$("welcome-next").onclick = () => {
+  if (welcomeStep === WELCOME_STEPS.length - 1) return closeWelcome();
+  welcomeStep += 1;
+  drawWelcome();
+};
+$("welcome-back").onclick = () => { welcomeStep = Math.max(0, welcomeStep - 1); drawWelcome(); };
+$("welcome-skip").onclick = closeWelcome;
+$("help").onclick = openWelcome;
+
+// Sheet tab: D&D basics open and the long character sheet folded until the
+// player chooses otherwise (remembered on this phone).
+for (const id of ["character-library", "rules-basics"]) {
+  const saved = storage.get("dnd-open:" + id);
+  $(id).open = saved === null ? id === "rules-basics" : saved === "1";
+  $(id).addEventListener("toggle", () => storage.set("dnd-open:" + id, $(id).open ? "1" : "0"));
+}
+
 function enterRoom() {
   $("tabbar").hidden = false;
   $("copy").hidden = false;
   $("dice-fab").hidden = false;
+  $("help").hidden = false;
+  setTimeout(maybeWelcome, 600);
   document.body.classList.add("in-table");
   showTab(storage.get(TAB_KEY) ?? "scene");
   $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + (isPractice() ? " · PRACTICE" : "");
@@ -2742,9 +2801,11 @@ async function showLobby(message = "") {
   $("tabbar").hidden = true;
   $("copy").hidden = true;
   $("dice-fab").hidden = true;
+  $("help").hidden = true;
   document.body.classList.remove("in-table");
   $("account-line").hidden = !backend.hosted;
   $("join").hidden = !room;
+  $("joining-note").hidden = !room;
   const recent = recentTables();
   $("recent-rooms").hidden = !recent.length;
   $("recent-room-list").replaceChildren(...recent.map(({ code, at }) => tableLink(code, tableLabel(code) + " · joined " + new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))));

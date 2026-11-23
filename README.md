@@ -27,6 +27,8 @@ The app uses the UFC Picked Fight visual system: near-black cards, red primary a
 
 **Editing the story:** the DM can tap ✎ on anything in the story (the current scene, *Since then*, and earlier updates, including players' actions) to fix it or delete it in place. Players can do the same for their own actions. Edits clear Claude's cached suggestions so the next answer reads the corrected story (`supabase/migrations/0005_dnd_story_edits.sql`). The campaign history itself is edited in the DM tab.
 
+**First visit:** a player's first table on a phone shows a four-step "How it works" walkthrough (pick your character, watch the Scene, fights, where help is); **?** in the header shows it again. The Sheet tab opens *D&D basics* and folds the long character sheet until the player chooses otherwise (remembered per phone). The sign-in screen explains the email code (it comes from UFC Picks, the shared login service) and, from a table link, that you'll go straight to the table.
+
 Character chips under the header switch characters. A red dot on Scene means the DM posted something while you were on another tab.
 
 **Dice** (`src/dice.js`): the round d20 button opens a dice tray with d4–d100, a modifier, and advantage or disadvantage. Dice are real 3D solids drawn on a canvas (`src/dice3d.js`: tetrahedron, cube, octahedron, d10 trapezohedron, dodecahedron, icosahedron; d100 is a tens die plus a units die) that tumble, bounce, and land with the rolled number facing you. A natural 20 lands gold, a natural 1 dark (no animation when the phone asks for reduced motion). Tapping a roll tile on the Sheet opens it already filled in, such as `d20+9`. On the hosted version a player can tick *Share with the table* to post the roll to *Since then*. The DM's rolls stay private.
