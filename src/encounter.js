@@ -285,3 +285,54 @@ export function attackBreakdown(attack, sheet, options = []) {
     damage: damageParts.join(" + ")
   };
 }
+
+// ── Limited resources: spell slots and per-rest features ──
+// State: { used: { "slot:3": 1, "Rage": 2, … }, raging: false }.
+// Spell slots: a leveled spell uses a slot of its level or higher; cantrips
+// are free; all slots come back on a long rest.
+
+export const slotKey = level => "slot:" + level;
+
+export function resourceMax(sheet, key) {
+  for (const resource of sheet?.resources ?? []) {
+    if (resource.slots && key.startsWith("slot:")) return resource.slots[key.slice(5)] ?? 0;
+    if (resource.name === key) return resource.max;
+  }
+  return 0;
+}
+
+export const resourceLeft = (sheet, state, key) => Math.max(0, resourceMax(sheet, key) - (state?.used?.[key] ?? 0));
+
+export function spendResource(sheet, state, key, amount = 1) {
+  const used = { ...(state?.used ?? {}) };
+  used[key] = Math.max(0, Math.min(resourceMax(sheet, key), (used[key] ?? 0) + amount));
+  return { ...state, used };
+}
+
+// A short rest refills "per short rest" features; a long rest refills
+// everything (spell slots too) and ends a rage.
+export function rest(sheet, state, kind) {
+  const used = { ...(state?.used ?? {}) };
+  for (const resource of sheet?.resources ?? []) {
+    if (kind !== "long" && resource.per !== "short") continue;
+    if (resource.slots) for (const level of Object.keys(resource.slots)) delete used[slotKey(level)];
+    else delete used[resource.name];
+  }
+  return { ...state, used, raging: kind === "long" ? false : Boolean(state?.raging) };
+}
+
+// The slot levels a spell can be cast with right now (its own level or higher, with a slot left).
+export function castableLevels(attack, sheet, state) {
+  if (!attack?.slot) return [];
+  const slots = (sheet?.resources ?? []).find(resource => resource.slots)?.slots ?? {};
+  return Object.keys(slots).map(Number).filter(level => level >= attack.slot && resourceLeft(sheet, state, slotKey(level)) > 0);
+}
+
+// Casting at a higher level: extra damage dice per level above the spell's own.
+export function upcastAttack(attack, level) {
+  const extra = attack?.upcast && level > attack.slot ? level - attack.slot : 0;
+  if (!extra) return attack;
+  const [, count, sides] = attack.upcast.match(/(\d*)d(\d+)/);
+  return { ...attack, damage: attack.damage.replace(/^(\d*)d(\d+)/, (_, base, baseSides) =>
+    baseSides === sides ? (Number(base || 1) + extra * Number(count || 1)) + "d" + sides : _ + "+" + extra * Number(count || 1) + "d" + sides) };
+}

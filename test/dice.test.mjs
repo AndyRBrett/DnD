@@ -229,3 +229,36 @@ test("attacks show their ability modifier, and the math adds up", async () => {
     }
   }
 });
+
+test("spell slots, rage, and rests", async () => {
+  const { slotKey, resourceLeft, spendResource, rest, castableLevels, upcastAttack } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const wizard = sheets["The White Wizard"];
+  const fireball = wizard.attacks.find(attack => attack.name === "Fireball");
+  let state = {};
+  assert.equal(resourceLeft(wizard, state, slotKey(3)), 3);
+  assert.deepEqual(castableLevels(fireball, wizard, state), [3, 4, 5]);
+  state = spendResource(wizard, state, slotKey(3), 3);
+  assert.equal(resourceLeft(wizard, state, slotKey(3)), 0);
+  assert.deepEqual(castableLevels(fireball, wizard, state), [4, 5]);
+  assert.equal(upcastAttack(fireball, 4).damage, "9d6");
+  assert.equal(upcastAttack(fireball, 3).damage, "8d6");
+  assert.equal(upcastAttack(wizard.attacks.find(attack => attack.name === "Guiding Bolt"), 3).damage, "6d6");
+  assert.deepEqual(castableLevels(wizard.attacks.find(attack => attack.name === "Sacred Flame"), wizard, state), []); // cantrip
+
+  state = spendResource(wizard, state, "Channel Divinity", 2);
+  assert.equal(resourceLeft(wizard, state, "Channel Divinity"), 0);
+  state = rest(wizard, state, "short");
+  assert.equal(resourceLeft(wizard, state, "Channel Divinity"), 2); // short rest
+  assert.equal(resourceLeft(wizard, state, slotKey(3)), 0);         // slots wait for a long rest
+  state = rest(wizard, state, "long");
+  assert.equal(resourceLeft(wizard, state, slotKey(3)), 3);
+
+  const logan = sheets["Logan Ninefingers"];
+  let rage = { ...spendResource(logan, {}, "Rage"), raging: true };
+  assert.equal(resourceLeft(logan, rage, "Rage"), 3);
+  assert.equal(rest(logan, rage, "short").raging, true);
+  assert.equal(resourceLeft(logan, rest(logan, rage, "short"), "Rage"), 3); // rages are per long rest
+  assert.deepEqual(rest(logan, rage, "long"), { used: {}, raging: false });
+  assert.equal(resourceLeft(logan, spendResource(logan, rage, "Rage", 10), "Rage"), 0);
+});
