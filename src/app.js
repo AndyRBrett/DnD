@@ -1034,7 +1034,8 @@ async function setCondition(name, level) {
   level = Math.max(0, Math.min(name === "Exhaustion" ? 6 : 1, level));
   if (level === before) return;
   if (level) active[name] = level; else delete active[name];
-  storage.set(conditionKey(), JSON.stringify(active));
+  const key = conditionKey(); // the character this change is for, even if the picker changes meanwhile
+  storage.set(key, JSON.stringify(active));
   drawConditions();
   const character = selectedCharacter();
   if (!character || !backend.postAction || !Array.isArray(state?.actions) || ended) return;
@@ -1049,9 +1050,9 @@ async function setCondition(name, level) {
     sync();
   } catch (error) {
     // Undo it here so tapping again retries; otherwise the table would never hear.
-    const now = activeConditions();
+    const now = readJson(key, {});
     if (before) now[name] = before; else delete now[name];
-    storage.set(conditionKey(), JSON.stringify(now));
+    storage.set(key, JSON.stringify(now));
     drawConditions();
     $("condition-status").textContent = "Couldn't tell the table (" + error.message + "). Tap it again to retry.";
   }
