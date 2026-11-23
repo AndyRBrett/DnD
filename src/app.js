@@ -2464,9 +2464,47 @@ const readJson = (key, fallback) => { try { return JSON.parse(storage.get(key) ?
 let enemies = [];
 let encounterLoaded = false;
 const savedTemplates = () => readJson(TEMPLATE_KEY, []);
+// The encounter is kept on this phone and, on the hosted app, saved with the
+// table (host only, migration 0008) so the DM can switch devices mid-session.
+let encounterTimer;
+let encounterCloud = true;
 function saveEncounter() {
   storage.set(encounterKey(), JSON.stringify(enemies));
+  storage.set(encounterKey() + ":at", String(Date.now()));
   if (isHost && state?.combat) schedulePublish();
+  if (!backend.encounterSave || !encounterCloud) return;
+  clearTimeout(encounterTimer);
+  encounterTimer = setTimeout(() => {
+    backend.encounterSave(room, enemies)
+      .then(() => { $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM."; })
+      .catch(error => {
+        if (/could not find the function/i.test(error.message) || error.status === 404) encounterCloud = false;
+        $("encounter-sync").textContent = encounterCloud ? "Couldn't save to the table: " + error.message
+          : "Saved on this device only. Run supabase/migrations/0008_dnd_encounter.sql to keep it with the table.";
+      });
+  }, 800);
+}
+async function loadCloudEncounter() {
+  if (!backend.encounterGet || !isHost) return;
+  try {
+    const saved = await backend.encounterGet(room);
+    const localAt = Number(storage.get(encounterKey() + ":at") ?? 0);
+    if (saved && Array.isArray(saved.enemies) && (saved.updated > localAt || !enemies.length)) {
+      enemies = saved.enemies;
+      storage.set(encounterKey(), JSON.stringify(enemies));
+      storage.set(encounterKey() + ":at", String(saved.updated));
+      drawEncounter();
+      if (state?.combat) schedulePublish();
+    } else if (enemies.length && (!saved || saved.updated < localAt)) {
+      saveEncounter(); // this device has the newer encounter: put it on the table
+    }
+    $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
+  } catch (error) {
+    if (/could not find the function/i.test(error.message) || error.status === 404) {
+      encounterCloud = false;
+      $("encounter-sync").textContent = "Saved on this device only. Run supabase/migrations/0008_dnd_encounter.sql to keep it with the table.";
+    }
+  }
 }
 
 function drawTemplateOptions() {
@@ -2729,6 +2767,7 @@ function drawEncounter() {
     enemies = readJson(encounterKey(), []);
     encounterLoaded = true;
     drawTemplateOptions();
+    loadCloudEncounter();
   }
   const total = enemies.length;
   const up = standing(enemies);
