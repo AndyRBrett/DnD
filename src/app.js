@@ -3236,6 +3236,7 @@ function enterRoom() {
   $("copy").hidden = false;
   $("dice-fab").hidden = false;
   $("help").hidden = boardMode;
+  $("home").hidden = boardMode;
   if (!boardMode) setTimeout(maybeWelcome, 600);
   document.body.classList.add("in-table");
   showTab(storage.get(TAB_KEY) ?? "scene");
@@ -3287,6 +3288,7 @@ async function showLobby(message = "") {
   $("copy").hidden = true;
   $("dice-fab").hidden = true;
   $("help").hidden = true;
+  $("home").hidden = true;
   document.body.classList.remove("in-table");
   $("account-line").hidden = !backend.hosted;
   $("join").hidden = !room;
@@ -3414,6 +3416,14 @@ function returnToTable() {
   sync();
   if (isHost && encounterLoaded) loadCloudEncounter();
 }
+
+// Back to the home screen (your tables, join by link). The table stays open;
+// "Tables you joined" (or your DM list) gets you straight back in.
+$("home").onclick = () => {
+  if (listening && !window.confirm("Stop listening and go back to your tables?")) return;
+  if (room) rememberTable(room);
+  location.href = "./";
+};
 
 // Home-screen app (manifest.json + sw.js): installable, and opens offline.
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
