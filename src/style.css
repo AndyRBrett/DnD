@@ -145,6 +145,11 @@ details[open]>.card-summary{margin-bottom:10px}
 /* ── Lobby ── */
 .link-list{list-style:none;padding:0;margin:6px 0 0}
 .link-list li{margin:0 0 6px}
+.link-list li.with-action{display:flex;gap:8px;align-items:stretch}
+.link-list li.with-action a{flex:1;min-width:0}
+.link-list li.with-action button{flex:none;min-height:0;padding:0 14px;border-radius:12px}
+.link-list .tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-size:.72rem;font-weight:700;letter-spacing:.04em;vertical-align:1px}
+.link-list a small{display:block;margin-top:2px;color:var(--muted);font-weight:500;font-size:.8rem}
 .link-list a{display:block;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:12px 14px;color:var(--text);text-decoration:none;font-weight:600}
 #code{letter-spacing:.3em;font-size:1.3rem;text-align:center}
 #recent-rooms{margin-top:12px}

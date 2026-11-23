@@ -45,7 +45,29 @@ function localBackend() {
       const state = await call("/" + code);
       return { ...state, isHost: Boolean(hostKey(code)) };
     },
-    myRooms: async () => [],
+    // Tables this browser started (it holds their host keys), newest first;
+    // keys for tables that have closed are dropped.
+    async myRooms() {
+      const codes = [];
+      try {
+        for (let index = 0; index < localStorage.length; index++) {
+          const match = localStorage.key(index)?.match(/^host:([a-f0-9]{24})$/);
+          if (match) codes.push(match[1]);
+        }
+      } catch {}
+      const rooms = await Promise.all(codes.map(async code => {
+        try {
+          const state = await call("/" + code);
+          const times = state.scenes.map(scene => scene.created);
+          return { code, created: Math.min(...times), active: Math.max(...times),
+            practice: storage.get("practice:" + code) === "1" || state.scenes[0]?.text.startsWith("PRACTICE TABLE") };
+        } catch (error) {
+          if (error.status === 404) storage.remove("host:" + code);
+          return null;
+        }
+      }));
+      return rooms.filter(Boolean).sort((a, b) => b.active - a.active);
+    },
     postScene: (code, text, id) => post(code, "scene", { text, id }),
     saveParty: (code, party) => post(code, "party", { party }),
     async closeRoom(code) {
