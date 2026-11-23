@@ -131,7 +131,22 @@
           </div>
           <p id="combat-status" class="fineprint"></p>
         </section>
+        <section id="hit-inbox" class="card" hidden aria-labelledby="hit-inbox-title">
+          <h3 id="hit-inbox-title" class="display xs">Hits to apply</h3>
+          <ul id="hit-list" class="hit-list"></ul>
+        </section>
         <section id="hp-combat" class="card hp-card" hidden></section>
+        <form id="hit-report" class="card stack" hidden>
+          <h3 class="display xs">Hit an enemy?</h3>
+          <p class="fineprint">Send the DM the damage you dealt. They apply it — you never see enemy HP.</p>
+          <div class="hit-row">
+            <select id="hit-target" aria-label="Enemy you hit"></select>
+            <input id="hit-amount" type="number" inputmode="numeric" min="1" max="999" placeholder="Dmg" aria-label="Damage dealt">
+            <button class="cta" type="submit">Send</button>
+          </div>
+          <button id="hit-last" class="quiet" type="button" hidden></button>
+          <p id="hit-status" class="fineprint"></p>
+        </form>
         <form id="combat-init" class="card stack" hidden>
           <h3 class="display xs" id="init-title">Your initiative</h3>
           <p class="fineprint">Roll it here, or type the total you rolled at the table.</p>
