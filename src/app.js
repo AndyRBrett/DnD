@@ -5,7 +5,7 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
-import { roll, poolExpression, rollableFrom, parse as parseDice } from "./dice.js";
+import { roll, poolExpression, rollableFrom, parse as parseDice, critExpression } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
@@ -427,7 +427,7 @@ async function sync() {
     if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
     if (rosterChanged || scenesChanged) showOptions();
     if (scenesChanged && !rosterChanged) drawHitInbox();
-    if (scenesChanged) handleTurnEnds();
+    handleTurnEnds(); // also retries one whose publish failed
     if (isPractice()) {
       $("practice-banner").hidden = false;
       $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + " · PRACTICE";
@@ -841,6 +841,7 @@ const canEditStory = entry => !ended && (entry.kind === "scene"
   : Boolean(backend.editAction) && (isHost || entry.mine));
 function storyItem(entry) {
   const item = document.createElement("li");
+  item.dataset.story = entry.kind + ":" + entry.id;
   if (entry.kind === "action") item.className = "player-action";
   const text = document.createElement("span");
   text.className = "story-text";
@@ -863,8 +864,14 @@ function friendlyStoryError(error) {
     : error.message;
 }
 function openStoryEditor(container, entry) {
-  if (storyEditing) renderStory(true);
-  if (!container.isConnected) return;
+  if (storyEditing) {
+    // Switching from another editor: close it, then find this entry again in
+    // the redrawn list.
+    storyEditing = null;
+    renderStory(true);
+    if (!container.isConnected) container = document.querySelector('[data-story="' + entry.kind + ":" + entry.id + '"]');
+  }
+  if (!container?.isConnected) return;
   storyEditing = entry;
   for (const child of container.children) child.hidden = true;
   container.classList.add("is-editing");
@@ -1041,7 +1048,12 @@ async function setCondition(name, level) {
     $("condition-status").textContent = "The table can see this.";
     sync();
   } catch (error) {
-    $("condition-status").textContent = error.message;
+    // Undo it here so tapping again retries; otherwise the table would never hear.
+    const now = activeConditions();
+    if (before) now[name] = before; else delete now[name];
+    storage.set(conditionKey(), JSON.stringify(now));
+    drawConditions();
+    $("condition-status").textContent = "Couldn't tell the table (" + error.message + "). Tap it again to retry.";
   }
 }
 function drawConditions() {
@@ -1172,6 +1184,9 @@ function syncDiceExpression() {
 // One-tap rolls from the character's roll tiles and proficient saves, so
 // nobody has to type "d20+9".
 function drawDicePresets() {
+  // A roll the app is waiting on (death save, initiative, an attack) keeps its
+  // own dice: no presets to swap in an unrelated roll.
+  if (dice.onResult) { $("dice-presets").hidden = true; return; }
   const character = isHost ? null : selectedCharacter();
   const sheet = sheets[character?.name];
   const presets = [];
@@ -1209,6 +1224,7 @@ function drawDicePresets() {
   }));
 }
 function openDice(expression = "", label = "", onResult = null) {
+  dice.rollId = (dice.rollId ?? 0) + 1; // a roll still tumbling from before won't land here
   dice.onResult = onResult;
   dice.pool = {};
   dice.modifier = 0;
@@ -1248,8 +1264,26 @@ for (const button of $("dice-buttons").children) {
     syncDiceExpression();
   };
 }
-$("mod-minus").onclick = () => { dice.modifier -= 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
-$("mod-plus").onclick = () => { dice.modifier += 1; dice.label = ""; $("dice-label").textContent = ""; if (!Object.keys(dice.pool).length) dice.pool = { 20: 1 }; syncDiceExpression(); };
+// −/+ adjust the roll that's showing: "d20+11" becomes "d20+12", not "d20+1".
+function stepModifier(change) {
+  if (!Object.keys(dice.pool).length) {
+    const parsed = parseDice($("dice-expression").value.trim() || "d20");
+    dice.pool = {};
+    dice.modifier = 0;
+    if (parsed && parsed.dice.length && parsed.dice.every(die => die.sign === 1)) {
+      for (const die of parsed.dice) dice.pool[die.sides] = (dice.pool[die.sides] ?? 0) + die.count;
+      dice.modifier = parsed.modifier;
+    } else {
+      dice.pool = { 20: 1 };
+    }
+  }
+  dice.modifier += change;
+  dice.label = "";
+  $("dice-label").textContent = "";
+  syncDiceExpression();
+}
+$("mod-minus").onclick = () => stepModifier(-1);
+$("mod-plus").onclick = () => stepModifier(1);
 $("dice-expression").oninput = () => { dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0"; previewDice(); };
 for (const button of $("dice-mode").children) {
   button.onclick = () => {
@@ -1269,11 +1303,17 @@ $("dice-roll").onclick = async () => {
   $("dice-status").textContent = "";
   $("dice-result").hidden = true;
   $("dice-roll").disabled = true;
+  // What this roll is for, taken now: the tray can be cleared or reopened
+  // for another roll while the dice are still tumbling.
+  const rollId = dice.rollId = (dice.rollId ?? 0) + 1;
+  const { label, onResult } = dice;
+  const share = !$("dice-share-wrap").hidden && $("dice-share").checked;
   try {
     await spinDice(result);
   } finally {
     $("dice-roll").disabled = false;
   }
+  if (rollId !== dice.rollId) return;
   $("dice-total").textContent = String(result.total);
   $("dice-tag").textContent = result.critical ? "NATURAL 20" : result.fumble ? "NATURAL 1" : result.mode !== "normal" ? result.mode.toUpperCase() : "";
   $("dice-result").className = "dice-result" + (result.critical ? " is-crit" : result.fumble ? " is-fumble" : "");
@@ -1281,17 +1321,17 @@ $("dice-roll").onclick = async () => {
   $("dice-result").hidden = false;
   $("dice-result").animate?.([{ transform: "scale(.92)", opacity: .4 }, { transform: "scale(1)", opacity: 1 }], { duration: 220, easing: "ease-out" });
   if (!(result.groups.length === 1 && result.groups[0].sides === 20 && result.groups[0].count === 1)) {
-    lastDamageRoll = { total: result.total, label: dice.label || result.expression };
+    lastDamageRoll = { total: result.total, label: label || result.expression };
   }
-  const name = dice.label || result.expression;
+  const name = label || result.expression;
   dice.log.unshift(name + ": " + result.total + " (" + result.breakdown + ")");
   dice.log = dice.log.slice(0, 8);
   list("dice-log", dice.log);
-  if (dice.onResult) {
-    await dice.onResult(result.total, result);
+  if (onResult) {
+    await onResult(result.total, result);
     return;
   }
-  if (!$("dice-share-wrap").hidden && $("dice-share").checked) {
+  if (share) {
     const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, 300);
     try {
       await backend.postAction(room, Number($("character").value), text);
@@ -1341,13 +1381,24 @@ function combatChanged(previous) {
 }
 async function publishCombat(changes = {}) {
   clearTimeout(combatTimer);
-  if (!("turn" in changes) && state?.combat) {
-    // Only the enemies changed: re-read the turn first, so a turn a player
-    // just passed isn't put back.
+  if (!("turn" in changes) && !changes.reset) {
+    // Only the enemies changed. The server updates just the enemies of a fight
+    // that's still on, so this can't put back a turn a player just passed or
+    // reopen a fight the DM just ended.
+    if (!state?.combat) return;
+    const shown = publicEnemies(enemies);
     try {
+      await backend.combatEnemies(room, shown);
+    } catch (error) {
+      if (!/could not find the function/i.test(error.message)) throw error;
+      // Before migration 0012: re-read the turn, then write it back with the enemies.
       const fresh = await backend.room(room);
-      if (fresh.combat) state.combat = { ...state.combat, turn: fresh.combat.turn, round: fresh.combat.round, party: fresh.combat.party };
-    } catch {}
+      if (!fresh.combat) return;
+      await backend.combatSet(room, { round: fresh.combat.round, turn: fresh.combat.turn, enemies: shown });
+    }
+    if (state.combat) state.combat = { ...state.combat, enemies: shown };
+    drawCombat();
+    return;
   }
   const current = state?.combat ?? { round: 1, turn: null };
   const payload = {
@@ -1766,13 +1817,22 @@ function deathSaveBox(index) {
   rollButton.textContent = "Roll death save";
   rollButton.hidden = Boolean(outcome);
   rollButton.onclick = () => openDice("d20", "Death save", async natural => {
-    const result = deathSave(readDeath(index), natural);
+    // The tray stays open: once there's an outcome (or they're back up),
+    // further rolls don't count.
+    const before = readDeath(index);
+    if (before.successes >= 3 || before.failures >= 3 || (hpRecord(index)?.hp ?? 0) > 0) {
+      dice.onResult = null;
+      $("dice-status").textContent = "No death save needed now.";
+      return;
+    }
+    const result = deathSave(before, natural);
     const { outcome: what, ...counts } = result;
     storage.set(deathKey(index), JSON.stringify(counts));
     const summary = what === "revived" ? "natural 20 — back up with 1 HP!"
       : what === "dead" ? "fails — dead" : what === "stable" ? "succeeds — stable"
       : (natural >= 10 ? "success" : natural === 1 ? "natural 1, two failures" : "failure") + " (" + counts.successes + " ✓ / " + counts.failures + " ✗)";
     $("dice-status").textContent = "Death save " + natural + ": " + summary;
+    if (what) dice.onResult = null; // revived, stable, or dead: that's the last roll
     if (what === "revived") await adjustHp(index, 1, $("dice-status"));
     if (backend.postAction && Array.isArray(state?.actions)) {
       backend.postAction(room, index, "💀 death save " + natural + ": " + summary).then(sync).catch(() => {});
@@ -2027,7 +2087,21 @@ function fillResources(container, index) {
 
 // Redraws a widget unless someone is typing in it (the poll would wipe it).
 function fillHp(container, index, options = {}) {
-  if (container.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName)) return;
+  if (container.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName)) {
+    // Catch up once they're done typing, so the card doesn't keep old numbers.
+    container.pendingFill = [index, options];
+    if (!container.dataset.waits) {
+      container.dataset.waits = "1";
+      container.addEventListener("focusout", () => setTimeout(() => {
+        const pending = container.pendingFill;
+        if (!pending || container.contains(document.activeElement)) return;
+        container.pendingFill = null;
+        fillHp(container, ...pending);
+      }));
+    }
+    return;
+  }
+  container.pendingFill = null;
   // Keep the "Set HP" fold open across polls, but close it once HP is set.
   const known = String(Boolean(hpRecord(index)));
   const open = container.dataset.known === known && (container.querySelector("details")?.open ?? false);
@@ -2160,8 +2234,12 @@ const stepText = (text, className = "") => {
   line.textContent = text;
   return line;
 };
+// Spells that stay up once cast (Spiritual Weapon): which ones this phone has
+// cast in the current fight, and at what level, so later attacks spend no slot.
+const lastingUp = new Map();
 function drawAttack() {
   const combat = state?.combat;
+  if (!combat) lastingUp.clear();
   const card = $("attack-card");
   card.hidden = !combat || isHost || ended;
   if (card.hidden) return;
@@ -2171,8 +2249,17 @@ function drawAttack() {
   const attacks = sheet.attacks ?? [];
   const baseAttack = attacks[attackFlow.index];
   const res = readRes(me);
+  const lastingKey = me + ":" + baseAttack?.name;
+  const up = Boolean(baseAttack?.lasting) && lastingUp.has(lastingKey);
   const levels = castableLevels(baseAttack, sheet, res);
-  if (baseAttack?.slot && !attackFlow.spent && !levels.includes(attackFlow.level)) attackFlow.level = levels[0] ?? null;
+  if (up) attackFlow.level = lastingUp.get(lastingKey);
+  else if (baseAttack?.slot && !attackFlow.spent && !levels.includes(attackFlow.level)) attackFlow.level = levels[0] ?? null;
+  // A maneuver whose dice ran out doesn't carry into the next attack.
+  if (attackFlow.step === "ready") {
+    for (const option of sheet.attackOptions ?? []) {
+      if (option.spends && resourceLeft(sheet, res, option.spends) < 1) attackFlow.options.delete(option.name);
+    }
+  }
   const attack = baseAttack?.slot && attackFlow.level ? upcastAttack(baseAttack, attackFlow.level) : baseAttack;
   const isOn = option => attackFlow.options.has(option.name) || Boolean(option.rage && res.raging);
   $("attack-title").textContent = "Attack · " + partyName(me).replace(/^The /, "");
@@ -2193,7 +2280,7 @@ function drawAttack() {
     const math = attackBreakdown(attack, sheet, options.filter(isOn));
     const lines = [
       math.hit ? "To hit: " + math.hit : "Save: " + math.dc,
-      baseAttack.slot ? ORDINAL[baseAttack.slot] + "-level spell: uses a spell slot" : baseAttack.spends ? "Uses " + baseAttack.spends + " (" + resourceLeft(sheet, res, baseAttack.spends) + " left)" : "",
+      baseAttack.slot ? ORDINAL[baseAttack.slot] + "-level spell: " + (baseAttack.lasting ? "one slot when cast; attacks after that are free" : "uses a spell slot") : baseAttack.spends ? "Uses " + baseAttack.spends + " (" + resourceLeft(sheet, res, baseAttack.spends) + " left)" : "",
       "Damage: " + math.damage + (attack.type ? " " + attack.type : ""),
       attack.note ?? ""
     ].filter(Boolean);
@@ -2213,7 +2300,11 @@ function drawAttack() {
     box.type = "checkbox";
     box.checked = isOn(option);
     const spentOut = option.spends && resourceLeft(sheet, res, option.spends) < 1 && !box.checked;
-    box.disabled = spentOut;
+    // Once the d20 is rolled, options that change it (to-hit, advantage) are
+    // locked; damage-only ones (a maneuver on a hit) stay open until damage.
+    const locked = attackFlow.step === "damage" || attackFlow.step === "miss"
+      || (attackFlow.step !== "ready" && Boolean(option.hit || option.mode));
+    box.disabled = spentOut || locked;
     box.onchange = () => {
       if (box.checked) attackFlow.options.add(option.name); else attackFlow.options.delete(option.name);
       drawAttack();
@@ -2244,9 +2335,10 @@ function drawAttack() {
     let next = readRes(me);
     const notes = [];
     if (!attackFlow.spent) {
-      if (baseAttack.slot && attackFlow.level) {
+      if (baseAttack.slot && attackFlow.level && !up) {
         next = spendResource(sheet, next, slotKey(attackFlow.level));
         notes.push("Used a " + ORDINAL[attackFlow.level] + "-level slot (" + resourceLeft(sheet, next, slotKey(attackFlow.level)) + " left)");
+        if (baseAttack.lasting) lastingUp.set(lastingKey, attackFlow.level);
       }
       if (baseAttack.spends) {
         next = spendResource(sheet, next, baseAttack.spends);
@@ -2265,10 +2357,11 @@ function drawAttack() {
       attackFlow.notes = [...(attackFlow.notes ?? []), ...notes];
       saveRes(me, next);
       drawHp();
+      showOptions(); // Moves stops suggesting what just ran out
     }
   };
   let blocked = "";
-  if (baseAttack.slot && !attackFlow.spent && !levels.length) {
+  if (baseAttack.slot && !attackFlow.spent && !levels.length && !up) {
     blocked = "No spell slots left for " + baseAttack.name + " (it needs a " + ORDINAL[baseAttack.slot] + "-level slot or higher). Take a long rest, or fix the dots under Resources.";
   } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
@@ -2282,7 +2375,16 @@ function drawAttack() {
   const next = stepButton("Next attack", "quiet", () => { resetAttack(); drawAttack(); });
 
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
-  if (attackFlow.step === "ready" && baseAttack.slot && levels.length) {
+  if (attackFlow.step === "ready" && up) {
+    parts.push(stepText(baseAttack.name + " is up (cast with a " + ORDINAL[attackFlow.level] + "-level slot): this attack uses no slot.", "fineprint"),
+      stepButton("Cast it again", "quiet", () => { lastingUp.delete(lastingKey); drawAttack(); }));
+  } else if (attackFlow.step === "ready" && baseAttack.lasting && !attackFlow.spent) {
+    parts.push(stepButton("It's already up — attack without a slot", "quiet", () => {
+      lastingUp.set(lastingKey, attackFlow.level ?? baseAttack.slot);
+      drawAttack();
+    }));
+  }
+  if (attackFlow.step === "ready" && baseAttack.slot && levels.length && !up) {
     const pick = document.createElement("label");
     pick.className = "attack-target";
     pick.textContent = "Cast with";
@@ -2330,9 +2432,11 @@ function drawAttack() {
     parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
     const target = select.value;
     if (backend.postAction && Array.isArray(state?.actions)) {
-      const send = stepButton(target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
+      const already = attackFlow.sent.includes(target);
+      const send = stepButton(already ? "Sent to " + target : target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
         const name = $("attack-target").value;
         if (!name) { $("attack-target").focus(); return; }
+        if (attackFlow.sent.includes(name)) return; // once per target
         send.disabled = true;
         try {
           await backend.postAction(room, me, hitReportText(name, attackFlow.damage, detail));
@@ -2344,7 +2448,7 @@ function drawAttack() {
           send.textContent = error.message + " — tap to retry";
         }
       });
-      send.disabled = !target;
+      send.disabled = !target || already;
       parts.push(send);
       if (attackFlow.sent.length) parts.push(stepText("Sent to the DM for " + attackFlow.sent.join(", ") + (built.save ? ". Pick another target to send the same roll." : "."), "fineprint"));
     } else {
@@ -2383,7 +2487,7 @@ function drawHitInbox() {
     apply.disabled = !target;
     apply.onclick = () => {
       markHit(action.id);
-      enemies = enemies.map(enemy => enemy.name === report.enemy ? applyHp(enemy, -report.amount) : enemy);
+      enemies = enemies.map(enemy => enemy.id === target.id ? applyHp(enemy, -report.amount) : enemy); // just that one
       saveEncounter();
       drawEncounter();
     };
@@ -2492,20 +2596,31 @@ let advancing = false;
 async function handleTurnEnds() {
   if (!isHost || !state?.combat || advancing) return;
   const key = "dnd-turn-handled:" + room;
-  const stored = storage.get(key) ?? storage.get("dnd-combat-start:" + room);
-  if (stored === null) {
+  const handled = storage.get(key);
+  const started = storage.get("dnd-combat-start:" + room);
+  if (handled === null && started === null) {
     // First look at this fight on this phone: only react to turns ended from now on.
     storage.set(key, String(Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0))));
     return;
   }
-  const since = Number(stored);
+  // Never older than the start of this fight, so a turn ended in an earlier
+  // fight can't skip someone now.
+  const since = Math.max(Number(handled ?? 0), Number(started ?? 0));
   const ends = (state.actions ?? []).filter(action => action.text === END_TURN && Number(action.id) > since);
   if (!ends.length) return;
-  storage.set(key, String(Math.max(...ends.map(action => Number(action.id)))));
+  const newest = String(Math.max(...ends.map(action => Number(action.id))));
   const current = state.combat.turn;
-  if (ends.some(action => current === "pc:" + action.character)) {
-    advancing = true;
-    try { await stepTurn(1); } finally { advancing = false; }
+  if (!ends.some(action => current === "pc:" + action.character)) {
+    storage.set(key, newest);
+    return;
+  }
+  advancing = true;
+  try {
+    // Mark it handled only once the turn has moved on; a failed publish is
+    // retried on the next sync.
+    if (await stepTurn(1)) storage.set(key, newest);
+  } finally {
+    advancing = false;
   }
 }
 
@@ -2515,8 +2630,10 @@ async function stepTurn(direction) {
   try {
     await publishCombat({ turn, round });
     $("combat-status").textContent = "";
+    return true;
   } catch (error) {
     $("combat-status").textContent = error.message;
+    return false;
   } finally {
     for (const id of ["combat-advance", "combat-prev"]) $(id).disabled = false;
   }
@@ -2532,6 +2649,7 @@ $("enc-combat").onclick = async () => {
   try {
     if (state.combat) {
       if (!window.confirm("End combat for everyone? Your encounter stays here.")) return;
+      clearTimeout(combatTimer); // a pending enemy update mustn't reopen the fight
       await backend.combatEnd(room);
       state.combat = null;
       $("enc-combat-status").textContent = "Combat ended.";
@@ -2540,7 +2658,7 @@ $("enc-combat").onclick = async () => {
       // Enemies who haven't rolled get initiative now.
       enemies = enemies.map(enemy => enemy.initiative === null
         ? { ...enemy, initiative: roll("d20" + (enemy.init >= 0 ? "+" : "") + enemy.init).total } : enemy);
-      storage.set(encounterKey(), JSON.stringify(enemies));
+      saveEncounter(); // keeps the rolls with the table too
       storage.set("dnd-combat-start:" + room, String(Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0))));
       await publishCombat({ round: 1, turn: null, reset: true });
       drawEncounter();
@@ -2585,14 +2703,16 @@ async function loadCloudEncounter() {
   if (!backend.encounterGet || !isHost) return;
   try {
     const saved = await backend.encounterGet(room);
+    // Newest wins, and a cleared (empty) encounter saved here counts too.
+    const savedHere = storage.get(encounterKey() + ":at") !== null;
     const localAt = Number(storage.get(encounterKey() + ":at") ?? 0);
-    if (saved && Array.isArray(saved.enemies) && (saved.updated > localAt || !enemies.length)) {
+    if (saved && Array.isArray(saved.enemies) && (saved.updated > localAt || !savedHere)) {
       enemies = saved.enemies;
       storage.set(encounterKey(), JSON.stringify(enemies));
       storage.set(encounterKey() + ":at", String(saved.updated));
       drawEncounter();
       if (state?.combat) schedulePublish();
-    } else if (enemies.length && (!saved || saved.updated < localAt)) {
+    } else if (savedHere && (!saved || saved.updated < localAt)) {
       saveEncounter(); // this device has the newer encounter: put it on the table
     }
     $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
@@ -2649,7 +2769,7 @@ $("enemy-form").onsubmit = event => {
     $("enemy-status").textContent = "HP should be a number or dice like 2d8+2.";
     return;
   }
-  const added = createEnemies(stats, $("enemy-count").value);
+  const added = createEnemies(stats, $("enemy-count").value, undefined, enemies);
   enemies = [...enemies, ...added];
   saveEncounter();
   drawEncounter();
@@ -2772,7 +2892,7 @@ function enemyCard(enemy) {
     button.onclick = () => {
       const toHit = roll("d20" + (hit >= 0 ? "+" : "") + hit);
       const harm = damage ? roll(damage) : null;
-      const critDamage = harm && toHit.critical ? roll(damage.replace(/(\d*)d(\d+)/g, (_, count, sides) => (Number(count || 1) * 2) + "d" + sides)) : null;
+      const critDamage = harm && toHit.critical ? roll(critExpression(damage)) : null;
       const shown = critDamage ?? harm;
       const line = document.createElement("span");
       line.textContent = label + ": " + toHit.total + " to hit" + (toHit.critical ? " (CRIT)" : toHit.fumble ? " (nat 1)" : "")
@@ -3280,13 +3400,19 @@ document.addEventListener("visibilitychange", () => {
     }
     return;
   }
-  sync();
+  returnToTable();
   if (resumeOnReturn && !ended) {
     resumeOnReturn = false;
     startMic();
   }
 });
-window.addEventListener("pageshow", sync);
+window.addEventListener("pageshow", returnToTable);
+// Back on this tab: catch up, and pick up encounter changes the DM made on
+// another device before this one saves over them.
+function returnToTable() {
+  sync();
+  if (isHost && encounterLoaded) loadCloudEncounter();
+}
 
 if (room && (!backend.hosted || backend.user())) enterRoom();
 else showLobby(room ? "Sign in to join the table." : "");

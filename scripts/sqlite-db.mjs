@@ -16,6 +16,9 @@ export function openDatabase(file = ":memory:") {
   if (!sql.prepare("SELECT 1 FROM pragma_table_info('rooms') WHERE name = 'last_active'").get()) {
     sql.exec(readFileSync(new URL("../drizzle/0004_room_activity.sql", import.meta.url), "utf8").replace(/--> statement-breakpoint/g, ""));
   }
+  if (!sql.prepare("SELECT 1 FROM pragma_table_info('rooms') WHERE name = 'practice'").get()) {
+    sql.exec(readFileSync(new URL("../drizzle/0005_room_practice.sql", import.meta.url), "utf8"));
+  }
 
   function wrap(statement, bindings = []) {
     return {

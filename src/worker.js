@@ -40,16 +40,22 @@ async function askClaude(apiKey, character, scenes, question = "", table = "") {
   return readAdvice(response);
 }
 
+// HP and resources carry over between campaign tables; a practice table keeps
+// its own, under a "room:<code>:" prefix.
+const recordKey = (room, name) => room.practice ? "room:" + room.code + ":" + name : name;
+
 const endpoints = {
   async create(request, db) {
   if (request.headers.get("x-table-action") !== "create") return json({ error: "Invalid request." }, 400);
     const code = randomToken(12);
     const host = randomToken(24);
     const now = Date.now();
+    const practice = request.headers.get("x-table-practice") === "1" ? 1 : 0;
+    const opening = practice ? "PRACTICE TABLE: test freely. Nothing from this table is added to the campaign history.\n\n" + recap : recap;
     await db.batch([
       db.prepare("DELETE FROM rooms WHERE last_active < ?").bind(now - roomAge),
-      db.prepare("INSERT INTO rooms (code, host, created, party, last_active) VALUES (?, ?, ?, ?, ?)").bind(code, host, now, JSON.stringify(party), now),
-      db.prepare("INSERT INTO scenes (code, text, created) VALUES (?, ?, ?)").bind(code, recap, now)
+      db.prepare("INSERT INTO rooms (code, host, created, party, last_active, practice) VALUES (?, ?, ?, ?, ?, ?)").bind(code, host, now, JSON.stringify(party), now, practice),
+      db.prepare("INSERT INTO scenes (code, text, created) VALUES (?, ?, ?)").bind(code, opening, now)
     ]);
     return json({ code, host });
   },
@@ -58,10 +64,15 @@ const endpoints = {
     const combat = await db.prepare("SELECT round, turn, enemies, party_init FROM combats WHERE code = ?").bind(code).first();
     const party = importHistory(JSON.parse(room.party));
     const { results: hpRows } = await db.prepare("SELECT name, hp, max_hp, temp, ac FROM party_hp").all();
+    // Rows are stored under recordKey (a practice table has its own); report them by character name.
+    const byName = rows => rows.flatMap(row => {
+      const member = party.find(member => recordKey(room, member.name) === row.name);
+      return member ? [{ ...row, name: member.name }] : [];
+    });
     const names = new Set(party.map(member => member.name));
     const { results: resourceRows } = await db.prepare("SELECT name, state FROM party_resources").all();
-    const resources = Object.fromEntries(resourceRows.filter(row => names.has(row.name)).map(row => [row.name, JSON.parse(row.state)]));
-    const hp = Object.fromEntries(hpRows.filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp, ...(row.ac ? { ac: row.ac } : {}) }]));
+    const resources = Object.fromEntries(byName(resourceRows).filter(row => names.has(row.name)).map(row => [row.name, JSON.parse(row.state)]));
+    const hp = Object.fromEntries(byName(hpRows).filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp, ...(row.ac ? { ac: row.ac } : {}) }]));
     return json({
       party, hp, resources, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
@@ -116,6 +127,11 @@ const endpoints = {
       status: ["ok", "bloodied", "down"].includes(enemy?.status) ? enemy.status : "ok",
       conditions: Array.isArray(enemy?.conditions) ? enemy.conditions.slice(0, 16).map(condition => String(condition).slice(0, 30)) : []
     }));
+    if (body.enemiesOnly) {
+      // Only the enemies change, and only in a fight that's still on.
+      await db.prepare("UPDATE combats SET enemies = ? WHERE code = ?").bind(JSON.stringify(enemies), code).run();
+      return json({ ok: true });
+    }
     const round = Math.max(1, Math.min(999, Math.floor(Number(body.round)) || 1));
     const turn = typeof body.turn === "string" ? body.turn.slice(0, 60) : null;
     const existing = await db.prepare("SELECT party_init FROM combats WHERE code = ?").bind(code).first();
@@ -154,10 +170,11 @@ const endpoints = {
     const value = Number(body.value);
     if (!Number.isInteger(index) || !JSON.parse(room.party)[index]) return json({ error: "Pick a character." }, 400);
     if (!Number.isInteger(value) || value < -10 || value > 60) return json({ error: "Enter an initiative between -10 and 60." }, 400);
-    const combat = await db.prepare("SELECT party_init FROM combats WHERE code = ?").bind(code).first();
-    if (!combat) return json({ error: "Combat has not started." }, 400);
-    const party = { ...JSON.parse(combat.party_init), [index]: value };
-    await db.prepare("UPDATE combats SET party_init = ? WHERE code = ?").bind(JSON.stringify(party), code).run();
+    // Sets just this character's key in one statement, so two players rolling
+    // at once can't overwrite each other.
+    const result = await db.prepare("UPDATE combats SET party_init = json_set(party_init, ?, ?) WHERE code = ?")
+      .bind("$.\"" + index + "\"", value, code).run();
+    if (!result.changes && !result.meta?.changes) return json({ error: "Combat has not started." }, 400);
     return json({ ok: true });
   },
   // Party HP: anyone at the table can change it.
@@ -169,12 +186,12 @@ const endpoints = {
     if (adjust) {
       const change = whole(body.change);
       if (!change || Math.abs(change) > 999) return json({ error: "Enter an amount from 1 to 999." }, 400);
-      const row = await db.prepare("SELECT hp, max_hp, temp FROM party_hp WHERE name = ?").bind(name).first();
+      const row = await db.prepare("SELECT hp, max_hp, temp FROM party_hp WHERE name = ?").bind(recordKey(room, name)).first();
       if (!row) return json({ error: "Set this character's max HP first." }, 400);
       const next = change < 0
         ? { temp: Math.max(0, row.temp + change), hp: Math.max(0, row.hp - Math.max(0, -change - row.temp)) }
         : { temp: row.temp, hp: Math.min(row.max_hp, row.hp + change) };
-      await db.prepare("UPDATE party_hp SET hp = ?, temp = ? WHERE name = ?").bind(next.hp, next.temp, name).run();
+      await db.prepare("UPDATE party_hp SET hp = ?, temp = ? WHERE name = ?").bind(next.hp, next.temp, recordKey(room, name)).run();
       return json({ ok: true });
     }
     const max = whole(body.max);
@@ -183,8 +200,8 @@ const endpoints = {
     const temp = Math.max(0, Math.min(999, whole(body.temp) || 0));
     const ac = body.ac === undefined || body.ac === null || body.ac === "" ? null : whole(body.ac);
     if (ac !== null && !(ac >= 1 && ac <= 40)) return json({ error: "AC must be 1 to 40." }, 400);
-    const kept = (await db.prepare("SELECT ac FROM party_hp WHERE name = ?").bind(name).first())?.ac ?? null;
-    await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp, ac) VALUES (?, ?, ?, ?, ?)").bind(name, hp, max, temp, ac ?? kept).run();
+    const kept = (await db.prepare("SELECT ac FROM party_hp WHERE name = ?").bind(recordKey(room, name)).first())?.ac ?? null;
+    await db.prepare("INSERT OR REPLACE INTO party_hp (name, hp, max_hp, temp, ac) VALUES (?, ?, ?, ?, ?)").bind(recordKey(room, name), hp, max, temp, ac ?? kept).run();
     return json({ ok: true });
   },
   // Resources used (spell slots, rages…): anyone at the table can save them.
@@ -198,7 +215,7 @@ const endpoints = {
       .filter(([, value]) => /^\d{1,3}$/.test(String(value)))
       .map(([key, value]) => [String(key).slice(0, 40), Math.min(99, Number(value))]));
     const state = JSON.stringify({ used: clean, raging: body.state.raging === true });
-    await db.prepare("INSERT OR REPLACE INTO party_resources (name, state) VALUES (?, ?)").bind(name, state).run();
+    await db.prepare("INSERT OR REPLACE INTO party_resources (name, state) VALUES (?, ?)").bind(recordKey(room, name), state).run();
     return json({ ok: true });
   },
   async scene(request, db, code) {
@@ -236,6 +253,8 @@ const endpoints = {
   async close(db, code) {
     aiUsage.delete(code);
     await db.prepare("DELETE FROM rooms WHERE code = ?").bind(code).run();
+    await db.prepare("DELETE FROM party_hp WHERE name LIKE ?").bind("room:" + code + ":%").run();
+    await db.prepare("DELETE FROM party_resources WHERE name LIKE ?").bind("room:" + code + ":%").run();
     return json({ ok: true });
   }
 };
@@ -262,9 +281,10 @@ export default {
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       // Open until 8 hours after the last activity (any change that succeeds).
-      const room = await env.DB.prepare("SELECT host, party FROM rooms WHERE code = ? AND last_active > ?")
+      const room = await env.DB.prepare("SELECT host, party, practice FROM rooms WHERE code = ? AND last_active > ?")
         .bind(code, Date.now() - roomAge).first();
       if (!room) return json({ error: "This room has ended or expired." }, 404);
+      room.code = code;
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
       const response = await roomChange(request, env, room, code, operation);
       if (response.ok) await env.DB.prepare("UPDATE rooms SET last_active = ? WHERE code = ?").bind(Date.now(), code).run();
@@ -282,7 +302,7 @@ async function roomChange(request, env, room, code, operation) {
   if (operation === "advise" && request.method === "POST") return await endpoints.advise(request, env.DB, room, code, env);
   if (operation === "pass-turn" && request.method === "POST") return await endpoints.passTurn(request, env.DB, room, code);
   if (operation === "resources" && request.method === "POST") return await endpoints.resources(request, env.DB, room);
-    if ((operation === "hp" || operation === "hp-adjust") && request.method === "POST") return await endpoints.hp(request, env.DB, room, operation === "hp-adjust");
+  if ((operation === "hp" || operation === "hp-adjust") && request.method === "POST") return await endpoints.hp(request, env.DB, room, operation === "hp-adjust");
   if (operation === "initiative" && request.method === "POST") return await endpoints.initiative(request, env.DB, room, code);
   if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
   if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the host can make changes." }, 403);

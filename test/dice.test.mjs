@@ -77,6 +77,9 @@ test("encounter: damage, healing, status, count, initiative order", () => {
 test("combat order, turns, and what players may see", async () => {
   const { publicEnemies, combatOrder, nextTurn, upNext, createEnemies, applyHp } = await import("../src/encounter.js");
   const [guard] = createEnemies({ name: "Guard", ac: 16, hp: "12", attacks: [["Spear", 3, "1d6+1"]] }, 1);
+  const more = createEnemies({ name: "Guard", hp: "12" }, 2, undefined, [guard]);
+  assert.deepEqual(more.map(enemy => enemy.name), ["Guard 2", "Guard 3"]); // unique, for hit reports
+  assert.equal(createEnemies({ name: "Guard", hp: "12" }, 1, undefined, [guard, ...more])[0].name, "Guard 4");
   const hurt = { ...applyHp(guard, -7), initiative: 15, conditions: ["Prone"] };
   const shown = publicEnemies([hurt])[0];
   assert.deepEqual(Object.keys(shown).sort(), ["conditions", "id", "initiative", "name", "status"]);
@@ -91,6 +94,12 @@ test("combat order, turns, and what players may see", async () => {
   assert.deepEqual(nextTurn(order, "pc:1", 1), { turn: "pc:2", round: 2 });
   assert.deepEqual(nextTurn(order, "pc:2", 2, -1), { turn: "pc:1", round: 1 });
   assert.equal(upNext(order, "pc:0"), "en:" + guard.id);
+  // The current enemy goes down on its own turn: step on from its place.
+  assert.deepEqual(nextTurn(order, "en:x", 1), { turn: "pc:1", round: 1 });
+  const lastDown = combatOrder({ ...combat, party: { 0: 15, 1: 1, 2: 20 }, enemies: [shown, { id: "x", name: "Wolf", initiative: 0, status: "down", conditions: [] }] }, party);
+  assert.equal(lastDown.at(-1).key, "en:x");
+  assert.deepEqual(nextTurn(lastDown, "en:x", 1), { turn: "pc:2", round: 2 }); // last in order: new round
+  assert.equal(upNext(lastDown, "en:x"), "pc:2");
 });
 
 test("3D dice are real polyhedra with every number once", async () => {
@@ -283,11 +292,14 @@ test("a spent ability is never suggested, by Moves or to Claude", async () => {
   assert.match(spent.find(line => line.startsWith("Fireball")), /no 3rd-level or higher spell slot left/);
 
   const usable = withoutSpent(wizard, spent);
+  // A line listing several keeps the ones still usable.
+  assert.ok(usable.moves.includes("combat | Bless, Spiritual Weapon — "), "grouped line trimmed");
+  assert.ok(!usable.moves.includes("Spirit Guardians"));
   for (let id = 1; id <= 40; id++) {
     const scenes = [{ id, text: "Roll initiative! Guards open fire on the party." }];
     const { options } = recommend(usable, scenes);
     for (const option of options) {
-      for (const name of ["Fireball", "Flame Strike", "Radiance of the Dawn"]) assert.ok(!option.includes(name), "suggested spent " + name + ": " + option);
+      for (const name of ["Fireball", "Flame Strike", "Radiance of the Dawn", "Spirit Guardians"]) assert.ok(!option.includes(name), "suggested spent " + name + ": " + option);
     }
   }
   const text = sheetText({ ...wizard, spent });

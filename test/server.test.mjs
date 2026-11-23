@@ -147,3 +147,45 @@ test("tables stay open while there's activity, and close after 8 idle hours", as
   assert.equal((await post(room + "/scene", { delete: true, id: latest.id }, { "x-table-host": host })).status, 200);
   assert.equal((await call(room)).status, 200, "deleting the newest scene doesn't end the table");
 });
+
+test("enemy-only updates keep the turn and never reopen an ended fight", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  const enemies = [{ id: "a", name: "Orc", initiative: 5, status: "ok", conditions: [] }];
+  await post(room + "/combat", { round: 1, turn: null, enemies, reset: true }, { "x-table-host": host });
+  await post(room + "/initiative", { character: 0, value: 18 });
+  await post(room + "/combat", { round: 1, turn: "pc:0", enemies }, { "x-table-host": host });
+  await post(room + "/pass-turn", { character: 0 }); // the player passes...
+  const hurt = [{ ...enemies[0], status: "bloodied" }];
+  await post(room + "/combat", { enemies: hurt, enemiesOnly: true }, { "x-table-host": host }); // ...as the DM updates the orc
+  const combat = (await call(room)).body.combat;
+  assert.equal(combat.turn, "en:a");
+  assert.equal(combat.enemies[0].status, "bloodied");
+  await post(room + "/combat", { end: true }, { "x-table-host": host });
+  assert.equal((await post(room + "/combat", { enemies: hurt, enemiesOnly: true }, { "x-table-host": host })).status, 200);
+  assert.equal((await call(room)).body.combat, null);
+});
+
+test("two players rolling initiative at once both count", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  assert.equal((await post(room + "/initiative", { character: 0, value: 12 })).status, 400); // no fight yet
+  await post(room + "/combat", { round: 1, turn: null, enemies: [], reset: true }, { "x-table-host": host });
+  await Promise.all([post(room + "/initiative", { character: 0, value: 12 }), post(room + "/initiative", { character: 1, value: 7 })]);
+  assert.deepEqual((await call(room)).body.combat.party, { 0: 12, 1: 7 });
+});
+
+test("a practice table keeps its own HP; the campaign's carries between tables", async () => {
+  const create = practice => call("/api/rooms", { method: "POST", headers: { "x-table-action": "create", ...(practice ? { "x-table-practice": "1" } : {}) } });
+  const real = "/api/rooms/" + (await create(false)).body.code;
+  const next = "/api/rooms/" + (await create(false)).body.code;
+  const practice = "/api/rooms/" + (await create(true)).body.code;
+  assert.match((await call(practice)).body.scenes[0].text, /^PRACTICE TABLE/);
+  await post(real + "/hp", { character: 1, hp: 60, max: 60 });
+  await post(practice + "/hp", { character: 1, hp: 60, max: 60 });
+  await post(practice + "/hp-adjust", { character: 1, change: -10 });
+  const name = (await call(real)).body.party[1].name;
+  assert.equal((await call(practice)).body.hp[name].hp, 50);
+  assert.equal((await call(real)).body.hp[name].hp, 60, "practice damage stays on the practice table");
+  assert.equal((await call(next)).body.hp[name].hp, 60, "campaign HP carries to the next table");
+});

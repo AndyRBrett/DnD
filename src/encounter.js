@@ -40,13 +40,24 @@ const newId = () => Date.now().toString(36) + "-" + (counter++).toString(36);
 
 // Creates `count` enemies from a stat line: "Guard 1", "Guard 2"… (no number
 // when there's only one).
-export function createEnemies(stats, count = 1, random) {
+// Names stay unique in the encounter (a second "Bandit" becomes "Bandit 2"),
+// because players report hits by name.
+export function createEnemies(stats, count = 1, random, existing = []) {
   const total = Math.max(1, Math.min(30, Math.floor(Number(count) || 1)));
-  return Array.from({ length: total }, (_, index) => {
+  const taken = new Set(existing.map(enemy => enemy.name));
+  const nextName = () => {
+    if (total === 1 && !taken.has(stats.name)) return stats.name;
+    let number = 1;
+    while (taken.has(stats.name + " " + number) || (number === 1 && taken.has(stats.name))) number++;
+    return stats.name + " " + number;
+  };
+  return Array.from({ length: total }, () => {
     const max = hitPoints(stats.hp, random);
+    const name = nextName();
+    taken.add(name);
     return {
       id: newId(),
-      name: total > 1 ? stats.name + " " + (index + 1) : stats.name,
+      name,
       ac: Number(stats.ac) || 10,
       hp: max,
       maxHp: max,
@@ -121,19 +132,33 @@ export function combatOrder(combat, party) {
 export function nextTurn(order, turn, round = 1, direction = 1) {
   const live = order.filter(entry => entry.status !== "down");
   if (!live.length) return { turn: null, round };
-  const at = live.findIndex(entry => entry.key === turn);
+  // Find the current turn in the full order, so a combatant who just went
+  // down still marks the place to step from.
+  const at = order.findIndex(entry => entry.key === turn);
   if (at < 0) return { turn: live[direction > 0 ? 0 : live.length - 1].key, round };
-  let next = at + direction;
-  if (next >= live.length) return { turn: live[0].key, round: round + 1 };
-  if (next < 0) return round > 1 ? { turn: live[live.length - 1].key, round: round - 1 } : { turn: live[0].key, round };
-  return { turn: live[next].key, round };
+  let index = at;
+  for (let step = 0; step < order.length; step++) {
+    index += direction;
+    if (index >= order.length) { index = 0; round += 1; }
+    if (index < 0) {
+      if (round <= 1) return { turn: live[0].key, round: 1 };
+      index = order.length - 1;
+      round -= 1;
+    }
+    if (order[index].status !== "down") return { turn: order[index].key, round };
+  }
+  return { turn: live[0].key, round };
 }
 
 // Which turn comes after the current one (for the "you're up next" heads-up).
 export function upNext(order, turn) {
-  const live = order.filter(entry => entry.status !== "down");
-  const at = live.findIndex(entry => entry.key === turn);
-  return at < 0 ? null : live[(at + 1) % live.length]?.key ?? null;
+  const at = order.findIndex(entry => entry.key === turn);
+  if (at < 0) return null;
+  for (let step = 1; step <= order.length; step++) {
+    const entry = order[(at + step) % order.length];
+    if (entry.status !== "down") return entry.key;
+  }
+  return null;
 }
 
 // ── Party hit points ──

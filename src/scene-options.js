@@ -154,13 +154,18 @@ function parseMoves(character) {
 export function withoutSpent(character, spent = []) {
   const names = spent.map(item => String(item).split(":")[0].trim().toLowerCase());
   if (!names.length) return character;
-  const keep = line => {
-    if (/^check\s*\|/i.test(line)) return true;
-    const body = line.includes("|") ? line.slice(line.indexOf("|") + 1) : line;
-    const abilities = body.split(" — ")[0].split(/,\s*/).map(name => name.trim().toLowerCase()).filter(Boolean);
-    return !abilities.length || !abilities.every(name => names.includes(name));
+  // Drops spent abilities from each line, even one that lists several
+  // ("Bless, Spiritual Weapon, Spirit Guardians"), and the line once none are left.
+  const trim = line => {
+    if (/^check\s*\|/i.test(line)) return line;
+    const cut = line.match(/^[^|]*\|\s*/)?.[0].length ?? 0;
+    const [list, ...rest] = line.slice(cut).split(" — ");
+    const abilities = list.split(/,\s*/).map(name => name.trim()).filter(Boolean);
+    const left = abilities.filter(name => !names.includes(name.toLowerCase()));
+    if (!abilities.length || left.length === abilities.length) return line;
+    return left.length ? line.slice(0, cut) + [left.join(", "), ...rest].join(" — ") : null;
   };
-  return { ...character, moves: String(character.moves ?? "").split("\n").filter(keep).join("\n") };
+  return { ...character, moves: String(character.moves ?? "").split("\n").map(trim).filter(line => line !== null).join("\n") };
 }
 
 export function characterAbilities(character) {

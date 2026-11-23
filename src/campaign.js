@@ -111,7 +111,7 @@ export const sheets = {
     // unless addMod is false, damage). bonus: other to-hit bonuses.
     // options: toggles that change the roll.
     attacks: [
-      { name: "Spiritual Weapon", ability: "WIS", slot: 2, hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration." },
+      { name: "Spiritual Weapon", ability: "WIS", slot: 2, lasting: true, hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration. One slot when cast; it lasts a minute, and attacking with it again is free." },
       { name: "Guiding Bolt", ability: "WIS", slot: 1, upcast: "1d6", hit: 9, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
       { name: "Sacred Flame", ability: "WIS", save: "Dex", dc: 17, damage: "2d8+5", type: "radiant", note: "Cantrip; nothing on a save." },
       { name: "Fireball", ability: "WIS", slot: 3, upcast: "1d6", addMod: false, save: "Dex", dc: 17, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
