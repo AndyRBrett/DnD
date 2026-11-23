@@ -421,6 +421,7 @@ async function sync() {
     if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
     if (rosterChanged || scenesChanged) showOptions();
     if (scenesChanged && !rosterChanged) drawHitInbox();
+    if (scenesChanged) handleTurnEnds();
     if (isPractice()) {
       $("practice-banner").hidden = false;
       $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + " · PRACTICE";
@@ -1338,6 +1339,9 @@ function drawCombat() {
   const up = foes.filter(entry => entry.status !== "down").length;
   $("combat-foes").textContent = foes.length ? up + " of " + foes.length + " enemies standing" : "No enemies yet";
   $("combat-dm").hidden = !isHost;
+  const myTurn = Boolean(current && current.key === myKey);
+  $("combat-end-turn").hidden = !myTurn || !backend.postAction || !Array.isArray(state?.actions);
+  if (!myTurn) { $("combat-end-turn").disabled = false; $("combat-end-turn").textContent = "End my turn ▶"; }
 
   const mine = me === null ? undefined : combat.party?.[me];
   $("combat-init").hidden = isHost;
@@ -2296,6 +2300,43 @@ $("combat-init").onsubmit = event => {
   setInitiative(myIndex(), $("init-value").value, $("init-status"));
   $("init-value").value = "";
 };
+// A player ends their own turn with a story line; the DM's phone (which
+// runs the turn order) sees it and moves to the next turn.
+const END_TURN = "⏭️ ends their turn";
+$("combat-end-turn").onclick = async () => {
+  const button = $("combat-end-turn");
+  button.disabled = true;
+  button.textContent = "Passing the turn…";
+  try {
+    await backend.postAction(room, Number($("character").value), END_TURN);
+    sync();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "End my turn ▶";
+    $("combat-status").textContent = error.message;
+  }
+};
+let advancing = false;
+async function handleTurnEnds() {
+  if (!isHost || !state?.combat || advancing) return;
+  const key = "dnd-turn-handled:" + room;
+  const stored = storage.get(key) ?? storage.get("dnd-combat-start:" + room);
+  if (stored === null) {
+    // First look at this fight on this phone: only react to turns ended from now on.
+    storage.set(key, String(Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0))));
+    return;
+  }
+  const since = Number(stored);
+  const ends = (state.actions ?? []).filter(action => action.text === END_TURN && Number(action.id) > since);
+  if (!ends.length) return;
+  storage.set(key, String(Math.max(...ends.map(action => Number(action.id)))));
+  const current = state.combat.turn;
+  if (ends.some(action => current === "pc:" + action.character)) {
+    advancing = true;
+    try { await stepTurn(1); } finally { advancing = false; }
+  }
+}
+
 async function stepTurn(direction) {
   const { turn, round } = nextTurn(liveOrder(), state.combat.turn, state.combat.round, direction);
   for (const id of ["combat-advance", "combat-prev"]) $(id).disabled = true;
