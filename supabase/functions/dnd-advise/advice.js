@@ -58,11 +58,16 @@ export function sheetText(character) {
   const body = line => line.includes("|") ? line.slice(line.indexOf("|") + 1).trim() : line;
   const spent = (Array.isArray(character.spent) ? character.spent : []).map(String);
   const spentNames = spent.map(item => item.split(":")[0].trim().toLowerCase()).filter(Boolean);
-  const isSpent = line => {
-    const names = body(line).split(" — ")[0].split(/,\s*/).map(name => name.trim().toLowerCase());
-    return names.length > 0 && names.every(name => spentNames.includes(name));
+  // Takes spent abilities out of a line, even one that lists several
+  // ("Bless, Spiritual Weapon, Spirit Guardians"); null if none are left.
+  const withoutSpent = text => {
+    const [list, ...rest] = text.split(" — ");
+    const names = list.split(/,\s*/).map(name => name.trim()).filter(Boolean);
+    const left = names.filter(name => !spentNames.includes(name.toLowerCase()));
+    if (!names.length || left.length === names.length) return text;
+    return left.length ? [left.join(", "), ...rest].join(" — ") : null;
   };
-  const ready = lines.filter(line => !/^check\s*\|/i.test(line) && !isSpent(line)).map(line => "- " + body(line));
+  const ready = lines.filter(line => !/^check\s*\|/i.test(line)).map(line => withoutSpent(body(line))).filter(Boolean).map(text => "- " + text);
   const check = lines.filter(line => /^check\s*\|/i.test(line)).map(line => "- " + body(line));
   return [
     "Character: " + character.name + (character.role ? " (" + character.role + ")" : ""),
