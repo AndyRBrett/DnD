@@ -2943,6 +2943,40 @@ function rememberTable(code) {
 }
 const tableLabel = code => "Table " + code.slice(0, 4).toUpperCase();
 
+// ── Themes (per phone; src/theme.js applies the saved one before drawing) ──
+const THEMES = [
+  ["arena", "Arena", "Dark, red and gold", ["#0e0f12", "#e5383b", "#c9a84c"]],
+  ["parchment", "Parchment", "Light, like an old map", ["#efe6d2", "#a8322d", "#8a6a1f"]],
+  ["arcane", "Arcane", "Midnight blue and violet", ["#0b0d1a", "#8b5cf6", "#f0c060"]],
+  ["wildwood", "Wildwood", "Forest green and amber", ["#0d1410", "#e0862f", "#d8c06a"]]
+];
+function drawThemePickers() {
+  const current = document.documentElement.dataset.theme || "arena";
+  for (const picker of document.querySelectorAll(".theme-picker")) {
+    picker.replaceChildren(...THEMES.map(([id, name, blurb, colors]) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "theme-option" + (id === current ? " is-active" : "");
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", String(id === current));
+      const swatch = document.createElement("div");
+      swatch.className = "theme-swatch";
+      swatch.append(...colors.map(color => { const dot = document.createElement("i"); dot.style.background = color; return dot; }));
+      const title = document.createElement("strong");
+      title.textContent = name;
+      const note = document.createElement("span");
+      note.textContent = blurb;
+      option.append(swatch, title, note);
+      option.onclick = () => {
+        window.dndSetTheme?.(id);
+        drawThemePickers();
+      };
+      return option;
+    }));
+  }
+}
+drawThemePickers();
+
 // ── First visit: a short "how this works" walkthrough, once per phone. ──
 const WELCOME_KEY = "dnd-welcomed";
 const WELCOME_STEPS = [

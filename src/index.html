@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0e0f12">
   <title>D&D Table Live</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://gkccophrdqtqcowmblre.supabase.co; form-action 'self'; base-uri 'none'">
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
@@ -72,6 +73,7 @@
           <button id="create-practice" class="ghost" type="button">Practice table</button>
           <p class="fineprint">A practice table works the same way but never adds anything to the campaign history.</p>
         </div>
+        <div class="theme-picker compact" role="radiogroup" aria-label="Theme"></div>
         <p id="account-line" class="fineprint center">Signed in as <span id="account-email"></span> · <button id="signout" class="link" type="button">Sign out</button></p>
       </div>
     </section>
@@ -269,6 +271,11 @@
           <details id="sheet-confirm" class="sheet-section fold" hidden><summary>Confirm with the DM first</summary><div id="sheet-confirm-list"></div></details>
           <p class="fineprint">Tap any entry for how it works. Rules are standard 5th edition summaries; your table’s note is shown under each, and the DM’s ruling wins.</p>
         </details>
+        <section class="card stack" aria-labelledby="theme-title">
+          <p class="eyebrow">APPEARANCE · THIS PHONE</p>
+          <h2 id="theme-title" class="display xs">Theme</h2>
+          <div class="theme-picker" role="radiogroup" aria-labelledby="theme-title"></div>
+        </section>
         <details id="rules-basics" class="card">
           <summary class="card-summary">D&amp;D basics: your turn</summary>
           <dl id="basics-list"></dl>
