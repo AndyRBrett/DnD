@@ -336,7 +336,7 @@ export function spendResource(sheet, state, key, amount = 1) {
 }
 
 // A short rest refills "per short rest" features; a long rest refills
-// everything (spell slots too) and ends a rage.
+// everything (spell slots too). Either ends a rage: it lasts a minute at most.
 export function rest(sheet, state, kind) {
   const used = { ...(state?.used ?? {}) };
   for (const resource of sheet?.resources ?? []) {
@@ -344,7 +344,7 @@ export function rest(sheet, state, kind) {
     if (resource.slots) for (const level of Object.keys(resource.slots)) delete used[slotKey(level)];
     else delete used[resource.name];
   }
-  return { ...state, used, raging: kind === "long" ? false : Boolean(state?.raging) };
+  return { ...state, used, raging: false };
 }
 
 // The slot levels a spell can be cast with right now (its own level or higher, with a slot left).
@@ -391,4 +391,19 @@ export function spentAbilities(character, sheet, state) {
     }
   }
   return [...spent.values()];
+}
+
+// The DM's encounter after loading the copy saved with the table. A change on
+// this device that the table hasn't confirmed ("dirty", or a save still
+// waiting to go) always wins; otherwise the table's copy is the newest (it may
+// come from the DM's other device). Clocks are never compared: a phone's clock
+// can be minutes off the server's.
+// Returns "keep" (nothing to do), "push" (save this device's copy) or "cloud".
+export function pickEncounter({ cloud, local, dirty, pending, savedHere }) {
+  if (pending) return "keep";
+  if (dirty) return "push";
+  if (cloud && Array.isArray(cloud.enemies)) {
+    return JSON.stringify(cloud.enemies) === JSON.stringify(local ?? []) ? "keep" : "cloud";
+  }
+  return savedHere ? "push" : "keep";
 }

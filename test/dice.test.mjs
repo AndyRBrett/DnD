@@ -266,7 +266,7 @@ test("spell slots, rage, and rests", async () => {
   const logan = sheets["Logan Ninefingers"];
   let rage = { ...spendResource(logan, {}, "Rage"), raging: true };
   assert.equal(resourceLeft(logan, rage, "Rage"), 3);
-  assert.equal(rest(logan, rage, "short").raging, true);
+  assert.equal(rest(logan, rage, "short").raging, false); // a rage lasts a minute, never through a rest
   assert.equal(resourceLeft(logan, rest(logan, rage, "short"), "Rage"), 3); // rages are per long rest
   assert.deepEqual(rest(logan, rage, "long"), { used: {}, raging: false });
   assert.equal(resourceLeft(logan, spendResource(logan, rage, "Rage", 10), "Rage"), 0);
@@ -312,4 +312,29 @@ test("a spent ability is never suggested, by Moves or to Claude", async () => {
   const noRage = spentAbilities(logan, sheets["Logan Ninefingers"], spendResource(sheets["Logan Ninefingers"], {}, "Rage", 4));
   assert.deepEqual(noRage, ["Rage: no Rage left until a long rest"]);
   assert.ok(!withoutSpent(logan, noRage).moves.includes("combat | Rage —"));
+});
+
+test("the DM's encounter: an unsaved change on this device is never replaced by the table's copy", async () => {
+  const { pickEncounter } = await import("../src/encounter.js");
+  const ogre = [{ id: 1, name: "Ogre", hp: 59 }];
+  const hurt = [{ id: 1, name: "Ogre", hp: 40 }];
+  // A save is still waiting to go: leave everything alone.
+  assert.equal(pickEncounter({ cloud: { enemies: ogre, updated: 9e12 }, local: hurt, dirty: true, pending: true, savedHere: true }), "keep");
+  // Reloaded before the save went out (or it failed): put this copy on the table,
+  // however new the table's timestamp looks.
+  assert.equal(pickEncounter({ cloud: { enemies: ogre, updated: 9e12 }, local: hurt, dirty: true, pending: false, savedHere: true }), "push");
+  // Nothing unsaved here: the table's copy is the newest (the DM's other device).
+  assert.equal(pickEncounter({ cloud: { enemies: hurt, updated: 1 }, local: ogre, dirty: false, pending: false, savedHere: true }), "cloud");
+  assert.equal(pickEncounter({ cloud: { enemies: ogre, updated: 1 }, local: ogre, dirty: false, pending: false, savedHere: true }), "keep");
+  // Nothing on the table yet.
+  assert.equal(pickEncounter({ cloud: null, local: ogre, dirty: false, pending: false, savedHere: true }), "push");
+  assert.equal(pickEncounter({ cloud: null, local: [], dirty: false, pending: false, savedHere: false }), "keep");
+});
+
+test("a sheet's \"adv.\" (Feral Instinct) rolls with advantage; nothing else does", async () => {
+  const { rollModeFrom } = await import("../src/dice.js");
+  assert.equal(rollModeFrom("+2 adv."), "advantage");
+  assert.equal(rollModeFrom("+2 with advantage"), "advantage");
+  assert.equal(rollModeFrom("+7"), "normal");
+  assert.equal(rollModeFrom("Advanced"), "normal");
 });
