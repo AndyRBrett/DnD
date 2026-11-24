@@ -608,3 +608,5 @@ body.board-mode .hdr .role-pill{display:none}
 .attack-option.is-unconfirmed{border-style:dashed}
 .here-line{font-size:.9rem;color:var(--muted2);margin:4px 0 8px}
 .here-line strong{color:var(--text)}
+.section-meaning{font-size:.85rem;color:var(--muted2);margin:2px 0 8px}
+.pair-meaning{display:block;font-size:.8rem;color:var(--muted2);margin-top:2px}
