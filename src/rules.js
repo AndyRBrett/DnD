@@ -313,7 +313,7 @@ const spellLevelTitle = level => level === 0 ? "Cantrips" : ordinal(level) + "-l
 export function sectionMeaning(title) {
   if (title === "Cantrips") return CANTRIP_MEANING;
   const level = String(title).match(/^(\d+)\w\w-level spells$/)?.[1];
-  return level ? "Each cast uses a spell slot of level " + level + " or higher; slots come back on a long rest." : "";
+  return level ? "Casting one uses a spell slot of level " + level + " or higher (unless the spell says it can be cast as a ritual: 10 minutes longer, no slot). Slots come back on a long rest." : "";
 }
 
 // Lays a character out like a sheet: stats from the role line, then Attacks,
