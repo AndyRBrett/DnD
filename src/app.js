@@ -11,6 +11,18 @@ import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, en
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
+// Replaces a container's contents only when the new markup differs from what
+// was last drawn there. The 1.5-second poll redraws often; skipping identical
+// redraws keeps taps from landing on a button that was just swapped out, and
+// keeps what the DM is reading (an enemy's last roll) and typing in place.
+function renderInto(container, nodes) {
+  const html = nodes.map(node => node.outerHTML ?? node.textContent).join("");
+  if (container.renderedHtml === html && container.childNodes.length) return false;
+  container.renderedHtml = html;
+  container.replaceChildren(...nodes);
+  return true;
+}
+const setText = (id, text) => { if ($(id).textContent !== text) $(id).textContent = text; };
 const room = new URLSearchParams(location.search).get("room");
 let isHost = false;
 let state;
@@ -106,14 +118,15 @@ async function askClaude(question = "") {
   const sceneId = state?.scenes.at(-1)?.id;
   const buttons = [$("ask-claude"), $("question-form").querySelector("button")];
   for (const button of buttons) button.disabled = true;
-  $("claude-status").textContent = question ? "Claude is thinking about your question…" : "Claude is reading the story…";
+  $("claude-status").textContent = (question ? "Claude is thinking about your question" : "Claude is reading the whole story")
+    + " (about a minute). Keep playing: the answer shows up here.";
   try {
     const advice = await backend.advise(room, Number(index), question, spentFor(Number(index)), tableContext(Number(index)));
-    if ($("character").value !== index || (!question && state.scenes.at(-1)?.id !== sceneId)) {
-      $("claude-status").textContent = "The scene moved on. Ask again for the latest update.";
-      return;
-    }
-    claudeFor = index + ":" + sceneId;
+    // The answer cost a Claude call: show it even if the scene moved on or
+    // someone switched characters while it was being written, and say so.
+    const switched = $("character").value !== index;
+    const movedOn = !question && state.scenes.at(-1)?.id !== sceneId;
+    claudeFor = $("character").value + ":" + (state.scenes.at(-1)?.id ?? ""); // stays until the next update
     $("claude-reply").hidden = !advice.answer;
     $("claude-asked").textContent = question ? "You asked: “" + question + "”" : "";
     $("claude-reply").querySelector("span").textContent = advice.answer ?? "";
@@ -123,7 +136,8 @@ async function askClaude(question = "") {
     $("claude-options").replaceChildren(...advice.options.map(option => claudeOption(option, Number(index))));
     $("claude-ask").textContent = advice.question;
     $("claude-answer").hidden = false;
-    $("claude-status").textContent = "";
+    $("claude-status").textContent = switched ? "This answer is for " + state.party[Number(index)]?.name + "."
+      : movedOn ? "Written for the update before the latest one; ask again for a fresh read." : "";
     if (question) $("question-text").value = "";
     if (currentTab === "moves") $("claude-answer").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -405,39 +419,8 @@ async function sync() {
   syncing = true;
   try {
     const fresh = await backend.room(room);
-    // The TV board only shows the table: even signed in as the DM it never
-    // acts as host (no encounter publishing, no automatic turn advancing).
-    const asHost = Boolean(fresh.isHost) && !boardMode;
-    const hostChanged = asHost !== isHost;
-    const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
-    const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes)
-      || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
-    const previous = state;
-    state = fresh;
-    // Hurt by someone else while concentrating (the DM applied an enemy's hit).
-    if (previous && !isHost) checkRemoteDamage(previous, fresh);
-    if (boardMode) queueMicrotask(drawBoard);
-    if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
-    else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
-    if (previous && JSON.stringify(previous.resources) !== JSON.stringify(fresh.resources) && !rosterChanged && !scenesChanged) showOptions();
-    if (hostChanged) setHost(asHost);
-    if (!previous) rememberTable(room);
-    if (rosterChanged || hostChanged) drawRoster();
-    if (scenesChanged) {
-      if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
-      renderStory();
-    }
-    $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
-    if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
-    if (rosterChanged || scenesChanged) showOptions();
-    if (scenesChanged && !rosterChanged) drawHitInbox();
-    handleTurnEnds(); // also retries one whose publish failed
-    if (isPractice()) {
-      $("practice-banner").hidden = false;
-      $("table-code").textContent = " · " + tableLabel(room).toUpperCase() + " · PRACTICE";
-    }
-    if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
-    $("connection").textContent = isHost ? "HOST" : "PLAYER";
+    applyRoom(fresh);
+    cacheRoom(fresh);
   } catch (error) {
     // The server says the table is gone (ended, or idle for 8 hours). It can
     // answer with 404 or 400 depending on the error code, so read the message.
@@ -471,6 +454,67 @@ async function sync() {
   } finally {
     syncing = false;
   }
+}
+
+// Draws the table from a room snapshot: the server's answer, or (cached) the
+// copy saved on this phone, shown at once on a reload while the first request
+// is still out. A cached snapshot never triggers actions (turn advancing).
+function applyRoom(fresh, { cached = false } = {}) {
+  // The TV board only shows the table: even signed in as the DM it never
+  // acts as host (no encounter publishing, no automatic turn advancing).
+  const asHost = Boolean(fresh.isHost) && !boardMode;
+  const hostChanged = asHost !== isHost;
+  const rosterChanged = JSON.stringify(state?.party) !== JSON.stringify(fresh.party);
+  const scenesChanged = JSON.stringify(state?.scenes) !== JSON.stringify(fresh.scenes)
+    || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
+  const previous = state;
+  const previousCached = stateCached;
+  state = fresh;
+  stateCached = cached;
+  // Hurt by someone else while concentrating (the DM applied an enemy's hit).
+  // Not against a cached snapshot: that damage may be hours old.
+  if (previous && !previousCached && !isHost) checkRemoteDamage(previous, fresh);
+  if (boardMode) queueMicrotask(drawBoard);
+  if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
+  else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
+  if (previous && JSON.stringify(previous.resources) !== JSON.stringify(fresh.resources) && !rosterChanged && !scenesChanged) showOptions();
+  if (hostChanged) setHost(asHost);
+  if (!previous) rememberTable(room);
+  if (rosterChanged || hostChanged) drawRoster();
+  if (scenesChanged) {
+    if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
+    renderStory();
+  }
+  $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
+  if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
+  if (rosterChanged || scenesChanged) showOptions();
+  if (scenesChanged && !rosterChanged) drawHitInbox();
+  if (!cached) handleTurnEnds(); // also retries one whose publish failed
+  if (isPractice()) {
+    $("practice-banner").hidden = false;
+    setText("table-code", " · " + tableLabel(room).toUpperCase() + " · PRACTICE");
+  }
+  if (typeof state.historyChars === "number") $("history-size").textContent = "· " + describeSize(state.historyChars);
+  setText("connection", cached ? "CATCHING UP" : isHost ? "HOST" : "PLAYER");
+  if (!cached) sayHere();
+  drawHere();
+}
+// The latest snapshot, kept on this phone for a fast reload (written only
+// when it changed; dropped after the table's 8 idle hours).
+const roomCacheKey = () => "dnd-room-cache:" + room;
+let stateCached = false;
+let cachedText = "";
+function cacheRoom(fresh) {
+  const text = JSON.stringify(fresh);
+  if (text === cachedText) return;
+  cachedText = text;
+  storage.set(roomCacheKey(), JSON.stringify({ at: Date.now(), state: fresh }));
+}
+function showCachedRoom() {
+  if (state) return;
+  const saved = readJson(roomCacheKey(), null);
+  if (!saved?.state?.party || Date.now() - saved.at > 8 * 60 * 60 * 1000) return;
+  try { applyRoom(saved.state, { cached: true }); } catch { state = undefined; }
 }
 
 function flashScene() {
@@ -692,7 +736,7 @@ $("cancel").onclick = () => {
   $("cancel").hidden = true;
   $("publish").textContent = "Publish update";
 };
-$("character").onchange = showOptions;
+$("character").onchange = () => { showOptions(); sayHere(); };
 $("ask-claude").onclick = () => askClaude();
 $("copy-coach").onclick = async () => {
   const character = selectedCharacter();
@@ -742,6 +786,12 @@ $("party-form").onsubmit = async event => {
     const party = Array.from({length: 5}, (_, index) => Object.fromEntries(
       ["name", "role", "moves"].map(key => [key, data.get(key + index)])
     ));
+    // The full sheet, HP, and resources all follow the name: say so before a
+    // rename quietly drops them.
+    const renamed = party.map((entry, index) => [state.party[index]?.name, String(entry.name ?? "").trim()])
+      .filter(([before, after]) => before && after && before !== after && (sheets[before] || hpRecord(state.party.findIndex(character => character.name === before)) || state.resources?.[before]));
+    if (renamed.length && !window.confirm(renamed.map(([before, after]) => before + " → " + after).join("\n")
+      + "\n\nThe full sheet, HP, and spell slots are kept by name, so a renamed character starts without them (rename back to get them again). Save anyway?")) return;
     await backend.saveParty(room, party);
     $("notice").textContent = "Character sheets updated.";
     await sync();
@@ -1196,7 +1246,7 @@ function diceFor(faces) {
   return faces.flatMap(face => face.sides === 100
     ? [{ ...face, kind: "tens", caption: "d100", label: face.value === undefined ? undefined : percentileLabels(face.value).tens },
        { ...face, kind: "units", caption: "", label: face.value === undefined ? undefined : percentileLabels(face.value).units }]
-    : [{ ...face, kind: face.sides, caption: "d" + face.sides, label: face.value === undefined ? undefined : String(face.value) }]);
+    : [{ ...face, kind: face.sides, caption: face.dropped ? "not used" : "d" + face.sides, label: face.value === undefined ? undefined : String(face.value) }]);
 }
 function stageDice(faces) {
   const all = diceFor(faces);
@@ -1224,6 +1274,8 @@ function previewDice() {
 }
 async function spinDice(result) {
   const faces = result.groups.flatMap(group => group.results.map(value => ({ sides: group.sides, value })));
+  // Advantage or disadvantage: the d20 that doesn't count sits last, greyed
+  // out and captioned "not used", so nobody reads it as the result.
   if (result.dropped !== null) faces.push({ sides: 20, value: result.dropped, dropped: true });
   const slots = stageDice(faces);
   const reduced = reduceMotion();
@@ -1620,6 +1672,30 @@ function drawCombat() {
   }));
 }
 
+// ── Who's at the table: each player's phone checks in every 20 seconds with
+// the character it's playing (migration 0015, or the local server), and the
+// DM's Party HP card lists who's here before anyone posts. ──
+const here = { at: 0, character: null, off: false };
+function sayHere() {
+  if (isHost || boardMode || ended || here.off || !backend.here || !state?.party) return;
+  const me = Number($("character").value);
+  if (!state.party[me] || (here.character === me && Date.now() - here.at < 20000)) return;
+  Object.assign(here, { at: Date.now(), character: me });
+  backend.here(room, me).catch(error => { if (/could not find the function/i.test(error.message)) here.off = true; });
+}
+function drawHere() {
+  const line = $("here-line");
+  line.hidden = !isHost || !Array.isArray(state?.here);
+  if (line.hidden) return;
+  const present = new Set(state.here.map(entry => entry.character));
+  const names = index => partyName(index).replace(/^The /, "");
+  const inRoom = state.party.map((_, index) => index).filter(index => present.has(index));
+  const away = state.party.map((_, index) => index).filter(index => !present.has(index));
+  const strong = document.createElement("strong");
+  strong.textContent = inRoom.length ? "At the table: " + inRoom.map(names).join(", ") : "No players' phones here yet.";
+  line.replaceChildren(strong, away.length && inRoom.length ? " · not here yet: " + away.map(names).join(", ") : "");
+}
+
 // ── Party hit points (shared; anyone at the table can change them) ──
 const HP_LABEL = { ok: "", bloodied: "Bloodied", down: "Down — death saves", unknown: "" };
 const hpAvailable = () => Boolean(backend.setHp) && Boolean(state) && !state.hpUnavailable && !ended;
@@ -1678,22 +1754,25 @@ async function adjustHp(index, change, status) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
   state.hp = { ...state.hp, [partyName(index)]: changePartyHp(record, change) };
-  // Hurt while already down: a death save failure, on the phone that keeps them.
-  if (change < 0 && record.hp <= 0 && !isHost && index === Number($("character").value)) {
+  // Hurt while already down: a death save failure, whoever entered the damage
+  // (the DM's Apply too). Stable and hurt again: death saves start over.
+  if (change < 0 && record.hp <= 0) {
     const saves = readDeath(index);
-    // Stable (three successes) and hurt again: death saves start over, with this failure.
     if (saves.failures < 3) {
       const stable = saves.successes >= 3;
-      storage.set(deathKey(index), JSON.stringify({ successes: stable ? 0 : saves.successes, failures: saves.failures + 1,
-        last: "Took " + -change + " damage while down: one failure" + (stable ? " (no longer stable)" : "") }));
+      writeDeath(index, { successes: stable ? 0 : saves.successes, failures: saves.failures + 1,
+        last: "Took " + -change + " damage while down: one failure" + (stable ? " (no longer stable)" : "") });
+      if (!(!isHost && index === Number($("character").value))) tellTable(index, "💀 took " + -change + " damage while down: a death save failure (" + (saves.failures + 1) + " ✗)");
     }
   }
+  if (change > 0 && record.hp <= 0) clearDeath(index); // any healing brings them back
   drawCombat();
   const own = !isHost && index === Number($("character").value);
   const reminder = change < 0 && own ? concentrationCheck(index, -change) : "";
   // Someone else's HP: a story line, so their phone can ask for a concentration
   // save for this hit (and the table hears about it).
-  if (change < 0 && !own) tellTable(index, "🩸 takes " + -change + " damage");
+  // (Already down: the death-save line above says it; concentration is over.)
+  if (change < 0 && !own && record.hp > 0) tellTable(index, "🩸 takes " + -change + " damage");
   try {
     await backend.adjustHp(room, index, change);
     if (reminder) status.textContent = reminder;
@@ -1719,6 +1798,7 @@ async function saveHp(index, values, status) {
   const keptAc = ac ?? hpRecord(index)?.ac;
   if (keptAc) record.ac = keptAc;
   state.hp = { ...state.hp, [partyName(index)]: record };
+  if (record.hp > 0) clearDeath(index); // back above 0 (Set HP, Full heal, Everyone to full)
   drawCombat();
   try {
     await backend.setHp(room, index, record);
@@ -1803,7 +1883,9 @@ function hpWidget(index, { compact = false, open = false } = {}) {
     if (HP_LABEL[health]) {
       const note = document.createElement("p");
       note.className = "hp-state";
-      note.textContent = HP_LABEL[health];
+      const saves = health === "down" ? readDeath(index) : null;
+      note.textContent = HP_LABEL[health] + (saves && (saves.successes || saves.failures)
+        ? " · " + (saves.failures >= 3 ? "☠️ dead" : saves.successes >= 3 ? "stable" : saves.successes + " ✓ " + saves.failures + " ✗") : "");
       box.append(note);
     }
     if (health === "down" && !compact && !isHost && index === Number($("character").value)) box.append(deathSaveBox(index));
@@ -1920,8 +2002,29 @@ function hpWidget(index, { compact = false, open = false } = {}) {
 }
 // ── Death saves, kept on the player's phone; each roll is posted so the DM
 // sees it. Cleared when the character is back above 0 HP. ──
+// The counts live in the character's shared resources record (as two "used"
+// entries), so the DM and any phone see the same death saves; "last" (the
+// latest roll, in words) stays on the phone that rolled it.
 const deathKey = index => "dnd-death:" + room + ":" + index;
-const readDeath = index => readJson(deathKey(index), { successes: 0, failures: 0 });
+const DEATH_OK = "Death successes";
+const DEATH_FAIL = "Death failures";
+function readDeath(index) {
+  const used = readRes(index).used ?? {};
+  return { successes: Number(used[DEATH_OK]) || 0, failures: Number(used[DEATH_FAIL]) || 0, last: readJson(deathKey(index), {}).last ?? "" };
+}
+function writeDeath(index, { successes, failures, last }) {
+  const res = readRes(index);
+  const used = { ...(res.used ?? {}) };
+  if (successes) used[DEATH_OK] = successes; else delete used[DEATH_OK];
+  if (failures) used[DEATH_FAIL] = failures; else delete used[DEATH_FAIL];
+  saveRes(index, { ...res, used });
+  if (last !== undefined) storage.set(deathKey(index), JSON.stringify({ last }));
+}
+function clearDeath(index) {
+  const used = readRes(index).used ?? {};
+  if (used[DEATH_OK] || used[DEATH_FAIL]) writeDeath(index, { successes: 0, failures: 0, last: "" });
+  else if (storage.get(deathKey(index))) storage.remove(deathKey(index));
+}
 function deathSaveBox(index) {
   const saves = readDeath(index);
   const box = document.createElement("div");
@@ -1939,8 +2042,7 @@ function deathSaveBox(index) {
       pip.textContent = saves[key] >= n ? mark : "";
       pip.setAttribute("aria-label", label + " " + n);
       pip.onclick = () => {
-        const next = { ...readDeath(index), [key]: saves[key] >= n ? n - 1 : n, last: "" };
-        storage.set(deathKey(index), JSON.stringify(next));
+        writeDeath(index, { ...readDeath(index), [key]: saves[key] >= n ? n - 1 : n, last: "" });
         drawHp();
       };
       line.append(pip);
@@ -1970,7 +2072,7 @@ function deathSaveBox(index) {
     const summary = what === "revived" ? "natural 20 — back up with 1 HP!"
       : what === "dead" ? "fails — dead" : what === "stable" ? "succeeds — stable"
       : (natural >= 10 ? "success" : natural === 1 ? "natural 1, two failures" : "failure") + " (" + counts.successes + " ✓ / " + counts.failures + " ✗)";
-    storage.set(deathKey(index), JSON.stringify({ ...counts, last: "Rolled " + natural + ": " + summary }));
+    writeDeath(index, what === "revived" ? { successes: 0, failures: 0, last: "Rolled 20: back up with 1 HP!" } : { ...counts, last: "Rolled " + natural + ": " + summary });
     // One death save per turn: say it's recorded, then close the tray.
     $("dice-status").textContent = "✓ Recorded. Death save " + natural + ": " + summary;
     dice.onResult = null;
@@ -2111,9 +2213,12 @@ function resourcesWidget(index) {
   title.textContent = (sheet.resources?.length ? "RESOURCES · " : "RESTS · ") + partyName(index).toUpperCase();
   head.append(title);
   box.append(head);
+  // Read the record at tap time: a widget kept across redraws must not write
+  // back an older copy (death saves live in the same record).
   const set = (key, left) => {
     const max = resourceLeft(sheet, { used: {} }, key);
-    writeRes(index, { ...res, used: { ...res.used, [key]: Math.max(0, Math.min(max, max - left)) } });
+    const now = readRes(index);
+    writeRes(index, { ...now, used: { ...now.used, [key]: Math.max(0, Math.min(max, max - left)) } });
   };
   for (const resource of sheet.resources ?? []) {
     const block = document.createElement("div");
@@ -2315,7 +2420,11 @@ function healingBlock(index, sheet, res) {
 }
 function fillResources(container, index) {
   const open = container.querySelector(".how-slots")?.open ?? false;
-  container.replaceChildren(resourcesWidget(index));
+  // Keep who each heal is aimed at across redraws.
+  const targets = [...container.querySelectorAll(".heal-row select")].map(select => select.value);
+  const widget = resourcesWidget(index);
+  widget.querySelectorAll(".heal-row select").forEach((select, at) => { if (targets[at] !== undefined && [...select.options].some(option => option.value === targets[at])) select.value = targets[at]; });
+  if (!renderInto(container, [widget])) return;
   const how = container.querySelector(".how-slots");
   if (how) how.open = open;
 }
@@ -2341,7 +2450,7 @@ function fillHp(container, index, options = {}) {
   const known = String(Boolean(hpRecord(index)));
   const open = container.dataset.known === known && (container.querySelector("details")?.open ?? false);
   container.dataset.known = known;
-  container.replaceChildren(hpWidget(index, { ...options, open }));
+  renderInto(container, [hpWidget(index, { ...options, open })]);
 }
 function drawHp() {
   const available = hpAvailable();
@@ -2361,7 +2470,7 @@ function drawHp() {
   if (!available) return;
   if (ready) {
     const record = hpRecord(me);
-    if (record?.hp > 0 && storage.get(deathKey(me))) storage.remove(deathKey(me));
+    if (record?.hp > 0) clearDeath(me);
     if (resShared() && !state.resources[partyName(me)]) {
       const local = readJson(resKey(me), null);
       if (local && (Object.keys(local.used ?? {}).length || local.raging)) saveRes(me, local);
@@ -3463,7 +3572,7 @@ function drawEncounter() {
   $("encounter-count").textContent = total ? up + " of " + total + " standing" : "No enemies yet";
   $("encounter-controls").hidden = !total;
   $("enemy-builder").open = !total || $("enemy-builder").open;
-  $("enemy-list").replaceChildren(...enemies.map(enemyCard));
+  renderInto($("enemy-list"), enemies.map(enemyCard));
   drawCombat();
 }
 
@@ -3724,6 +3833,7 @@ function enterRoom() {
     $("board-exit").hidden = false;
   }
   setHost(false);
+  showCachedRoom();
   sync();
   poll ??= setInterval(sync, 1500);
 }

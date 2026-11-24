@@ -32,6 +32,7 @@ function randomToken(bytes) {
 // "Ask Claude". The prompt and request live in src/advice.js.
 const aiCache = new Map();
 const aiUsage = new Map();
+const presence = new Map(); // room code → phone id → { character, at }
 const AI_ROOM_LIMIT = 500;
 const AI_COOLDOWN = 8000;
 
@@ -73,8 +74,13 @@ const endpoints = {
     const { results: resourceRows } = await db.prepare("SELECT name, state FROM party_resources").all();
     const resources = Object.fromEntries(byName(resourceRows).filter(row => names.has(row.name)).map(row => [row.name, JSON.parse(row.state)]));
     const hp = Object.fromEntries(byName(hpRows).filter(row => names.has(row.name)).map(row => [row.name, { hp: row.hp, max: row.max_hp, temp: row.temp, ...(row.ac ? { ac: row.ac } : {}) }]));
+    // Phones seen in the last two minutes, by character (never who they are).
+    const now = Date.now();
+    const here = [...(presence.get(code)?.values() ?? [])].filter(entry => now - entry.at < 120000)
+      .map(entry => ({ character: entry.character, seconds: Math.round((now - entry.at) / 1000) }))
+      .sort((a, b) => a.character - b.character);
     return json({
-      party, hp, resources, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      party, hp, resources, here, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
     });
   },
@@ -250,8 +256,21 @@ const endpoints = {
     await db.prepare("UPDATE rooms SET party = ? WHERE code = ?").bind(JSON.stringify(updated), code).run();
     return json({ ok: true });
   },
+  // Who's at the table (kept in memory; a restart forgets it until the next ping).
+  async here(request, room, code) {
+    const body = await request.json();
+    const character = Number(body.character);
+    const phone = String(body.phone ?? "").slice(0, 40);
+    if (!Number.isInteger(character) || !JSON.parse(room.party)[character] || !phone) return json({ error: "Pick a character." }, 400);
+    if (!presence.has(code)) presence.set(code, new Map());
+    const phones = presence.get(code);
+    phones.set(phone, { character, at: Date.now() });
+    if (phones.size > 30) phones.delete(phones.keys().next().value);
+    return json({ ok: true });
+  },
   async close(db, code) {
     aiUsage.delete(code);
+    presence.delete(code);
     await db.prepare("DELETE FROM rooms WHERE code = ?").bind(code).run();
     await db.prepare("DELETE FROM party_hp WHERE name LIKE ?").bind("room:" + code + ":%").run();
     await db.prepare("DELETE FROM party_resources WHERE name LIKE ?").bind("room:" + code + ":%").run();
@@ -284,7 +303,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn|here))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       // Open until 8 hours after the last activity (any change that succeeds).
@@ -293,6 +312,8 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       room.code = code;
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
+      // A phone saying who it's playing isn't table activity: it doesn't keep the table open.
+      if (operation === "here" && request.method === "POST") return await endpoints.here(request, room, code);
       const response = await roomChange(request, env, room, code, operation);
       if (response.ok) await env.DB.prepare("UPDATE rooms SET last_active = ? WHERE code = ?").bind(Date.now(), code).run();
       return response;
