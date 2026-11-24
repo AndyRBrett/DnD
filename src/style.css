@@ -599,3 +599,10 @@ body.board-mode .hdr .role-pill{display:none}
 .dice-for .chip.is-active{border-color:var(--red);background:var(--red-dim);color:var(--text)}
 .dice-for input{flex:1 1 100%}
 .death-last{font-weight:700;color:var(--gold);margin:4px 0}
+.narrate-list{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.narrate-list button{width:100%;text-align:left;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:8px 10px;color:var(--text);font:inherit}
+.save-result{font-weight:700}
+.heal-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.heal-row select{flex:1 1 140px}
+.heal-row .fineprint{flex:1 1 100%;margin:0}
+.attack-option.is-unconfirmed{border-style:dashed}

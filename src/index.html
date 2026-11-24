@@ -336,6 +336,12 @@
             <textarea id="draft" rows="3" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
             <div class="controls"><button id="publish" class="ghost" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
           </details>
+          <details id="narrate" class="fold" hidden>
+            <summary>To narrate <span id="narrate-count" class="pill-label"></span></summary>
+            <p class="fineprint">What the app resolved for you (hits applied, saves rolled). Tap a line to add it to your update.</p>
+            <ul id="narrate-list" class="narrate-list"></ul>
+            <button id="narrate-clear" class="quiet" type="button">Clear the list</button>
+          </details>
           <details id="party-actions" class="fold" hidden>
             <summary>Actions for each character</summary>
             <p class="fineprint">For players without a phone out: type what their character does and add it to the story.</p>
@@ -373,6 +379,7 @@
               <p class="label">Attacks</p>
               <div class="attack-row"><input id="atk1-name" placeholder="Attack" maxlength="40"><input id="atk1-hit" type="number" placeholder="+hit" inputmode="numeric"><input id="atk1-dmg" placeholder="1d6+2" maxlength="20"></div>
               <div class="attack-row"><input id="atk2-name" placeholder="2nd attack (optional)" maxlength="40"><input id="atk2-hit" type="number" placeholder="+hit" inputmode="numeric"><input id="atk2-dmg" placeholder="1d8" maxlength="20"></div>
+              <label>Saving throws<input id="enemy-saves" maxlength="80" autocomplete="off" placeholder="Str +4, Dex +2, Con +3 (others +0)"></label>
               <label>Abilities and notes<textarea id="enemy-abilities" rows="3" maxlength="1000" placeholder="Multiattack, resistances, spells, tactics…"></textarea></label>
               <button type="submit" class="cta">Add to encounter</button>
               <button type="button" id="enemy-save-template" class="ghost">Save as my template</button>
