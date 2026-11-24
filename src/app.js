@@ -1798,6 +1798,7 @@ async function saveHp(index, values, status) {
   const keptAc = ac ?? hpRecord(index)?.ac;
   if (keptAc) record.ac = keptAc;
   state.hp = { ...state.hp, [partyName(index)]: record };
+  if (record.hp > 0) clearDeath(index); // back above 0 (Set HP, Full heal, Everyone to full)
   drawCombat();
   try {
     await backend.setHp(room, index, record);
@@ -2212,9 +2213,12 @@ function resourcesWidget(index) {
   title.textContent = (sheet.resources?.length ? "RESOURCES · " : "RESTS · ") + partyName(index).toUpperCase();
   head.append(title);
   box.append(head);
+  // Read the record at tap time: a widget kept across redraws must not write
+  // back an older copy (death saves live in the same record).
   const set = (key, left) => {
     const max = resourceLeft(sheet, { used: {} }, key);
-    writeRes(index, { ...res, used: { ...res.used, [key]: Math.max(0, Math.min(max, max - left)) } });
+    const now = readRes(index);
+    writeRes(index, { ...now, used: { ...now.used, [key]: Math.max(0, Math.min(max, max - left)) } });
   };
   for (const resource of sheet.resources ?? []) {
     const block = document.createElement("div");
