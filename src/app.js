@@ -536,12 +536,13 @@ async function publish(automatic = false) {
   clearPublishTimers();
   const id = editId;
   const mark = draftActionMark ?? maxActionId();
+  const previousScene = state?.scenes?.at(-1)?.id ?? null; // before a poll can bring in the new one
   writing = true;
   $("publish").disabled = true;
   try {
     await backend.postScene(room, text, id);
     // Only the update published here counts: the one right after this scene.
-    if (!id) storage.set(writtenOverKey(), JSON.stringify({ after: mark, previous: state?.scenes?.at(-1)?.id ?? null }));
+    if (!id) storage.set(writtenOverKey(), JSON.stringify({ after: mark, previous: previousScene }));
     draftActionMark = null;
     if ($("draft").value.trim() === text) setDraft("");
     else if (!id && $("draft").value.startsWith(text + " ")) setDraft($("draft").value.slice(text.length + 1));
@@ -1640,8 +1641,11 @@ async function adjustHp(index, change, status) {
   // Hurt while already down: a death save failure, on the phone that keeps them.
   if (change < 0 && record.hp <= 0 && !isHost && index === Number($("character").value)) {
     const saves = readDeath(index);
-    if (saves.failures < 3 && saves.successes < 3) {
-      storage.set(deathKey(index), JSON.stringify({ ...saves, failures: saves.failures + 1, last: "Took " + -change + " damage while down: one failure" }));
+    // Stable (three successes) and hurt again: death saves start over, with this failure.
+    if (saves.failures < 3) {
+      const stable = saves.successes >= 3;
+      storage.set(deathKey(index), JSON.stringify({ successes: stable ? 0 : saves.successes, failures: saves.failures + 1,
+        last: "Took " + -change + " damage while down: one failure" + (stable ? " (no longer stable)" : "") }));
     }
   }
   drawCombat();
