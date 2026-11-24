@@ -4,7 +4,7 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 // opening line out of view.
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
-import { organizeSheet, basics, conditions } from "./rules.js";
+import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
@@ -260,7 +260,12 @@ function drawFullSheet(character) {
 
   const pairList = (title, pairs) => {
     const list = element("dl", "sheet-pairs");
-    for (const [label, value] of pairs) list.append(element("dt", "", label), element("dd", "", value));
+    for (const [label, value] of pairs) {
+      const dd = element("dd", "", value);
+      const meaning = sectionMeaning(label);
+      if (meaning) dd.append(element("small", "pair-meaning", meaning));
+      list.append(element("dt", "", label), dd);
+    }
     const wrap = element("section", "sheet-section");
     wrap.append(element("h3", "", title), list);
     return wrap;
@@ -325,7 +330,10 @@ function drawSheet(character) {
     wrap.className = "sheet-section";
     const title = document.createElement("h3");
     title.textContent = section.title;
-    wrap.append(title, ...section.entries.map(sheetEntry));
+    wrap.append(title);
+    const meaning = sectionMeaning(section.title);
+    if (meaning) wrap.append(Object.assign(document.createElement("p"), { className: "section-meaning", textContent: meaning }));
+    wrap.append(...section.entries.map(sheetEntry));
     return wrap;
   }));
   $("sheet-confirm").hidden = !sheet.confirm.length;

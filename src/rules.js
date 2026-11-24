@@ -10,6 +10,9 @@ const attack = (meta, text, aliases = []) => ({ section: "attacks", meta, text, 
 const feature = (meta, text, aliases = []) => ({ section: "features", meta, text, aliases });
 const skill = (ability, text, aliases = []) => ({ section: "skills", meta: "Ability check · d20 + " + ability, text, aliases });
 
+// What a cantrip is, for the sheet and D&D basics.
+export const CANTRIP_MEANING = "Cantrips are simple spells you can cast as often as you like: they never use a spell slot, and many get stronger as you level up.";
+
 export const rules = {
   // ── Cantrips ──
   "Sacred Flame": spell(0, "Cantrip · Action · 60 ft · Dex save",
@@ -256,6 +259,7 @@ export const conditions = [
 
 // What every character can do on their turn, plus the terms that come up most.
 export const basics = [
+  ["Cantrip", CANTRIP_MEANING + " Sacred Flame, Light, and Thaumaturgy are cantrips."],
   ["Your turn", "Move up to your speed, take one action, and possibly one bonus action (only if a spell or feature gives you one). Between turns you get one reaction per round."],
   ["Attack", "Make one weapon attack (more with Extra Attack). Roll d20 + attack bonus against the target's AC."],
   ["Cast a Spell", "Most spells take an action; some take a bonus action or a reaction. Leveled spells use a spell slot; cantrips don't."],
@@ -304,6 +308,13 @@ function splitNames(label) {
 
 const ordinal = level => ["1st", "2nd", "3rd"][level - 1] ?? level + "th";
 const spellLevelTitle = level => level === 0 ? "Cantrips" : ordinal(level) + "-level spells";
+
+// One line under a sheet heading, so new players know what it means.
+export function sectionMeaning(title) {
+  if (title === "Cantrips") return CANTRIP_MEANING;
+  const level = String(title).match(/^(\d+)\w\w-level spells$/)?.[1];
+  return level ? "Casting one uses a spell slot of level " + level + " or higher (unless the spell says it can be cast as a ritual: 10 minutes longer, no slot). Slots come back on a long rest." : "";
+}
 
 // Lays a character out like a sheet: stats from the role line, then Attacks,
 // Spells (by level), Features & traits, Skills, Table moves, and a separate
