@@ -114,6 +114,9 @@ export const sheets = {
     // turns off after one attack (Dread Ambusher shot, a maneuver), "turn" when
     // that character's turn ends (Reckless). cast: a slot level spent once when
     // first ticked; with concentration it stays up only while Concentrating.
+    // choices: which one (a maneuver), named in the hit report with its save.
+    // perAction: attacks per Attack action (Extra Attack), counted on the card.
+    // unconfirmed: not yet approved by the DM; the card says so.
     attacks: [
       { name: "Spiritual Weapon", ability: "WIS", slot: 2, lasting: true, hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration. One slot when cast; it lasts a minute, and attacking with it again is free." },
       { name: "Guiding Bolt", ability: "WIS", slot: 1, upcast: "1d6", hit: 9, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
@@ -123,6 +126,11 @@ export const sheets = {
       { name: "Radiance of the Dawn", ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 17, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
     ],
     attackOptions: [],
+    // Healing from the Resources card: heal is the dice (with the modifier);
+    // slot/upcast as for attacks; spends a feature; self: only on yourself.
+    heals: [
+      { name: "Healing Word", slot: 1, upcast: "1d4", heal: "1d4+5", note: "Bonus action, 60 ft; 1d4 more for each slot level above 1st." }
+    ],
     // Limited uses: spell slots by level, and features with uses per rest
     // (covers: the sheet abilities that need it; default is its own name).
     resources: [
@@ -204,12 +212,12 @@ export const sheets = {
   },
   "Logan Ninefingers": {
     attacks: [
-      { name: "Greataxe", ability: "STR", hit: 8, damage: "1d12+4", type: "slashing", note: "Two swings per Attack action; Frenzy adds a bonus-action swing while raging." }
+      { name: "Greataxe", ability: "STR", perAction: 2, hit: 8, damage: "1d12+4", type: "slashing", note: "Two swings per Attack action; Frenzy adds a bonus-action swing while raging." }
     ],
     attackOptions: [
       { name: "Raging", damage: "+3", note: "+3 damage on Strength attacks.", rage: true },
       { name: "Reckless", mode: "advantage", lasts: "turn", note: "Advantage on your attacks this turn; enemies get advantage on you until your next turn." },
-      { name: "Great Weapon Master", hit: -5, damage: "+10", note: "Only if the DM approved the feat." }
+      { name: "Great Weapon Master", hit: -5, unconfirmed: true, damage: "+10", note: "Only if the DM approved the feat." }
     ],
     critExtraDice: 1, // Brutal Critical
     resources: [
@@ -265,11 +273,20 @@ export const sheets = {
   },
   "Dum Dum": {
     attacks: [
-      { name: "Weapon attack", ability: "STR", hit: 8, damage: "1d8+4", type: "slashing or bludgeoning", note: "Longsword or warhammer; two attacks per Attack action, four with Action Surge." }
+      { name: "Weapon attack", ability: "STR", perAction: 2, hit: 8, damage: "1d8+4", type: "slashing or bludgeoning", note: "Longsword or warhammer; two attacks per Attack action, four with Action Surge." }
     ],
     attackOptions: [
-      { name: "Maneuver (+1d10)", damage: "+1d10", spends: "Superiority dice", lasts: "attack", note: "Spends a superiority die: Trip, Goading, or Menacing Attack (DC 16 save)." },
-      { name: "Dueling (+2)", damage: "+2", note: "Only if the DM approved the Dueling style." }
+      { name: "Maneuver (+1d10)", damage: "+1d10", spends: "Superiority dice", lasts: "attack", note: "Spends a superiority die: Trip, Goading, or Menacing Attack (DC 16 save).",
+        choices: [
+          ["Trip Attack", "DC 16 Strength save or knocked prone (Large or smaller)"],
+          ["Goading Attack", "DC 16 Wisdom save or disadvantage on attacks against anyone but Dum Dum until his next turn ends"],
+          ["Menacing Attack", "DC 16 Wisdom save or frightened of Dum Dum until his next turn ends"],
+          ["Other maneuver", ""]
+        ] },
+      { name: "Dueling (+2)", damage: "+2", unconfirmed: true, note: "Only if the DM approved the Dueling style." }
+    ],
+    heals: [
+      { name: "Second Wind", spends: "Second Wind", self: true, heal: "1d10+10", note: "Bonus action, once per short rest." }
     ],
     resources: [
       { name: "Superiority dice", max: 5, per: "short", covers: ["Combat Superiority", "Trip Attack", "Goading Attack", "Menacing Attack", "Precision Attack"], note: "d10 each: Trip, Goading, or Menacing Attack (DC 16)." },
@@ -330,12 +347,12 @@ export const sheets = {
   },
   "Arcturus": {
     attacks: [
-      { name: "Longbow", ability: "DEX", hit: 11, bonus: [["Archery", 2]], damage: "1d8+5", type: "piercing", note: "Two shots per Attack action (three on the first turn); 150/600 ft." },
-      { name: "Shortsword", ability: "DEX", hit: 9, damage: "1d6+5", type: "piercing", note: "Finesse; for enemies in your face." },
-      { name: "Dagger", ability: "DEX", hit: 9, damage: "1d4+5", type: "piercing", note: "Finesse; can be thrown 20/60 ft." }
+      { name: "Longbow", ability: "DEX", perAction: 2, hit: 11, bonus: [["Archery", 2]], damage: "1d8+5", type: "piercing", note: "Two shots per Attack action (three on the first turn); 150/600 ft." },
+      { name: "Shortsword", ability: "DEX", perAction: 2, hit: 9, damage: "1d6+5", type: "piercing", note: "Finesse; for enemies in your face." },
+      { name: "Dagger", ability: "DEX", perAction: 2, hit: 9, damage: "1d4+5", type: "piercing", note: "Finesse; can be thrown 20/60 ft." }
     ],
     attackOptions: [
-      { name: "Hunter's Mark", damage: "+1d6", cast: 1, concentration: true, note: "Bonus action to cast: one 1st-level slot, then it stays up while you concentrate. Moving it to a new target is free." },
+      { name: "Hunter's Mark", damage: "+1d6", unconfirmed: true, cast: 1, concentration: true, note: "Bonus action to cast: one 1st-level slot, then it stays up while you concentrate. Moving it to a new target is free." },
       { name: "Dread Ambusher shot", damage: "+1d8", lasts: "attack", note: "The extra first-turn attack only." }
     ],
     resources: [
