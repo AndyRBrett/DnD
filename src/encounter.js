@@ -213,13 +213,33 @@ export const concentrationDc = damage => Math.max(10, Math.floor(damage / 2));
 
 // ── Attacks against the party ──
 
+// A character's AC for the DM: the number set on the Party HP card, or the
+// sheet's. An unconfirmed sheet AC ("20 plate + shield, or 18 half plate") is
+// a range, low to high, shown with a "?" so nobody takes it as fact.
+export function acRange(sheet, record) {
+  if (record?.ac) return { low: record.ac, high: record.ac, unconfirmed: false, text: String(record.ac) };
+  const stat = combatStats(sheet).find(entry => entry.label === "AC");
+  const first = Number.parseInt(stat?.value ?? "", 10);
+  if (!Number.isFinite(first)) return null;
+  if (!stat.unconfirmed) return { low: first, high: first, unconfirmed: false, text: String(first) };
+  const source = String(Object.fromEntries(sheet?.combat ?? []).AC ?? "") + " " + String(Object.fromEntries(sheet?.rolls ?? []).AC ?? "");
+  const numbers = [first, ...[...source.matchAll(/\d+/g)].map(match => Number(match[0])).filter(value => value >= 10 && value <= 30)];
+  const low = Math.min(...numbers);
+  const high = Math.max(...numbers);
+  return { low, high, unconfirmed: true, text: (low === high ? String(low) : low + "–" + high) + "?" };
+}
+
 // Did an enemy's attack hit? A natural 20 always hits (a critical); a
-// natural 1 always misses; otherwise it hits if the total meets the AC.
+// natural 1 always misses; otherwise it hits if the total meets the AC. With
+// an unconfirmed AC range, a total inside the range is "unsure": the DM decides.
 export function attackOutcome(toHit, ac) {
   if (toHit.critical) return "crit";
   if (toHit.fumble) return "miss";
-  if (!Number.isFinite(ac)) return "unknown";
-  return toHit.total >= ac ? "hit" : "miss";
+  const range = typeof ac === "object" && ac ? ac : { low: ac, high: ac };
+  if (!Number.isFinite(range.low) || !Number.isFinite(range.high)) return "unknown";
+  if (toHit.total >= range.high) return "hit";
+  if (toHit.total < range.low) return "miss";
+  return "unsure";
 }
 
 // Players tell the DM about damage they dealt through a story line in this

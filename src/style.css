@@ -435,7 +435,9 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 .verdict.is-hit{color:var(--red)}
 .verdict.is-crit{color:var(--gold)}
 .verdict.is-miss{color:var(--green)}
-.verdict.is-unknown{color:var(--muted2)}
+.verdict.is-unknown,.verdict.is-unsure{color:var(--muted2)}
+.enemy-swing{display:flex;flex-direction:column;gap:4px}
+.enemy-swing+.enemy-swing{border-top:1px solid var(--border);padding-top:6px;margin-top:6px}
 .apply-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .apply-row button{min-height:38px;font-size:.88rem}
 .hit-row{display:grid;grid-template-columns:minmax(0,1fr) 76px auto;gap:8px}
@@ -455,6 +457,8 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 
 /* ── Attack flow ── */
 .attack-list{display:flex;flex-wrap:wrap;gap:6px}
+.custom-attack-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.custom-attack-fields label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted2)}
 .attack-list .chip{min-height:40px;font-size:.9rem}
 .attack-options{display:flex;flex-wrap:wrap;gap:6px}
 .attack-options:empty{display:none}
@@ -588,3 +592,10 @@ body.board-mode .hdr .role-pill{display:none}
 .theme-picker.compact .theme-option{align-items:center;padding:8px 4px;gap:4px}
 .theme-picker.compact .theme-option span{display:none}
 .theme-picker.compact .theme-option strong{font-size:.78rem}
+
+.held-over-tag{display:inline-block;font-size:.75rem;font-weight:700;color:var(--red);background:var(--red-dim);border-radius:99px;padding:1px 8px}
+.dice-for{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dice-for .chip{min-height:32px;padding:5px 12px;font-size:.85rem}
+.dice-for .chip.is-active{border-color:var(--red);background:var(--red-dim);color:var(--text)}
+.dice-for input{flex:1 1 100%}
+.death-last{font-weight:700;color:var(--gold);margin:4px 0}
