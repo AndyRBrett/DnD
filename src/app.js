@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -414,6 +414,13 @@ async function sync() {
       || JSON.stringify(state?.actions) !== JSON.stringify(fresh.actions);
     const previous = state;
     state = fresh;
+    // Hurt by someone else while concentrating (the DM applied an enemy's hit).
+    if (previous && !isHost) {
+      const name = partyName(Number($("character").value));
+      const before = previous.hp?.[name];
+      const after = fresh.hp?.[name];
+      if (before && after) concentrationCheck(Number($("character").value), (before.hp + (before.temp ?? 0)) - (after.hp + (after.temp ?? 0)));
+    }
     if (boardMode) queueMicrotask(drawBoard);
     if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
@@ -1633,6 +1640,23 @@ const partyAc = index => acRange(sheets[partyName(index)], hpRecord(index));
 function hpText(record) {
   return record ? record.hp + " / " + record.max + (record.temp ? " (+" + record.temp + " temp)" : "") : "Not set";
 }
+// Concentrating and hurt, from any source (the DM's Apply, an enemy card, your
+// own Damage): show the Constitution save DC here and tell the table, so the
+// DM sees it too.
+function concentrationCheck(index, damage) {
+  if (isHost || damage <= 0 || index !== Number($("character").value) || !activeConditions().Concentrating) return "";
+  // The same hit can show up twice (your own change, then the next poll): once is enough.
+  const seen = index + ":" + damage + ":" + hpRecord(index)?.hp;
+  if (concentrationSeen.key === seen && Date.now() - concentrationSeen.at < 10000) return concentrationSeen.text;
+  const dc = concentrationDc(damage);
+  const text = "🧠 Concentration save: DC " + dc + " Constitution — or the spell ends.";
+  $("notice").textContent = text;
+  navigator.vibrate?.(200);
+  tellTable(index, "🧠 took " + damage + " damage while concentrating: DC " + dc + " Constitution save");
+  Object.assign(concentrationSeen, { key: seen, at: Date.now(), text });
+  return text;
+}
+const concentrationSeen = { key: "", at: 0, text: "" };
 async function adjustHp(index, change, status) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
@@ -1645,9 +1669,7 @@ async function adjustHp(index, change, status) {
     }
   }
   drawCombat();
-  const concentrating = !isHost && index === Number($("character").value) && activeConditions().Concentrating;
-  const reminder = change < 0 && concentrating
-    ? "🧠 Concentration save: DC " + concentrationDc(-change) + " Constitution — or the spell ends." : "";
+  const reminder = change < 0 ? concentrationCheck(index, -change) : "";
   try {
     await backend.adjustHp(room, index, change);
     if (reminder) status.textContent = reminder;
@@ -2161,6 +2183,7 @@ function resourcesWidget(index) {
     }
     box.append(block);
   }
+  box.append(healingBlock(index, sheet, res));
   const rests = document.createElement("div");
   rests.className = "action-row rest-row";
   const shortRest = document.createElement("button");
@@ -2170,6 +2193,9 @@ function resourcesWidget(index) {
   shortRest.onclick = () => {
     writeRes(index, restResources(sheet, readRes(index), "short"));
     tellTable(index, "🏕️ takes a short rest");
+    if (hitDice(sheet) && hpRecord(index) && hpRecord(index).hp < hpRecord(index).max) {
+      $("notice").textContent = "Short rest: spend Hit Dice under Healing to get HP back.";
+    }
   };
   const longRest = document.createElement("button");
   longRest.type = "button";
@@ -2185,6 +2211,79 @@ function resourcesWidget(index) {
   rests.append(shortRest, longRest);
   box.append(rests);
   return box;
+}
+// Healing in one place: the sheet's healing spells and features (Healing
+// Word, Second Wind), a Potion of Healing for anyone, and Hit Dice on a short
+// rest. Each rolls the dice, spends what it uses, and heals the target.
+const POTION = { name: "Potion of Healing", heal: "2d4+2", note: "An action to drink or give to someone next to you. The DM tracks how many you have." };
+function healingBlock(index, sheet, res) {
+  const block = document.createElement("div");
+  block.className = "res-block heal-block";
+  const title = document.createElement("strong");
+  title.textContent = "Healing";
+  block.append(title);
+  const status = document.createElement("p");
+  status.className = "fineprint heal-status";
+  const heal = (target, total, what, spend) => {
+    if (!hpRecord(target)) { status.textContent = "Set " + partyName(target) + "'s max HP first, then heal."; return; }
+    if (spend) saveRes(index, spend(readRes(index)));
+    adjustHp(target, total, status);
+    status.textContent = "💚 " + partyName(target).replace(/^The /, "") + " regains " + total + " HP (" + what + ").";
+    tellTable(index, "💚 " + (target === index ? "regains " : "heals " + partyName(target) + " for ") + total + " HP (" + what + ")");
+    drawHp();
+  };
+  for (const entry of [...(sheet.heals ?? []), POTION]) {
+    const row = document.createElement("div");
+    row.className = "heal-row";
+    const levels = entry.slot ? castableLevels({ slot: entry.slot }, sheet, res) : [];
+    const level = levels[0];
+    const extra = entry.upcast && level > entry.slot ? level - entry.slot : 0;
+    const dice = extra ? entry.heal.replace(/^(\d+)d(\d+)/, (_, count, sides) => (Number(count) + extra) + "d" + sides) : entry.heal;
+    const blocked = entry.slot && !levels.length ? "No spell slots left" : entry.spends && resourceLeft(sheet, res, entry.spends) < 1 ? "None left until a rest" : "";
+    const target = document.createElement("select");
+    target.setAttribute("aria-label", "Who " + entry.name + " heals");
+    target.append(...(state?.party ?? []).map((character, other) => new Option(other === index ? "Yourself" : character.name, String(other))).filter((_, other) => !entry.self || other === index));
+    target.value = String(index);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.disabled = Boolean(blocked);
+    button.textContent = blocked ? entry.name + ": " + blocked : entry.name + " · " + dice + (level ? " (" + ORDINAL[level] + "-level slot)" : "");
+    button.onclick = () => {
+      const who = Number(target.value);
+      openDice(dice, entry.name, total => {
+        heal(who, total, entry.name, entry.slot ? state => spendResource(sheet, state, slotKey(level)) : entry.spends ? state => spendResource(sheet, state, entry.spends) : null);
+        setTimeout(closeDice, 1200);
+      });
+    };
+    const note = document.createElement("p");
+    note.className = "fineprint";
+    note.textContent = entry.note ?? "";
+    row.append(button, ...(entry.self ? [] : [target]), note);
+    block.append(row);
+  }
+  const dice = hitDice(sheet);
+  if (dice) {
+    const left = resourceLeft(sheet, res, HIT_DICE);
+    const row = document.createElement("div");
+    row.className = "heal-row";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.disabled = left < 1;
+    button.textContent = left < 1 ? "No Hit Dice left (half come back on a long rest)" : "Spend a Hit Die · " + dice.roll + " (" + left + "/" + dice.max + " left)";
+    button.onclick = () => openDice(dice.roll, "Hit Die", total => {
+      heal(index, Math.max(0, total), "a Hit Die", state => spendResource(sheet, state, HIT_DICE));
+      setTimeout(closeDice, 1200);
+    });
+    const note = document.createElement("p");
+    note.className = "fineprint";
+    note.textContent = "On a short rest, spend as many Hit Dice as you like, one at a time. A long rest gives back half of them.";
+    row.append(button, note);
+    block.append(row);
+  }
+  block.append(status);
+  return block;
 }
 function fillResources(container, index) {
   const open = container.querySelector(".how-slots")?.open ?? false;
@@ -2369,7 +2468,7 @@ function resetAttack(keepChoice = true) {
     }
     saveAttackOptions(attackFlow.character);
   }
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [] });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {} });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -2420,6 +2519,24 @@ const stepText = (text, className = "") => {
 // Spells that stay up once cast (Spiritual Weapon): which ones this phone has
 // cast in the current fight, and at what level, so later attacks spend no slot.
 const lastingUp = new Map();
+// Weapon attacks made this turn, per character, so the card can say "1 more
+// attack in this Attack action" (Extra Attack is easy to forget).
+const attacksMade = new Map();
+const turnTag = () => state?.combat ? state.combat.round + ":" + state.combat.turn : "";
+function attacksThisTurn(index) {
+  const entry = attacksMade.get(index);
+  return entry && entry.turn === turnTag() ? entry.count : 0;
+}
+function countAttack(index) {
+  attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
+}
+function attackCountText(index, attack) {
+  const made = attacksThisTurn(index);
+  const per = attack.perAction;
+  if (!made) return "Your Attack action is " + per + " attacks (Extra Attack).";
+  if (made < per) return "Attack " + (made + 1) + " of " + per + " in this Attack action.";
+  return "That's " + made + " attacks this turn. Action Surge (or a first-turn Dread Ambusher shot) gives more.";
+}
 function drawAttack() {
   const combat = state?.combat;
   if (!combat) lastingUp.clear();
@@ -2518,8 +2635,20 @@ function drawAttack() {
       }
       drawAttack();
     };
+    if (option.choices && box.checked) {
+      // Which maneuver: the DM is told its name and the save it calls for.
+      const pick = document.createElement("select");
+      pick.setAttribute("aria-label", "Which " + option.name.replace(/ \(.*\)$/, "").toLowerCase());
+      pick.append(...option.choices.map(([name]) => new Option(name, name)));
+      pick.value = attackFlow.choice?.[option.name] ?? option.choices[0][0];
+      pick.disabled = attackFlow.step === "damage" || attackFlow.step === "miss";
+      pick.onchange = () => { attackFlow.choice = { ...attackFlow.choice, [option.name]: pick.value }; };
+      pick.onclick = event => event.stopPropagation();
+      queueMicrotask(() => label.after(pick));
+    }
     const text = document.createElement("span");
-    text.textContent = option.name + (option.rage && res.raging ? " 😤" : "")
+    if (option.unconfirmed) label.classList.add("is-unconfirmed");
+    text.textContent = option.name + (option.unconfirmed ? " (DM OK?)" : "") + (option.rage && res.raging ? " 😤" : "")
       + (option.cast ? (castUp ? " · up" : spentOut ? " (no slots left)" : " · uses a " + ORDINAL[castLevels[0]] + "-level slot")
         : spentOut ? " (none left)" : option.spends ? " · " + resourceLeft(sheet, res, option.spends) + " left" : "");
     label.append(box, text);
@@ -2583,7 +2712,9 @@ function drawAttack() {
     drawAttack();
     setTimeout(closeDice, 1200);
   }); };
-  const next = stepButton("Next attack", "quiet", () => { resetAttack(); drawAttack(); });
+  const made = attacksThisTurn(me);
+  const next = stepButton(baseAttack.perAction && made && made < baseAttack.perAction
+    ? "Next attack (" + (baseAttack.perAction - made) + " more in this Attack action)" : "Next attack", "quiet", () => { resetAttack(); drawAttack(); });
 
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
   if (attackFlow.step === "ready" && baseAttack.custom) {
@@ -2624,8 +2755,10 @@ function drawAttack() {
       parts.push(stepText("Targets make a " + built.save + ". The DM rolls their saves."),
         stepButton("Roll damage · " + built.damage, "cta", rollDamage));
     } else {
+      if (baseAttack.perAction) parts.push(stepText(attackCountText(me, baseAttack), "fineprint attack-count"));
       parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
         spend("hit");
+        if (baseAttack.perAction) countAttack(me);
         openDice(built.toHit, attack.name + " to hit", (total, result) => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
@@ -2646,7 +2779,12 @@ function drawAttack() {
   } else if (attackFlow.step === "miss") {
     parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"), next);
   } else if (attackFlow.step === "damage") {
-    const detail = "with " + attack.name + (baseAttack.slot && attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "") + (built.save ? ", " + built.save
+    const choiceNotes = chosenOptions.filter(option => option.choices).map(option => {
+      const name = attackFlow.choice?.[option.name] ?? option.choices[0][0];
+      const effect = option.choices.find(([choice]) => choice === name)?.[1];
+      return " + " + name + (effect ? " (" + effect + ")" : "");
+    }).join("");
+    const detail = "with " + attack.name + choiceNotes + (baseAttack.slot && attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "") + (built.save ? ", " + built.save
       : ", " + attackFlow.toHit.total + " to hit" + (attackFlow.crit ? ", critical" : ""));
     parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
     const target = select.value;
@@ -2704,12 +2842,19 @@ function drawHitInbox() {
     apply.className = "danger-soft";
     apply.textContent = "Apply";
     apply.disabled = !target;
-    apply.onclick = () => {
+    const who = action.name.replace(/^The /, "");
+    const how = report.detail.match(/^with ([^,]+)/)?.[1] ?? "";
+    const hitEnemy = (amount, note = "") => {
       markHit(action.id);
-      enemies = enemies.map(enemy => enemy.id === target.id ? applyHp(enemy, -report.amount) : enemy); // just that one
+      const before = enemies.find(enemy => enemy.id === target.id);
+      enemies = enemies.map(enemy => enemy.id === target.id ? applyHp(enemy, -amount) : enemy); // just that one
+      const after = enemies.find(enemy => enemy.id === target.id);
+      addNarration(report.enemy + (amount ? " takes " + amount + " damage" : " takes no damage") + ", dealt by " + who + (how ? " with " + how : "") + note
+        + (after?.hp === 0 && before?.hp > 0 ? " and goes down." : after && after.hp <= after.maxHp / 2 && before && before.hp > before.maxHp / 2 ? " and is bloodied." : "."));
       saveEncounter();
       drawEncounter();
     };
+    apply.onclick = () => hitEnemy(report.amount);
     const dismiss = document.createElement("button");
     dismiss.type = "button";
     dismiss.className = "quiet";
@@ -2724,13 +2869,23 @@ function drawHitInbox() {
       half.className = "ghost";
       half.textContent = "Saved: " + Math.floor(report.amount / 2);
       half.disabled = !target;
-      half.onclick = () => {
-        markHit(action.id);
-        enemies = enemies.map(enemy => enemy.name === report.enemy ? applyHp(enemy, -Math.floor(report.amount / 2)) : enemy);
-        saveEncounter();
-        drawEncounter();
-      };
+      half.onclick = () => hitEnemy(Math.floor(report.amount / 2), " (saved for half)");
       buttons.append(half);
+    }
+    // One tap: roll the enemy's save against the spell's DC and apply the result.
+    if (report.save && target) {
+      const bonus = saveBonus(target, report.save.ability);
+      const saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "cta";
+      saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")";
+      saveButton.onclick = () => {
+        const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
+        hitEnemy(outcome.damage, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + ")");
+        $("combat-status").textContent = report.enemy + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
+          + (outcome.saved ? "saved, " : "failed, ") + outcome.damage + " damage applied.";
+      };
+      buttons.prepend(saveButton);
     }
     buttons.append(dismiss);
     item.append(text, buttons);
@@ -2893,6 +3048,33 @@ $("enc-combat").onclick = async () => {
   }
 };
 
+// ── To narrate (DM only): what the app resolved, one tap from the update box. ──
+const narrateKey = () => "dnd-narrate:" + room;
+function addNarration(line) {
+  storage.set(narrateKey(), JSON.stringify([...readJson(narrateKey(), []), line].slice(-20)));
+  drawNarration();
+}
+function drawNarration() {
+  const lines = isHost ? readJson(narrateKey(), []) : [];
+  $("narrate").hidden = !lines.length;
+  $("narrate-count").textContent = lines.length ? String(lines.length) : "";
+  $("narrate-list").replaceChildren(...lines.map((line, index) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = line;
+    button.onclick = () => {
+      setDraft([$("draft").value.trim(), line].filter(Boolean).join(" "));
+      $("manual-controls").open = true;
+      storage.set(narrateKey(), JSON.stringify(readJson(narrateKey(), []).filter((_, other) => other !== index)));
+      drawNarration();
+    };
+    item.append(button);
+    return item;
+  }));
+}
+$("narrate-clear").onclick = () => { storage.remove(narrateKey()); drawNarration(); };
+
 // ── Encounter tracker (DM only, kept on this device) ──
 const TEMPLATE_KEY = "dnd-enemy-templates";
 const encounterKey = () => "dnd-encounter:" + room;
@@ -2988,6 +3170,7 @@ function fillEnemyForm(template) {
     $("atk" + n + "-dmg").value = damage;
   }
   $("enemy-abilities").value = template?.abilities ?? "";
+  $("enemy-saves").value = template?.saves ? formatSaves(template.saves) : "";
 }
 function enemyFormStats() {
   return {
@@ -2997,7 +3180,8 @@ function enemyFormStats() {
     init: Number($("enemy-init").value) || 0,
     speed: Number($("enemy-speed").value) || 30,
     attacks: [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name),
-    abilities: $("enemy-abilities").value.trim()
+    abilities: $("enemy-abilities").value.trim(),
+    saves: parseSaves($("enemy-saves").value)
   };
 }
 $("enemy-template").onchange = () => {
@@ -3167,6 +3351,7 @@ function enemyCard(enemy) {
           const apply = amount => {
             for (const button of row.querySelectorAll("button")) button.disabled = true;
             status.textContent = "Applied " + amount + " to " + who + ".";
+            addNarration(enemy.name + "'s " + name + " hits " + who + " for " + amount + " damage" + (outcome === "crit" ? " (a critical hit)" : "") + ".");
             adjustHp(index, -amount, status);
           };
           const full = document.createElement("button");
@@ -3218,14 +3403,15 @@ function enemyCard(enemy) {
     note.textContent = condition + ": " + (conditionByName[condition]?.text ?? "");
     card.append(note);
   }
-  if (enemy.abilities) {
+  {
     const more = document.createElement("details");
     more.className = "fold";
     const summary = document.createElement("summary");
-    summary.textContent = "Abilities and notes";
-    const text = document.createElement("p");
-    text.textContent = enemy.abilities;
-    more.append(summary, text);
+    summary.textContent = enemy.abilities ? "Abilities, notes, and saves" : "Saving throws";
+    const savesLine = document.createElement("p");
+    savesLine.className = "fineprint";
+    savesLine.textContent = "Saves: " + formatSaves(enemy.saves);
+    more.append(summary, ...(enemy.abilities ? [Object.assign(document.createElement("p"), { textContent: enemy.abilities })] : []), savesLine);
     card.append(more);
   }
   const remove = document.createElement("button");
@@ -3306,6 +3492,7 @@ function setHost(value) {
   $("board-link").href = "?room=" + room + "&board=1";
   drawDmList();
   if (isHost) drawEncounter();
+  drawNarration();
   drawCombat();
   if (!isHost && currentTab === "dm") showTab("scene");
   if (isHost && storage.get(TAB_KEY) === "dm" && currentTab !== "dm") showTab("dm");

@@ -4,27 +4,45 @@ import { roll, parse, critExpression } from "./dice.js";
 import { lookupRule } from "./rules.js";
 
 // Standard 5e (SRD 5.1) stat lines, summarized. attacks: [name, to-hit, damage].
+// saves: saving throw bonuses in the order Str, Dex, Con, Int, Wis, Cha.
 export const templates = [
-  { name: "Guard", ac: 16, hp: "2d8+2", init: 1, speed: 30, attacks: [["Spear", 3, "1d6+1"]],
+  { name: "Guard", ac: 16, hp: "2d8+2", init: 1, speed: 30, saves: [1, 1, 1, 0, 0, 0], attacks: [["Spear", 3, "1d6+1"]],
     abilities: "Chain shirt and shield. Spear can be thrown (20/60 ft)." },
-  { name: "Bandit", ac: 12, hp: "2d8+2", init: 1, speed: 30, attacks: [["Scimitar", 3, "1d6+1"], ["Light crossbow", 3, "1d8+1"]],
+  { name: "Bandit", ac: 12, hp: "2d8+2", init: 1, speed: 30, saves: [0, 1, 1, 0, 0, 0], attacks: [["Scimitar", 3, "1d6+1"], ["Light crossbow", 3, "1d8+1"]],
     abilities: "Crossbow range 80/320 ft." },
-  { name: "Thug", ac: 11, hp: "5d8+10", init: 0, speed: 30, attacks: [["Mace (×2)", 4, "1d6+2"], ["Heavy crossbow", 2, "1d10"]],
+  { name: "Thug", ac: 11, hp: "5d8+10", init: 0, speed: 30, saves: [2, 0, 2, 0, 0, 0], attacks: [["Mace (×2)", 4, "1d6+2"], ["Heavy crossbow", 2, "1d10"]],
     abilities: "Multiattack: two mace attacks. Pack Tactics: advantage when an ally is within 5 ft of the target." },
-  { name: "Bandit Captain", ac: 15, hp: "10d8+20", init: 3, speed: 30, attacks: [["Scimitar (×2)", 5, "1d6+3"], ["Dagger", 5, "1d4+3"]],
+  { name: "Bandit Captain", ac: 15, hp: "10d8+20", init: 3, speed: 30, saves: [4, 5, 2, 2, 2, 2], attacks: [["Scimitar (×2)", 5, "1d6+3"], ["Dagger", 5, "1d4+3"]],
     abilities: "Multiattack: two scimitars and a dagger. Parry (reaction): +2 AC against one melee hit it can see." },
-  { name: "Spy", ac: 12, hp: "6d8", init: 2, speed: 30, attacks: [["Shortsword (×2)", 4, "1d6+2"], ["Hand crossbow", 4, "1d6+2"]],
+  { name: "Spy", ac: 12, hp: "6d8", init: 2, speed: 30, saves: [0, 2, 0, 1, 2, 3], attacks: [["Shortsword (×2)", 4, "1d6+2"], ["Hand crossbow", 4, "1d6+2"]],
     abilities: "Cunning Action: Dash, Disengage, or Hide as a bonus action. Sneak Attack +2d6 once per turn with advantage or an ally adjacent." },
-  { name: "Veteran", ac: 17, hp: "9d8+18", init: 1, speed: 30, attacks: [["Longsword (×2)", 5, "1d8+3"], ["Heavy crossbow", 3, "1d10+1"]],
+  { name: "Veteran", ac: 17, hp: "9d8+18", init: 1, speed: 30, saves: [3, 1, 2, 0, 0, 0], attacks: [["Longsword (×2)", 5, "1d8+3"], ["Heavy crossbow", 3, "1d10+1"]],
     abilities: "Multiattack: two longsword attacks (plus a shortsword if drawn)." },
-  { name: "Mage", ac: 12, hp: "9d8", init: 2, speed: 30, attacks: [["Dagger", 5, "1d4+2"], ["Fire Bolt (spell)", 6, "2d10"]],
+  { name: "Mage", ac: 12, hp: "9d8", init: 2, speed: 30, saves: [-1, 2, 0, 6, 4, 0], attacks: [["Dagger", 5, "1d4+2"], ["Fire Bolt (spell)", 6, "2d10"]],
     abilities: "Spell DC 14, +6. Mage Armor (AC 15). Spells: Misty Step, Counterspell, Fireball (8d6, Dex save), Ice Storm, Greater Invisibility, Cone of Cold (8d8, Con save)." },
-  { name: "Goblin", ac: 15, hp: "2d6", init: 2, speed: 30, attacks: [["Scimitar", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
+  { name: "Goblin", ac: 15, hp: "2d6", init: 2, speed: 30, saves: [-1, 2, 0, 0, -1, -1], attacks: [["Scimitar", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
     abilities: "Nimble Escape: Disengage or Hide as a bonus action." },
-  { name: "Wolf", ac: 13, hp: "2d8+2", init: 2, speed: 40, attacks: [["Bite", 4, "2d4+2"]],
+  { name: "Wolf", ac: 13, hp: "2d8+2", init: 2, speed: 40, saves: [1, 2, 1, -4, 1, -2], attacks: [["Bite", 4, "2d4+2"]],
     abilities: "Bite: DC 11 Strength save or knocked prone. Pack Tactics. Keen Hearing and Smell." },
-  { name: "Ogre", ac: 11, hp: "7d10+21", init: -1, speed: 40, attacks: [["Greatclub", 6, "2d8+4"], ["Javelin", 6, "2d6+4"]],
-    abilities: "Large. Javelin range 30/120 ft." }
+  { name: "Ogre", ac: 11, hp: "7d10+21", init: -1, speed: 40, saves: [4, -1, 3, -3, -2, -2], attacks: [["Greatclub", 6, "2d8+4"], ["Javelin", 6, "2d6+4"]],
+    abilities: "Large. Javelin range 30/120 ft." },
+  // Tougher foes for a level 10 party (challenge 5 to 8).
+  { name: "Gladiator", ac: 16, hp: "15d8+45", init: 2, speed: 30, saves: [7, 5, 6, 0, 1, 2], attacks: [["Spear (×3)", 7, "2d6+4"], ["Shield Bash", 7, "2d4+4"]],
+    abilities: "Multiattack: three melee attacks (or two ranged spear throws, 20/60 ft). Shield Bash: DC 15 Strength save or knocked prone. Parry (reaction): +3 AC against one melee hit it can see." },
+  { name: "Troll", ac: 15, hp: "8d10+40", init: 1, speed: 30, saves: [4, 1, 5, -2, -1, -2], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "1d6+4"]],
+    abilities: "Large. Multiattack: a bite and two claws. Regeneration: regains 10 HP at the start of its turn unless it took acid or fire damage since its last turn; it only dies at 0 HP if it doesn't regenerate. Keen Smell." },
+  { name: "Hill Giant", ac: 13, hp: "10d12+40", init: -1, speed: 40, saves: [5, -1, 4, -3, -1, -2], attacks: [["Greatclub (×2)", 8, "3d8+5"], ["Rock", 8, "3d10+5"]],
+    abilities: "Huge. Multiattack: two greatclub attacks. Rock range 60/240 ft." },
+  { name: "Wraith", ac: 13, hp: "9d8+27", init: 3, speed: 60, saves: [-2, 3, 3, 1, 2, 2], attacks: [["Life Drain", 6, "4d8+3"]],
+    abilities: "Flies (60 ft) and moves through creatures and objects. Life Drain is necrotic: DC 14 Constitution save or the target's max HP drops by the damage until a long rest. Resists most nonmagical weapon damage; immune to necrotic and poison. Sunlight: disadvantage on attacks and Perception." },
+  { name: "Oni", ac: 16, hp: "13d10+39", init: 0, speed: 30, saves: [4, 3, 6, 2, 4, 5], attacks: [["Glaive (×2)", 7, "2d10+4"]],
+    abilities: "Large; flies 30 ft. Multiattack: two glaive attacks. Regenerates 10 HP a turn while above 0 HP. Innate spells (DC 13): darkness, invisibility, charm person, cone of cold (8d8, Con save), gaseous form, sleep. Can change shape." },
+  { name: "Stone Giant", ac: 17, hp: "11d12+55", init: 2, speed: 40, saves: [6, 5, 8, 0, 4, -1], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6"]],
+    abilities: "Huge. Multiattack: two greatclub attacks. Rock (60/240 ft): DC 17 Strength save or knocked prone. Rock Catching (reaction): DC 10 Dex save to catch a thrown rock." },
+  { name: "Assassin", ac: 15, hp: "12d8+24", init: 3, speed: 30, saves: [0, 6, 2, 4, 0, 0], attacks: [["Shortsword (×2)", 6, "1d6+3"], ["Light crossbow", 6, "1d8+3"]],
+    abilities: "Multiattack: two shortsword attacks. Each hit also deals 7d6 poison (DC 15 Constitution save for half). Sneak Attack +4d6 once a turn. Assassinate: advantage against anyone who hasn't acted yet, and any hit on a surprised creature is a critical. Evasion." },
+  { name: "Young Green Dragon", ac: 18, hp: "16d10+48", init: 1, speed: 40, saves: [4, 4, 6, 3, 4, 5], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "2d10+4"]],
+    abilities: "Large; flies 80 ft, swims 40 ft. Multiattack: a bite and two claws; the bite adds 2d6 poison. Poison Breath (recharge 5–6): 30-ft cone, DC 14 Constitution save, 12d6 poison, half on a save. Amphibious. Immune to poison." }
 ];
 
 // Rolls (or reads) hit points: "2d8+2" is rolled per enemy, "11" is fixed.
@@ -65,9 +83,38 @@ export function createEnemies(stats, count = 1, random, existing = []) {
       speed: Number(stats.speed) || 30,
       attacks: (stats.attacks ?? []).filter(([name]) => name).map(([name, hit, damage]) => [String(name), Number(hit) || 0, String(damage || "")]),
       abilities: String(stats.abilities ?? ""),
+      saves: normalizeSaves(stats.saves),
       initiative: null
     };
   });
+}
+
+// ── Enemy saving throws ──
+export const SAVE_ABILITIES = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
+// Six bonuses (an array in Str…Cha order, or { Dex: 2, … }), missing ones +0.
+export function normalizeSaves(saves) {
+  if (Array.isArray(saves)) return SAVE_ABILITIES.map((_, index) => Math.round(Number(saves[index]) || 0));
+  return SAVE_ABILITIES.map(ability => Math.round(Number(saves?.[ability]) || 0));
+}
+// "Dex +2, Con +5" ↔ the six bonuses (anything not named is +0).
+export function parseSaves(text) {
+  const found = {};
+  for (const match of String(text ?? "").matchAll(/\b(str|dex|con|int|wis|cha)\w*\s*([+\-−]?\s*\d+)/gi)) {
+    const ability = match[1][0].toUpperCase() + match[1].slice(1, 3).toLowerCase();
+    found[ability] = Number(match[2].replace(/[\s]/g, "").replace("−", "-"));
+  }
+  return normalizeSaves(found);
+}
+export const formatSaves = saves => normalizeSaves(saves).map((value, index) => SAVE_ABILITIES[index] + " " + (value >= 0 ? "+" : "") + value).join(", ");
+export const saveBonus = (enemy, ability) => normalizeSaves(enemy?.saves)[SAVE_ABILITIES.indexOf(ability)] ?? 0;
+
+// An enemy's save against a player's spell: d20 + bonus against the DC.
+// Damage: all of it on a failure; half (or none) on a success.
+export function enemySave(enemy, { ability, dc, amount, half }, random) {
+  const bonus = saveBonus(enemy, ability);
+  const result = roll("d20" + (bonus >= 0 ? "+" : "") + bonus, random ? { random } : {});
+  const saved = result.total >= dc;
+  return { total: result.total, natural: result.natural, bonus, saved, damage: saved ? (half ? Math.floor(amount / 2) : 0) : amount };
 }
 
 export function applyHp(enemy, change) {
@@ -257,7 +304,12 @@ export function parseHitReport(text) {
     enemy: match[1], amount: Number(match[2]), detail,
     toHit: toHit ? Number(toHit[1]) : null,
     crit: /critical/i.test(detail),
-    halfOnSave: /half on a save/i.test(detail)
+    halfOnSave: /half on a save/i.test(detail),
+    // "Dex save, DC 17": the enemy's save, which the DM can roll in one tap.
+    save: (() => {
+      const found = detail.match(/\b(Str|Dex|Con|Int|Wis|Cha) save, DC (\d+)/i);
+      return found ? { ability: found[1][0].toUpperCase() + found[1].slice(1).toLowerCase(), dc: Number(found[2]) } : null;
+    })()
   };
 }
 
@@ -339,7 +391,17 @@ export function attackBreakdown(attack, sheet, options = []) {
 
 export const slotKey = level => "slot:" + level;
 
+// Hit Dice from the sheet's combat line ("10d10"), healing d10 + Con each.
+export const HIT_DICE = "Hit Dice";
+export function hitDice(sheet) {
+  const found = String(Object.fromEntries(sheet?.combat ?? [])[HIT_DICE] ?? "").match(/(\d+)\s*d\s*(\d+)/i);
+  if (!found) return null;
+  const con = abilityMods(sheet).find(entry => entry.ability === "CON")?.mod ?? 0;
+  return { max: Number(found[1]), die: Number(found[2]), con, roll: "1d" + found[2] + (con ? (con > 0 ? "+" : "") + con : "") };
+}
+
 export function resourceMax(sheet, key) {
+  if (key === HIT_DICE) return hitDice(sheet)?.max ?? 0;
   for (const resource of sheet?.resources ?? []) {
     if (resource.slots && key.startsWith("slot:")) return resource.slots[key.slice(5)] ?? 0;
     if (resource.name === key) return resource.max;
@@ -356,9 +418,15 @@ export function spendResource(sheet, state, key, amount = 1) {
 }
 
 // A short rest refills "per short rest" features; a long rest refills
-// everything (spell slots too). Either ends a rage: it lasts a minute at most.
+// everything (spell slots too) and gives back half your Hit Dice (at least
+// one). Either ends a rage: it lasts a minute at most.
 export function rest(sheet, state, kind) {
   const used = { ...(state?.used ?? {}) };
+  const dice = hitDice(sheet);
+  if (kind === "long" && dice && used[HIT_DICE]) {
+    used[HIT_DICE] = Math.max(0, used[HIT_DICE] - Math.max(1, Math.floor(dice.max / 2)));
+    if (!used[HIT_DICE]) delete used[HIT_DICE];
+  }
   for (const resource of sheet?.resources ?? []) {
     if (kind !== "long" && resource.per !== "short") continue;
     if (resource.slots) for (const level of Object.keys(resource.slots)) delete used[slotKey(level)];

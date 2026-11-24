@@ -206,9 +206,9 @@ test("character attacks: options, crits, Brutal Critical, and the report line", 
   }
 
   const line = hitReportText("Bandit 2", 14, "with Greataxe, 19 to hit");
-  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14, detail: "with Greataxe, 19 to hit", toHit: 19, crit: false, halfOnSave: false });
+  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14, detail: "with Greataxe, 19 to hit", toHit: 19, crit: false, halfOnSave: false, save: null });
   assert.equal(parseHitReport(hitReportText("Guard 1", 30, "with Fireball, Dex save, DC 17, half on a save")).halfOnSave, true);
-  assert.deepEqual(parseHitReport(hitReportText("Bandit 2", 7)), { enemy: "Bandit 2", amount: 7, detail: "", toHit: null, crit: false, halfOnSave: false });
+  assert.deepEqual(parseHitReport(hitReportText("Bandit 2", 7)), { enemy: "Bandit 2", amount: 7, detail: "", toHit: null, crit: false, halfOnSave: false, save: null });
 });
 
 test("attacks show their ability modifier, and the math adds up", async () => {
@@ -354,4 +354,37 @@ test("an unconfirmed AC is a range: rolls inside it are the DM's call", async ()
   assert.equal(attackOutcome({ total: 15 }, 16), "miss");
   assert.equal(attackOutcome({ total: 16 }, 16), "hit");
   assert.equal(attackOutcome({ total: 16 }, null), "unknown");
+});
+
+test("enemy saves: stat blocks carry them, the form parses them, and a save halves the damage", async () => {
+  const { templates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, parseHitReport, hitReportText } = await import("../src/encounter.js");
+  for (const template of templates) assert.equal(template.saves?.length, 6, template.name + " has six save bonuses");
+  assert.ok(templates.filter(template => /Gladiator|Troll|Giant|Assassin|Dragon|Oni|Wraith/.test(template.name)).length >= 6, "tougher foes for level 10");
+  assert.deepEqual(parseSaves("Str +4, dex 2, CON −1"), [4, 2, -1, 0, 0, 0]);
+  assert.equal(formatSaves([4, 2, -1, 0, 0, 0]), "Str +4, Dex +2, Con -1, Int +0, Wis +0, Cha +0");
+  const [ogre] = createEnemies(templates.find(template => template.name === "Ogre"), 1, () => 0.5);
+  assert.equal(saveBonus(ogre, "Dex"), -1);
+  const [custom] = createEnemies({ name: "Vault Guardian", ac: 17, hp: "120" });
+  assert.equal(saveBonus(custom, "Con"), 0);
+  // d20 rolls 1 + (-1) = 0: fails, takes it all; d20 rolls 20 + (-1) = 19: saves, half.
+  assert.deepEqual([enemySave(ogre, { ability: "Dex", dc: 17, amount: 31, half: true }, () => 0).saved, enemySave(ogre, { ability: "Dex", dc: 17, amount: 31, half: true }, () => 0).damage], [false, 31]);
+  assert.equal(enemySave(ogre, { ability: "Dex", dc: 17, amount: 31, half: true }, () => 0.999).damage, 15);
+  assert.equal(enemySave(ogre, { ability: "Dex", dc: 17, amount: 18, half: false }, () => 0.999).damage, 0);
+  const report = parseHitReport(hitReportText("Vault Ogre 1", 31, "with Fireball (4th-level), Dex save, DC 17, half on a save"));
+  assert.deepEqual(report.save, { ability: "Dex", dc: 17 });
+  assert.equal(report.halfOnSave, true);
+});
+
+test("Hit Dice: from the sheet, spent one at a time, half back on a long rest", async () => {
+  const { hitDice, HIT_DICE, resourceLeft, spendResource, rest } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const dumDum = sheets["Dum Dum"];
+  assert.deepEqual(hitDice(dumDum), { max: 10, die: 10, con: 3, roll: "1d10+3" });
+  let state = {};
+  for (let n = 0; n < 7; n++) state = spendResource(dumDum, state, HIT_DICE);
+  assert.equal(resourceLeft(dumDum, state, HIT_DICE), 3);
+  assert.equal(resourceLeft(dumDum, rest(dumDum, state, "short"), HIT_DICE), 3); // a short rest gives none back
+  assert.equal(resourceLeft(dumDum, rest(dumDum, state, "long"), HIT_DICE), 8);  // half of 10 back
+  assert.equal(hitDice(sheets["Roan the Last Shadow"]), null);
+  assert.equal(sheets["The White Wizard"].heals[0].name, "Healing Word");
 });
