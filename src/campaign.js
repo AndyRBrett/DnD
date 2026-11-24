@@ -109,7 +109,11 @@ export const sheets = {
     // bonus for an attack roll; save/dc: the target saves instead; half: half
     // damage on a successful save. ability: the modifier it uses (to hit and,
     // unless addMod is false, damage). bonus: other to-hit bonuses.
-    // options: toggles that change the roll.
+    // attackOptions: toggles that change the roll. They stay on for the
+    // character (also after a reload) unless lasts says otherwise: "attack"
+    // turns off after one attack (Dread Ambusher shot, a maneuver), "turn" when
+    // that character's turn ends (Reckless). cast: a slot level spent once when
+    // first ticked; with concentration it stays up only while Concentrating.
     attacks: [
       { name: "Spiritual Weapon", ability: "WIS", slot: 2, lasting: true, hit: 9, damage: "1d8+5", type: "force", note: "Bonus action; no concentration. One slot when cast; it lasts a minute, and attacking with it again is free." },
       { name: "Guiding Bolt", ability: "WIS", slot: 1, upcast: "1d6", hit: 9, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
@@ -204,7 +208,7 @@ export const sheets = {
     ],
     attackOptions: [
       { name: "Raging", damage: "+3", note: "+3 damage on Strength attacks.", rage: true },
-      { name: "Reckless", mode: "advantage", note: "Advantage on your attacks; enemies get advantage on you." },
+      { name: "Reckless", mode: "advantage", lasts: "turn", note: "Advantage on your attacks this turn; enemies get advantage on you until your next turn." },
       { name: "Great Weapon Master", hit: -5, damage: "+10", note: "Only if the DM approved the feat." }
     ],
     critExtraDice: 1, // Brutal Critical
@@ -264,7 +268,7 @@ export const sheets = {
       { name: "Weapon attack", ability: "STR", hit: 8, damage: "1d8+4", type: "slashing or bludgeoning", note: "Longsword or warhammer; two attacks per Attack action, four with Action Surge." }
     ],
     attackOptions: [
-      { name: "Maneuver (+1d10)", damage: "+1d10", spends: "Superiority dice", note: "Spends a superiority die: Trip, Goading, or Menacing Attack (DC 16 save)." },
+      { name: "Maneuver (+1d10)", damage: "+1d10", spends: "Superiority dice", lasts: "attack", note: "Spends a superiority die: Trip, Goading, or Menacing Attack (DC 16 save)." },
       { name: "Dueling (+2)", damage: "+2", note: "Only if the DM approved the Dueling style." }
     ],
     resources: [
@@ -331,8 +335,8 @@ export const sheets = {
       { name: "Dagger", ability: "DEX", hit: 9, damage: "1d4+5", type: "piercing", note: "Finesse; can be thrown 20/60 ft." }
     ],
     attackOptions: [
-      { name: "Hunter's Mark", damage: "+1d6", note: "Bonus action to cast (a 1st-level slot, once); concentration." },
-      { name: "Dread Ambusher shot", damage: "+1d8", note: "The extra first-turn attack only." }
+      { name: "Hunter's Mark", damage: "+1d6", cast: 1, concentration: true, note: "Bonus action to cast: one 1st-level slot, then it stays up while you concentrate. Moving it to a new target is free." },
+      { name: "Dread Ambusher shot", damage: "+1d8", lasts: "attack", note: "The extra first-turn attack only." }
     ],
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 2 }, per: "long" }

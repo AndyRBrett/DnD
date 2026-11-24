@@ -5,9 +5,9 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
-import { roll, poolExpression, rollableFrom, parse as parseDice, critExpression } from "./dice.js";
+import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -70,7 +70,7 @@ function rollTiles(rolls) {
     if (expression) {
       tile.type = "button";
       tile.setAttribute("aria-label", "Roll " + label + " (" + expression + ")");
-      tile.onclick = () => openDice(expression, label);
+      tile.onclick = () => openDice(expression, label, null, rollModeFrom(value));
     }
     const number = document.createElement("strong");
     number.textContent = value.replace(/\*$/, "");
@@ -997,6 +997,14 @@ function drawPartyActions() {
   }));
 }
 
+// The action box stops at 300 characters (the table's limit): say so before it does.
+function countAction() {
+  const box = $("action-text");
+  const left = box.maxLength - box.value.length;
+  $("action-count").hidden = left > 60;
+  $("action-count").textContent = left > 0 ? left + " characters left" : "That's the limit: post this, then add the rest in a second post.";
+}
+$("action-text").addEventListener("input", countAction);
 $("action-form").onsubmit = async event => {
   event.preventDefault();
   const text = $("action-text").value.trim();
@@ -1006,6 +1014,7 @@ $("action-form").onsubmit = async event => {
   try {
     await backend.postAction(room, Number($("character").value), text);
     $("action-text").value = "";
+    countAction();
     $("action-status").textContent = "Added to the story.";
     await sync();
   } catch (error) {
@@ -1193,7 +1202,7 @@ function drawDicePresets() {
   const presets = [];
   for (const [label, value] of sheet?.rolls ?? []) {
     const expression = rollableFrom(value);
-    if (expression && !/^AC$/i.test(label)) presets.push([label, expression]);
+    if (expression && !/^AC$/i.test(label)) presets.push([label, expression, rollModeFrom(value)]);
   }
   for (const entry of abilityMods(sheet)) {
     if (entry.proficient && !presets.some(([label]) => label.toUpperCase() === entry.ability + " SAVE")) {
@@ -1201,7 +1210,7 @@ function drawDicePresets() {
     }
   }
   $("dice-presets").hidden = !presets.length;
-  $("dice-presets").replaceChildren(...presets.slice(0, 10).map(([label, expression]) => {
+  $("dice-presets").replaceChildren(...presets.slice(0, 10).map(([label, expression, mode = "normal"]) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "chip" + (label === dice.label ? " is-active" : "");
@@ -1214,9 +1223,10 @@ function drawDicePresets() {
       dice.pool = {};
       dice.modifier = 0;
       dice.label = label;
+      setDiceMode(mode);
       $("mod-value").textContent = "+0";
       $("dice-expression").value = expression;
-      $("dice-label").textContent = label + " · " + expression;
+      $("dice-label").textContent = label + " · " + expression + (mode === "advantage" ? " (advantage)" : "");
       $("dice-result").hidden = true;
       for (const other of $("dice-presets").children) other.classList.toggle("is-active", other === chip);
       previewDice();
@@ -1224,7 +1234,10 @@ function drawDicePresets() {
     return chip;
   }));
 }
-function openDice(expression = "", label = "", onResult = null) {
+// Every roll starts at Normal unless the caller says otherwise: advantage from
+// one roll (Reckless, a sheet's "adv.") must never carry into the next.
+function openDice(expression = "", label = "", onResult = null, mode = "normal") {
+  setDiceMode(mode);
   dice.rollId = (dice.rollId ?? 0) + 1; // a roll still tumbling from before won't land here
   dice.onResult = onResult;
   dice.pool = {};
@@ -1356,20 +1369,25 @@ function liveOrder() {
   const combat = isHost && encounterLoaded ? { ...state.combat, enemies: publicEnemies(enemies) } : state.combat;
   return combatOrder(combat, state.party);
 }
+const initiativeEntry = () => (sheets[selectedCharacter()?.name]?.rolls ?? []).find(([label]) => /initiative/i.test(label));
 function initiativeExpression() {
-  const name = selectedCharacter()?.name;
-  const entry = (sheets[name]?.rolls ?? []).find(([label]) => /initiative/i.test(label));
+  const entry = initiativeEntry();
   return (entry && rollableFrom(entry[1])) || "d20";
 }
+// Feral Instinct ("+2 adv."): initiative rolls with advantage.
+const initiativeMode = () => rollModeFrom(initiativeEntry()?.[1] ?? "");
 function combatChanged(previous) {
   const before = previous?.combat;
   const now = state.combat;
   drawCombat();
   if (!before && now) {
-    if (!isHost) showTab("combat");
+    // Don't pull a player away from an action they're still typing.
+    if (!isHost && !$("action-text").value.trim()) showTab("combat");
     $("tab-combat").classList.toggle("has-news", currentTab !== "combat");
+    if (!isHost && $("action-text").value.trim()) $("notice").textContent = "Combat started: post your action, then open the Combat tab.";
   }
   if (before && !now) {
+    if (!isHost && !resShared()) endRages(); // shared resources: the DM's End combat did it
     if (currentTab === "combat") showTab("scene");
     $("notice").textContent = "Combat ended.";
     setTimeout(() => { if ($("notice").textContent === "Combat ended.") $("notice").textContent = ""; }, 6000);
@@ -1458,7 +1476,7 @@ function drawCombat() {
   const mine = me === null ? undefined : combat.party?.[me];
   $("combat-init").hidden = isHost;
   $("init-title").textContent = Number.isFinite(mine) ? "Your initiative: " + mine : "Your initiative";
-  $("init-roll").textContent = "Roll " + initiativeExpression();
+  $("init-roll").textContent = "Roll " + initiativeExpression() + (initiativeMode() === "advantage" ? " (advantage)" : "");
   $("combat-hint").hidden = isHost;
 
   const local = isHost && encounterLoaded ? Object.fromEntries(enemies.map(enemy => ["en:" + enemy.id, enemy])) : {};
@@ -1866,6 +1884,14 @@ function saveRes(index, value) {
   state.resources = { ...state.resources, [partyName(index)]: value };
   backend.setResources(room, index, value).catch(error => { $("notice").textContent = "Couldn't save resources: " + error.message; });
 }
+// A rage lasts a minute: it ends with the fight. The DM's End combat clears it
+// for everyone when resources are shared; otherwise each phone clears its own.
+function endRages() {
+  (state?.party ?? []).forEach((character, index) => {
+    if (readRes(index).raging) saveRes(index, { ...readRes(index), raging: false });
+  });
+  drawHp();
+}
 function writeRes(index, value) {
   saveRes(index, value);
   showOptions();
@@ -2214,8 +2240,42 @@ $("hit-report").onsubmit = async event => {
 // damage, send it to the DM. Save spells skip the to-hit roll. ──
 const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [], level: null, spent: false, spentManeuver: false, notes: [] };
 function resetAttack(keepChoice = true) {
+  // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
+  if (attackFlow.step !== "ready" && attackFlow.character !== null) {
+    for (const option of sheets[partyName(attackFlow.character)]?.attackOptions ?? []) {
+      if (option.lasts === "attack") attackFlow.options.delete(option.name);
+    }
+    saveAttackOptions(attackFlow.character);
+  }
   Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [] });
-  if (!keepChoice) Object.assign(attackFlow, { index: 0, options: new Set() });
+  if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
+}
+// The options each character has on (Great Weapon Master, Reckless, Hunter's
+// Mark), kept on this phone so switching characters or reloading keeps them.
+// turn: the round it was this character's turn, so "turn" options end with it.
+// cast: options already cast (Hunter's Mark), so ticking them again is free.
+const attackOptionsKey = index => "dnd-attack-options:" + room + ":" + index;
+function saveAttackOptions(index) {
+  const saved = readJson(attackOptionsKey(index), {});
+  storage.set(attackOptionsKey(index), JSON.stringify({ ...saved, names: [...attackFlow.options] }));
+}
+function attackOptionsState(index, sheet, combat) {
+  const saved = readJson(attackOptionsKey(index), {});
+  const byName = Object.fromEntries((sheet.attackOptions ?? []).map(option => [option.name, option]));
+  const myTurn = combat?.turn === "pc:" + index;
+  // This character's turn ended (or a new round started) since "turn" options were set.
+  const turnOver = saved.turn != null && (!myTurn || saved.turn !== combat?.round);
+  const concentrating = Boolean(activeConditions().Concentrating);
+  const cast = (saved.cast ?? []).filter(name => byName[name] && (!byName[name].concentration || concentrating));
+  const names = (saved.names ?? []).filter(name => {
+    const option = byName[name];
+    if (!option || option.lasts === "attack" && !attackFlow.options.has(name)) return false;
+    if (option.lasts === "turn" && turnOver) return false;
+    return !option.cast || cast.includes(name);
+  });
+  const next = { names, cast, turn: myTurn ? combat.round : turnOver ? null : saved.turn ?? null };
+  if (JSON.stringify(next) !== JSON.stringify(saved)) storage.set(attackOptionsKey(index), JSON.stringify(next));
+  return next;
 }
 function setDiceMode(mode) {
   dice.mode = mode;
@@ -2245,8 +2305,10 @@ function drawAttack() {
   card.hidden = !combat || isHost || ended;
   if (card.hidden) return;
   const me = Number($("character").value);
-  if (attackFlow.character !== me) { attackFlow.character = me; resetAttack(false); }
   const sheet = sheets[partyName(me)] ?? {};
+  if (attackFlow.character !== me) { attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
+  const optionState = attackOptionsState(me, sheet, combat);
+  attackFlow.options = new Set(optionState.names);
   const attacks = sheet.attacks ?? [];
   const baseAttack = attacks[attackFlow.index];
   const res = readRes(me);
@@ -2300,7 +2362,9 @@ function drawAttack() {
     const box = document.createElement("input");
     box.type = "checkbox";
     box.checked = isOn(option);
-    const spentOut = option.spends && resourceLeft(sheet, res, option.spends) < 1 && !box.checked;
+    const castUp = Boolean(option.cast) && optionState.cast.includes(option.name);
+    const castLevels = option.cast && !castUp ? castableLevels({ slot: option.cast }, sheet, res) : [];
+    const spentOut = !box.checked && (option.spends ? resourceLeft(sheet, res, option.spends) < 1 : Boolean(option.cast) && !castUp && !castLevels.length);
     // Once the d20 is rolled, options that change it (to-hit, advantage) are
     // locked; damage-only ones (a maneuver on a hit) stay open until damage.
     const locked = attackFlow.step === "damage" || attackFlow.step === "miss"
@@ -2308,10 +2372,25 @@ function drawAttack() {
     box.disabled = spentOut || locked;
     box.onchange = () => {
       if (box.checked) attackFlow.options.add(option.name); else attackFlow.options.delete(option.name);
+      const saved = readJson(attackOptionsKey(me), {});
+      if (box.checked && option.cast && !castUp) {
+        // Cast it: spend the lowest slot that's left, once; concentration starts.
+        const level = castLevels[0];
+        const next = spendResource(sheet, readRes(me), slotKey(level));
+        saveRes(me, next);
+        saved.cast = [...new Set([...(saved.cast ?? []), option.name])];
+        attackFlow.notes = [...(attackFlow.notes ?? []), "Cast " + option.name + " with a " + ORDINAL[level] + "-level slot (" + resourceLeft(sheet, next, slotKey(level)) + " left)" + (option.concentration ? "; you're concentrating on it" : "")];
+        if (option.concentration) setCondition("Concentrating", 1);
+        drawHp();
+        showOptions();
+      }
+      storage.set(attackOptionsKey(me), JSON.stringify({ ...saved, names: [...attackFlow.options] }));
       drawAttack();
     };
     const text = document.createElement("span");
-    text.textContent = option.name + (option.rage && res.raging ? " 😤" : "") + (spentOut ? " (none left)" : option.spends ? " · " + resourceLeft(sheet, res, option.spends) + " left" : "");
+    text.textContent = option.name + (option.rage && res.raging ? " 😤" : "")
+      + (option.cast ? (castUp ? " · up" : spentOut ? " (no slots left)" : " · uses a " + ORDINAL[castLevels[0]] + "-level slot")
+        : spentOut ? " (none left)" : option.spends ? " · " + resourceLeft(sheet, res, option.spends) + " left" : "");
     label.append(box, text);
     return label;
   }));
@@ -2413,8 +2492,7 @@ function drawAttack() {
           attackFlow.step = result.critical ? "hit" : result.fumble ? "miss" : "rolled";
           drawAttack();
           setTimeout(closeDice, 1200);
-        });
-        setDiceMode(built.mode);
+        }, built.mode);
       }));
     }
   } else if (attackFlow.step === "rolled") {
@@ -2428,7 +2506,7 @@ function drawAttack() {
   } else if (attackFlow.step === "miss") {
     parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"), next);
   } else if (attackFlow.step === "damage") {
-    const detail = "with " + attack.name + (attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "") + (built.save ? ", " + built.save
+    const detail = "with " + attack.name + (baseAttack.slot && attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "") + (built.save ? ", " + built.save
       : ", " + attackFlow.toHit.total + " to hit" + (attackFlow.crit ? ", critical" : ""));
     parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
     const target = select.value;
@@ -2539,7 +2617,7 @@ async function setInitiative(character, value, status) {
 }
 $("init-roll").onclick = () => openDice(initiativeExpression(), "Initiative", async total => {
   await setInitiative(myIndex(), total, $("dice-status"));
-});
+}, initiativeMode());
 $("combat-init").onsubmit = event => {
   event.preventDefault();
   setInitiative(myIndex(), $("init-value").value, $("init-status"));
@@ -2653,6 +2731,7 @@ $("enc-combat").onclick = async () => {
       clearTimeout(combatTimer); // a pending enemy update mustn't reopen the fight
       await backend.combatEnd(room);
       state.combat = null;
+      endRages();
       $("enc-combat-status").textContent = "Combat ended.";
       drawCombat();
     } else {
@@ -2682,41 +2761,59 @@ let encounterLoaded = false;
 const savedTemplates = () => readJson(TEMPLATE_KEY, []);
 // The encounter is kept on this phone and, on the hosted app, saved with the
 // table (host only, migration 0008) so the DM can switch devices mid-session.
+// Which copy wins is decided by whether this device has a change the table
+// hasn't confirmed yet (":dirty"), never by comparing this phone's clock with
+// the server's: they can be minutes apart, and a reload in the save window
+// used to put the old enemies back.
 let encounterTimer;
 let encounterCloud = true;
+let encounterEdits = 0; // bumps on every change, so a slow save can't mark a newer one as saved
+const encounterDirtyKey = () => encounterKey() + ":dirty";
 function saveEncounter() {
   storage.set(encounterKey(), JSON.stringify(enemies));
   storage.set(encounterKey() + ":at", String(Date.now()));
   if (isHost && state?.combat) schedulePublish();
   if (!backend.encounterSave || !encounterCloud) return;
+  storage.set(encounterDirtyKey(), "1");
+  const edit = ++encounterEdits;
   clearTimeout(encounterTimer);
   encounterTimer = setTimeout(() => {
+    encounterTimer = null;
     backend.encounterSave(room, enemies)
-      .then(() => { $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM."; })
+      .then(() => {
+        if (edit === encounterEdits) storage.remove(encounterDirtyKey());
+        $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
+      })
       .catch(error => {
         if (/could not find the function/i.test(error.message)) encounterCloud = false;
-        $("encounter-sync").textContent = encounterCloud ? "Couldn't save to the table: " + error.message
+        $("encounter-sync").textContent = encounterCloud ? "Couldn't save to the table: " + error.message + " It will try again with your next change."
           : "Saved on this device only. Run supabase/migrations/0008_dnd_encounter.sql to keep it with the table.";
       });
   }, 800);
 }
+// Back on the page: keep this device's copy, push it, or take the table's
+// (pickEncounter in encounter.js).
 async function loadCloudEncounter() {
   if (!backend.encounterGet || !isHost) return;
   try {
     const saved = await backend.encounterGet(room);
-    // Newest wins, and a cleared (empty) encounter saved here counts too.
-    const savedHere = storage.get(encounterKey() + ":at") !== null;
-    const localAt = Number(storage.get(encounterKey() + ":at") ?? 0);
-    if (saved && Array.isArray(saved.enemies) && (saved.updated > localAt || !savedHere)) {
+    const choice = pickEncounter({
+      cloud: saved,
+      local: enemies,
+      dirty: storage.get(encounterDirtyKey()) !== null,
+      pending: Boolean(encounterTimer),
+      savedHere: storage.get(encounterKey() + ":at") !== null
+    });
+    if (choice === "cloud") {
       enemies = saved.enemies;
       storage.set(encounterKey(), JSON.stringify(enemies));
-      storage.set(encounterKey() + ":at", String(saved.updated));
+      storage.set(encounterKey() + ":at", String(Date.now()));
       drawEncounter();
       if (state?.combat) schedulePublish();
-    } else if (savedHere && (!saved || saved.updated < localAt)) {
-      saveEncounter(); // this device has the newer encounter: put it on the table
+    } else if (choice === "push") {
+      saveEncounter(); // this device has changes the table hasn't got yet
     }
-    $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
+    if (!storage.get(encounterDirtyKey())) $("encounter-sync").textContent = "Saved with the table: open it on any device where you're signed in as the DM.";
   } catch (error) {
     if (/could not find the function/i.test(error.message)) {
       encounterCloud = false;
