@@ -2373,18 +2373,20 @@ function drawAttack() {
     box.onchange = () => {
       if (box.checked) attackFlow.options.add(option.name); else attackFlow.options.delete(option.name);
       const saved = readJson(attackOptionsKey(me), {});
-      if (box.checked && option.cast && !castUp) {
+      const casting = box.checked && option.cast && !castUp;
+      if (casting) saved.cast = [...new Set([...(saved.cast ?? []), option.name])];
+      // Store the choice before anything below redraws the card from storage.
+      storage.set(attackOptionsKey(me), JSON.stringify({ ...saved, names: [...attackFlow.options] }));
+      if (casting) {
         // Cast it: spend the lowest slot that's left, once; concentration starts.
         const level = castLevels[0];
         const next = spendResource(sheet, readRes(me), slotKey(level));
-        saveRes(me, next);
-        saved.cast = [...new Set([...(saved.cast ?? []), option.name])];
         attackFlow.notes = [...(attackFlow.notes ?? []), "Cast " + option.name + " with a " + ORDINAL[level] + "-level slot (" + resourceLeft(sheet, next, slotKey(level)) + " left)" + (option.concentration ? "; you're concentrating on it" : "")];
         if (option.concentration) setCondition("Concentrating", 1);
+        saveRes(me, next);
         drawHp();
         showOptions();
       }
-      storage.set(attackOptionsKey(me), JSON.stringify({ ...saved, names: [...attackFlow.options] }));
       drawAttack();
     };
     const text = document.createElement("span");
@@ -2796,7 +2798,10 @@ function saveEncounter() {
 async function loadCloudEncounter() {
   if (!backend.encounterGet || !isHost) return;
   try {
+    const editsBefore = encounterEdits;
     const saved = await backend.encounterGet(room);
+    // Changed (and maybe already saved) while this read was out: it's stale.
+    if (encounterEdits !== editsBefore) return;
     const choice = pickEncounter({
       cloud: saved,
       local: enemies,
