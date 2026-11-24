@@ -255,15 +255,6 @@
 
       <!-- Moves: "What can I do?" — quick ideas from the sheet, then Claude -->
       <section class="tab-panel" data-panel="moves" hidden>
-        <section class="card options-panel" aria-labelledby="options-title">
-          <p class="eyebrow red">FROM YOUR SHEET · INSTANT</p>
-          <h2 id="options-title" class="display sm">What can I do?</h2>
-          <p id="situation" class="pill-label" role="status"></p>
-          <p id="responding-to" class="fineprint"></p>
-          <ul id="options" class="option-list"></ul>
-          <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="ask-dm"></p></div>
-          <p class="fineprint">Quick ideas from the latest update and your sheet. Anything you're out of (spell slots, rages…) is left out.</p>
-        </section>
         <div id="claude" class="card" hidden>
           <p class="eyebrow red">CLAUDE READS THE WHOLE STORY</p>
           <h2 class="display sm">Want a deeper read?</h2>
@@ -286,7 +277,16 @@
             <p class="fineprint">Claude's read of the bigger picture is a guess; the DM decides what actually happens.</p>
           </div>
         </div>
-        <p id="claude-off" class="card fineprint">Ask Claude is off on this table — the quick ideas above still work.</p>
+        <section class="card options-panel" aria-labelledby="options-title">
+          <p class="eyebrow red">FROM YOUR SHEET · INSTANT</p>
+          <h2 id="options-title" class="display sm">What can I do?</h2>
+          <p id="situation" class="pill-label" role="status"></p>
+          <p id="responding-to" class="fineprint"></p>
+          <ul id="options" class="option-list"></ul>
+          <div class="callout"><p class="eyebrow">ASK THE DM</p><p id="ask-dm"></p></div>
+          <p class="fineprint">Quick ideas from the latest update and your sheet. Anything you're out of (spell slots, rages…) is left out.</p>
+        </section>
+        <p id="claude-off" class="card fineprint">Ask Claude is off on this table — the quick ideas still work.</p>
       </section>
 
       <!-- Sheet -->
@@ -351,6 +351,7 @@
         <section id="party-hp" class="card" hidden aria-labelledby="party-hp-title">
           <p class="eyebrow red">EVERYONE SEES THIS</p>
           <h2 id="party-hp-title" class="display sm">Party HP</h2>
+          <p id="here-line" class="here-line" hidden></p>
           <div id="party-hp-list" class="party-hp-list"></div>
           <button id="party-full" class="ghost" type="button">Everyone to full HP</button>
           <p id="party-full-status" class="fineprint"></p>

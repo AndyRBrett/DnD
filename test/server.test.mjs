@@ -196,3 +196,18 @@ test("a practice table keeps its own HP; the campaign's carries between tables",
   assert.equal((await call(real)).body.hp[name].hp, 60, "practice damage stays on the practice table");
   assert.equal((await call(next)).body.hp[name].hp, 60, "campaign HP carries to the next table");
 });
+
+test("who's at the table: phones check in by character, never keep the table open, and death saves share", async () => {
+  const { code } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  assert.deepEqual((await call(room)).body.here, []);
+  assert.equal((await post(room + "/here", { character: 2, phone: "phone-a" })).status, 200);
+  assert.equal((await post(room + "/here", { character: 4, phone: "phone-b" })).status, 200);
+  assert.equal((await post(room + "/here", { character: 3, phone: "phone-a" })).status, 200); // switched characters
+  assert.deepEqual((await call(room)).body.here.map(entry => entry.character), [3, 4]);
+  assert.equal((await post(room + "/here", { character: 9, phone: "phone-a" })).status, 400);
+  assert.equal((await post(room + "/here", { character: 1 })).status, 400);
+  // Death saves ride in the shared resources record.
+  assert.equal((await post(room + "/resources", { character: 2, state: { used: { "Death successes": 1, "Death failures": 2 }, raging: false } })).status, 200);
+  assert.deepEqual((await call(room)).body.resources["Logan Ninefingers"].used, { "Death successes": 1, "Death failures": 2 });
+});

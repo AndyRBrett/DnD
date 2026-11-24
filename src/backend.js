@@ -19,6 +19,17 @@ async function readJson(response) {
   try { return text ? JSON.parse(text) : null; } catch { return null; }
 }
 
+// A random id for this browser, so the local server can tell phones apart
+// when they say who they're playing (the hosted app uses the account).
+function phoneId() {
+  let id = storage.get("dnd-phone");
+  if (!id) {
+    id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    storage.set("dnd-phone", id);
+  }
+  return id;
+}
+
 function localBackend() {
   const hostKey = code => storage.get("host:" + code);
   async function call(path, options = {}) {
@@ -76,6 +87,7 @@ function localBackend() {
     },
     advise: (code, character, question = "", spent = [], table = "") => post(code, "advise", { character, question, spent, table }, false),
     setResources: (code, character, state) => post(code, "resources", { character, state }, false),
+    here: (code, character) => post(code, "here", { character, phone: phoneId() }, false),
     deleteScene: (code, id) => post(code, "scene", { id, delete: true }),
     setHp: (code, character, { hp, max, temp, ac }) => post(code, "hp", { character, hp, max, temp, ac }, false),
     adjustHp: (code, character, change) => post(code, "hp-adjust", { character, change }, false),
@@ -94,7 +106,7 @@ function hostedBackend({ url, anonKey }) {
   let session = null;
   try { session = JSON.parse(storage.get(SESSION_KEY) ?? "null"); } catch {}
   let refreshing;
-  let roomVersion = 5;
+  let roomVersion = 6;
 
   function save(raw) {
     session = raw ? {
@@ -162,7 +174,7 @@ function hostedBackend({ url, anonKey }) {
     createRoom: (party, recap) => rpc("dnd_create_room", { p_party: party, p_recap: recap }),
     // dnd_room_v3 adds combat (supabase/migrations/0004). Until that migration
     // runs, fall back to dnd_room_v2 and combat stays unavailable.
-    // Newest room function first: v5 adds party resources (0007), v4 party HP (0006), v3
+    // Newest room function first: v6 adds who's at the table (0015), v5 party resources (0007), v4 party HP (0006), v3
     // combat (0004). Until a migration runs, fall back to the one before.
     async room(code) {
       while (roomVersion > 2) {
@@ -179,6 +191,7 @@ function hostedBackend({ url, anonKey }) {
     setHp: (code, character, { hp, max, temp, ac }) => rpc("dnd_hp_set", { p_code: code, p_character: character, p_hp: hp, p_max: max, p_temp: temp ?? 0, p_ac: ac ?? null }),
     adjustHp: (code, character, change) => rpc("dnd_hp_adjust", { p_code: code, p_character: character, p_change: change }),
     setResources: (code, character, state) => rpc("dnd_resources_set", { p_code: code, p_character: character, p_state: state }),
+    here: (code, character) => rpc("dnd_here", { p_code: code, p_character: character }),
     encounterGet: code => rpc("dnd_encounter_get", { p_code: code }),
     encounterSave: (code, enemies) => rpc("dnd_encounter_save", { p_code: code, p_enemies: enemies }),
     combatSet: (code, { round, turn, enemies, reset }) => rpc("dnd_combat_set", { p_code: code, p_round: round, p_turn: turn ?? null, p_enemies: enemies, p_reset: Boolean(reset) }),
