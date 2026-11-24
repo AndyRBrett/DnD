@@ -415,12 +415,7 @@ async function sync() {
     const previous = state;
     state = fresh;
     // Hurt by someone else while concentrating (the DM applied an enemy's hit).
-    if (previous && !isHost) {
-      const name = partyName(Number($("character").value));
-      const before = previous.hp?.[name];
-      const after = fresh.hp?.[name];
-      if (before && after) concentrationCheck(Number($("character").value), (before.hp + (before.temp ?? 0)) - (after.hp + (after.temp ?? 0)));
-    }
+    if (previous && !isHost) checkRemoteDamage(previous, fresh);
     if (boardMode) queueMicrotask(drawBoard);
     if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
     else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
@@ -1644,20 +1639,41 @@ function hpText(record) {
 // Concentrating and hurt, from any source (the DM's Apply, an enemy card, your
 // own Damage): show the Constitution save DC here and tell the table, so the
 // DM sees it too.
-function concentrationCheck(index, damage) {
+function concentrationCheck(index, damage, key = "") {
   if (isHost || damage <= 0 || index !== Number($("character").value) || !activeConditions().Concentrating) return "";
-  // The same hit can show up twice (your own change, then the next poll): once is enough.
-  const seen = index + ":" + damage + ":" + hpRecord(index)?.hp;
-  if (concentrationSeen.key === seen && Date.now() - concentrationSeen.at < 10000) return concentrationSeen.text;
+  // Each hit once: a story line is processed once by its id.
+  if (key && concentrationSeen.keys.has(key)) return "";
+  if (key) concentrationSeen.keys.add(key);
   const dc = concentrationDc(damage);
   const text = "🧠 Concentration save: DC " + dc + " Constitution — or the spell ends.";
   $("notice").textContent = text;
   navigator.vibrate?.(200);
   tellTable(index, "🧠 took " + damage + " damage while concentrating: DC " + dc + " Constitution save");
-  Object.assign(concentrationSeen, { key: seen, at: Date.now(), text });
   return text;
 }
-const concentrationSeen = { key: "", at: 0, text: "" };
+const concentrationSeen = { keys: new Set(), lastAction: null };
+// Damage from another phone. Where the story is shared (hosted), the phone
+// that entered it posts "🩸 takes 12 damage" for that character, so each hit
+// gets its own save (two hits between polls are two saves, and healing in
+// between can't hide one). Without a shared story (local server), fall back
+// to the drop in HP between two polls.
+function checkRemoteDamage(previous, fresh) {
+  const me = Number($("character").value);
+  const name = partyName(me);
+  if (Array.isArray(fresh.actions)) {
+    const newest = Math.max(0, ...fresh.actions.map(action => Number(action.id) || 0));
+    if (concentrationSeen.lastAction === null) { concentrationSeen.lastAction = newest; return; } // not the history
+    for (const action of fresh.actions) {
+      const hurt = Number(action.id) > concentrationSeen.lastAction && action.name === name && String(action.text).match(/^🩸 takes (\d+) damage/u);
+      if (hurt) concentrationCheck(me, Number(hurt[1]), "action:" + action.id);
+    }
+    concentrationSeen.lastAction = Math.max(concentrationSeen.lastAction, newest);
+    return;
+  }
+  const before = previous.hp?.[name];
+  const after = fresh.hp?.[name];
+  if (before && after) concentrationCheck(me, (before.hp + (before.temp ?? 0)) - (after.hp + (after.temp ?? 0)));
+}
 async function adjustHp(index, change, status) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
@@ -1673,7 +1689,11 @@ async function adjustHp(index, change, status) {
     }
   }
   drawCombat();
-  const reminder = change < 0 ? concentrationCheck(index, -change) : "";
+  const own = !isHost && index === Number($("character").value);
+  const reminder = change < 0 && own ? concentrationCheck(index, -change) : "";
+  // Someone else's HP: a story line, so their phone can ask for a concentration
+  // save for this hit (and the table hears about it).
+  if (change < 0 && !own) tellTable(index, "🩸 takes " + -change + " damage");
   try {
     await backend.adjustHp(room, index, change);
     if (reminder) status.textContent = reminder;
@@ -2228,9 +2248,13 @@ function healingBlock(index, sheet, res) {
   block.append(title);
   const status = document.createElement("p");
   status.className = "fineprint heal-status";
-  const heal = (target, total, what, spend) => {
+  // key: what it spends (a slot, Second Wind, a Hit Die), checked again now:
+  // the card may have been drawn before it ran out.
+  const heal = (target, total, what, key) => {
+    dice.onResult = null; // one heal per roll, even if Roll is tapped again before the tray closes
     if (!hpRecord(target)) { status.textContent = "Set " + partyName(target) + "'s max HP first, then heal."; return; }
-    if (spend) saveRes(index, spend(readRes(index)));
+    if (key && resourceLeft(sheet, readRes(index), key) < 1) { status.textContent = "None left: " + what + " needs a rest first."; drawHp(); return; }
+    if (key) saveRes(index, spendResource(sheet, readRes(index), key));
     adjustHp(target, total, status);
     status.textContent = "💚 " + partyName(target).replace(/^The /, "") + " regains " + total + " HP (" + what + ").";
     tellTable(index, "💚 " + (target === index ? "regains " : "heals " + partyName(target) + " for ") + total + " HP (" + what + ")");
@@ -2256,7 +2280,7 @@ function healingBlock(index, sheet, res) {
     button.onclick = () => {
       const who = Number(target.value);
       openDice(dice, entry.name, total => {
-        heal(who, total, entry.name, entry.slot ? state => spendResource(sheet, state, slotKey(level)) : entry.spends ? state => spendResource(sheet, state, entry.spends) : null);
+        heal(who, total, entry.name, entry.slot ? slotKey(level) : entry.spends ?? null);
         setTimeout(closeDice, 1200);
       });
     };
@@ -2277,7 +2301,7 @@ function healingBlock(index, sheet, res) {
     button.disabled = left < 1;
     button.textContent = left < 1 ? "No Hit Dice left (half come back on a long rest)" : "Spend a Hit Die · " + dice.roll + " (" + left + "/" + dice.max + " left)";
     button.onclick = () => openDice(dice.roll, "Hit Die", total => {
-      heal(index, Math.max(0, total), "a Hit Die", state => spendResource(sheet, state, HIT_DICE));
+      heal(index, Math.max(0, total), "a Hit Die", HIT_DICE);
       setTimeout(closeDice, 1200);
     });
     const note = document.createElement("p");
