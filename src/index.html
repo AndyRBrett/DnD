@@ -167,7 +167,7 @@
           <label for="action-text" id="action-label" class="display xs">What is your character doing?</label>
           <textarea id="action-text" rows="2" maxlength="300" autocomplete="off" enterkeyhint="send" placeholder="e.g. looks around the tavern for anyone watching us"></textarea>
           <p id="action-count" class="fineprint" aria-live="polite" hidden></p>
-          <button type="submit" class="cta">Add to story</button>
+          <button id="action-submit" type="submit" class="cta">Add to story</button>
           <p id="action-status" class="fineprint"></p>
         </form>
       </section>
@@ -185,6 +185,10 @@
             <button id="combat-prev" class="ghost" type="button">◀ Back</button>
             <button id="combat-advance" class="cta" type="button">Next turn ▶</button>
           </div>
+          <div id="combat-won" class="callout" hidden>
+            <p>Every enemy is down.</p>
+            <button id="combat-finish" class="danger-soft" type="button">End combat</button>
+          </div>
           <p id="combat-status" class="fineprint"></p>
         </section>
         <section id="hit-inbox" class="card" hidden aria-labelledby="hit-inbox-title">
@@ -200,6 +204,20 @@
           <div id="attack-options" class="attack-options"></div>
           <label class="attack-target">Target <select id="attack-target"></select></label>
           <div id="attack-steps" class="attack-steps" aria-live="polite"></div>
+          <details id="attack-custom" class="fold">
+            <summary>Add your own attack</summary>
+            <form id="attack-custom-form" class="stack">
+              <p class="fineprint">For a weapon or spell that isn't on your sheet. It's kept on this phone for this character.</p>
+              <div class="custom-attack-fields">
+                <label>Name <input id="custom-name" maxlength="40" autocomplete="off" placeholder="Shortsword"></label>
+                <label>To hit <input id="custom-hit" type="number" inputmode="numeric" min="-5" max="20" placeholder="+7"></label>
+                <label>Damage <input id="custom-damage" maxlength="30" autocomplete="off" placeholder="1d8+4"></label>
+                <label>Type <input id="custom-type" maxlength="30" autocomplete="off" placeholder="piercing"></label>
+              </div>
+              <button class="ghost" type="submit">Add attack</button>
+              <p id="custom-status" class="fineprint"></p>
+            </form>
+          </details>
           <details class="fold">
             <summary>Other damage (no attack roll)</summary>
             <form id="hit-report" class="stack">
@@ -328,6 +346,8 @@
           <p class="eyebrow red">EVERYONE SEES THIS</p>
           <h2 id="party-hp-title" class="display sm">Party HP</h2>
           <div id="party-hp-list" class="party-hp-list"></div>
+          <button id="party-full" class="ghost" type="button">Everyone to full HP</button>
+          <p id="party-full-status" class="fineprint"></p>
         </section>
         <section id="encounter" class="card" hidden aria-labelledby="encounter-count">
           <p class="eyebrow red">ENCOUNTER · ONLY YOU SEE THIS</p>
@@ -425,7 +445,14 @@
       <div class="segmented" id="dice-mode" role="group" aria-label="Advantage">
         <button type="button" data-mode="normal" class="is-active">Normal</button><button type="button" data-mode="advantage">Advantage</button><button type="button" data-mode="disadvantage">Disadvantage</button>
       </div>
-      <label class="check" id="dice-share-wrap" hidden><input type="checkbox" id="dice-share" checked> Share the result with the table</label>
+      <div id="dice-share-wrap" class="stack dice-share" hidden>
+        <label class="check"><input type="checkbox" id="dice-share" checked> Share the result with the table</label>
+        <div id="dice-for" class="dice-for" role="group" aria-label="What the roll is for">
+          <span class="fineprint">What's it for?</span>
+          <button type="button" class="chip">Attack</button><button type="button" class="chip">Damage</button><button type="button" class="chip">Saving throw</button><button type="button" class="chip">Stealth</button><button type="button" class="chip">Perception</button><button type="button" class="chip">Investigation</button><button type="button" class="chip">Athletics</button><button type="button" class="chip">Check</button>
+          <input id="dice-for-text" maxlength="40" autocomplete="off" placeholder="or type it: Sleight of Hand" aria-label="What the roll is for">
+        </div>
+      </div>
       <button id="dice-roll" class="cta" type="button">Roll</button>
       <button id="dice-clear" class="quiet" type="button">Clear</button>
       <p id="dice-status" class="fineprint"></p>

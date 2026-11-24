@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
@@ -52,6 +52,8 @@ function showOptions() {
   drawCombat();
   updateChips();
   $("action-label").textContent = "What is " + character.name + " doing?";
+  // On a shared phone, say whose post this is right on the button.
+  $("action-submit").textContent = "Post as " + character.name.replace(/^The /, "");
   const recent = state.scenes;
   const advice = recommend(withoutSpent(character, spentFor(Number($("character").value))), recent);
   const latest = recent.at(-1);
@@ -479,6 +481,18 @@ function flashScene() {
 
 function setDraft(value) {
   $("draft").value = value.slice(0, 1500);
+  noteDraftStart();
+}
+// Player posts that arrive while the DM is writing an update would land under
+// "Earlier updates" the moment it's published, unseen. Remember the newest
+// post the DM had when this draft started; anything newer stays in Since then
+// on the DM's phone, marked, until the next update.
+let draftActionMark = null;
+const maxActionId = () => Math.max(0, ...(state?.actions ?? []).map(action => Number(action.id) || 0));
+const writtenOverKey = () => "dnd-written-over:" + room;
+function noteDraftStart() {
+  if (!$("draft").value.trim()) draftActionMark = null;
+  else if (draftActionMark === null) draftActionMark = maxActionId();
 }
 
 function addPendingSpeech() {
@@ -511,13 +525,25 @@ function queuePublish(delay) {
 async function publish(automatic = false) {
   if (writing || ended || (automatic && (!$("auto").checked || editId))) return;
   const text = $("draft").value.trim();
-  if (!text) return;
+  if (!text) {
+    if (!automatic) {
+      $("manual-controls").open = true;
+      $("notice").textContent = "Type the update in the box first, then tap Publish update.";
+      $("draft").focus();
+    }
+    return;
+  }
   clearPublishTimers();
   const id = editId;
+  const mark = draftActionMark ?? maxActionId();
+  const previousScene = state?.scenes?.at(-1)?.id ?? null; // before a poll can bring in the new one
   writing = true;
   $("publish").disabled = true;
   try {
     await backend.postScene(room, text, id);
+    // Only the update published here counts: the one right after this scene.
+    if (!id) storage.set(writtenOverKey(), JSON.stringify({ after: mark, previous: previousScene }));
+    draftActionMark = null;
     if ($("draft").value.trim() === text) setDraft("");
     else if (!id && $("draft").value.startsWith(text + " ")) setDraft($("draft").value.slice(text.length + 1));
     editId = undefined;
@@ -638,7 +664,11 @@ $("auto").onchange = () => {
   }
   else if (lastFinal && $("draft").value.trim()) queuePublish(1000);
 };
-$("draft").oninput = clearPublishTimers;
+$("draft").oninput = () => { clearPublishTimers(); noteDraftStart(); };
+// The update box stays open or closed the way the DM left it (open by default).
+const MANUAL_KEY = "dnd-manual-open";
+$("manual-controls").open = storage.get(MANUAL_KEY) !== "0";
+$("manual-controls").addEventListener("toggle", () => storage.set(MANUAL_KEY, $("manual-controls").open ? "1" : "0"));
 $("publish").onclick = () => publish();
 let savedDraft = "";
 $("edit").onclick = () => {
@@ -948,12 +978,28 @@ function openStoryEditor(container, entry) {
 function drawStory() {
   const latest = state.scenes.at(-1);
   const actions = (state.actions ?? []).map(action => ({ ...action, kind: "action" }));
-  const since = actions.filter(action => !latest || action.created >= latest.created);
-  $("since-actions").replaceChildren(...[...since].reverse().map(storyItem));
+  // DM only: posts that came in while the latest update was being written.
+  const over = isHost ? readJson(writtenOverKey(), null) : null;
+  const previous = state.scenes.at(-2);
+  const heldOver = action => Boolean(over) && (previous?.id ?? null) === over.previous && latest
+    && action.created < latest.created && (!previous || action.created >= previous.created)
+    && Number(action.id) > Number(over.after);
+  const since = actions.filter(action => !latest || action.created >= latest.created || heldOver(action));
+  $("since-actions").replaceChildren(...[...since].reverse().map(action => {
+    const item = storyItem(action);
+    if (heldOver(action)) {
+      item.classList.add("is-held-over");
+      const tag = document.createElement("small");
+      tag.className = "held-over-tag";
+      tag.textContent = "posted while you were writing";
+      item.querySelector(".story-text").append(" ", tag);
+    }
+    return item;
+  }));
   $("since-wrap").hidden = !since.length;
   const earlier = [
     ...state.scenes.slice(0, -1).map(scene => ({ kind: "scene", id: scene.id, at: scene.created, text: scene.text })),
-    ...actions.filter(action => latest && action.created < latest.created).map(action => ({ ...action, at: action.created }))
+    ...actions.filter(action => latest && action.created < latest.created && !heldOver(action)).map(action => ({ ...action, at: action.created }))
   ].sort((a, b) => b.at - a.at);
   $("history").replaceChildren(...earlier.map(storyItem));
 }
@@ -1250,6 +1296,8 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   $("dice-status").textContent = "";
   const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended && !onResult;
   $("dice-share-wrap").hidden = !canShare;
+  setRollPurpose("");
+  $("dice-for").hidden = !$("dice-share").checked;
   const notes = conditionRollNotes();
   $("dice-conditions").hidden = !notes.length;
   $("dice-conditions").textContent = notes.join(" ");
@@ -1307,7 +1355,24 @@ for (const button of $("dice-mode").children) {
   };
 }
 $("dice-clear").onclick = () => openDice();
+// A shared roll from the plain tray says what it's for ("🎲 Stealth: 14"), so
+// the DM never has to guess. Sheet rolls carry their own label.
+function setRollPurpose(text) {
+  $("dice-for-text").value = text;
+  for (const chip of $("dice-for").querySelectorAll(".chip")) chip.classList.toggle("is-active", chip.textContent === text);
+}
+for (const chip of $("dice-for").querySelectorAll(".chip")) chip.onclick = () => setRollPurpose(chip.classList.contains("is-active") ? "" : chip.textContent);
+$("dice-for-text").oninput = () => {
+  for (const chip of $("dice-for").querySelectorAll(".chip")) chip.classList.toggle("is-active", chip.textContent === $("dice-for-text").value.trim());
+};
+$("dice-share").onchange = () => { $("dice-for").hidden = !$("dice-share").checked; };
 $("dice-roll").onclick = async () => {
+  const purpose = $("dice-for-text").value.trim();
+  if (!$("dice-share-wrap").hidden && $("dice-share").checked && !dice.label && !purpose) {
+    $("dice-status").textContent = "What's this roll for? Pick one above (or type it), or untick Share.";
+    $("dice-for").scrollIntoView?.({ block: "nearest" });
+    return;
+  }
   const expression = $("dice-expression").value.trim() || "d20";
   const result = roll(expression, { mode: dice.mode });
   if (!result) {
@@ -1337,7 +1402,7 @@ $("dice-roll").onclick = async () => {
   if (!(result.groups.length === 1 && result.groups[0].sides === 20 && result.groups[0].count === 1)) {
     lastDamageRoll = { total: result.total, label: label || result.expression };
   }
-  const name = label || result.expression;
+  const name = label || (purpose ? purpose + " (" + result.expression + ")" : result.expression);
   dice.log.unshift(name + ": " + result.total + " (" + result.breakdown + ")");
   dice.log = dice.log.slice(0, 8);
   list("dice-log", dice.log);
@@ -1449,6 +1514,10 @@ function drawCombat() {
     $("enc-combat").textContent = combat ? "End combat" : "Start combat";
     $("enc-combat").className = combat ? "danger-soft" : "cta";
     if (combat) $("enc-combat-status").textContent = "Combat is live. Players see names, initiative, and Healthy / Bloodied / Down — never HP or AC.";
+    // The last enemy fell: offer to end the fight instead of leaving a turn open.
+    const won = Boolean(combat) && available && encounterLoaded && enemies.length > 0 && standing(enemies) === 0;
+    $("combat-won").hidden = !won;
+    if (won) $("enc-combat-status").textContent = "Every enemy is down. Tap End combat when the fight's over.";
   }
   if (!combat) return;
 
@@ -1559,11 +1628,9 @@ function sheetMaxHp(index) {
   return line ? maxHpFromSheet(line[1]) : null;
 }
 const enemyTargets = new Map(); // enemy id → party index the DM picked
-function partyAc(index) {
-  const value = combatStats(sheets[partyName(index)], hpRecord(index)).find(stat => stat.label === "AC")?.value;
-  const number = Number.parseInt(value, 10);
-  return Number.isFinite(number) ? number : null;
-}
+// { low, high, unconfirmed, text } or null: an unconfirmed sheet AC is a
+// range shown as "18–20?" until the DM sets the real number.
+const partyAc = index => acRange(sheets[partyName(index)], hpRecord(index));
 function hpText(record) {
   return record ? record.hp + " / " + record.max + (record.temp ? " (+" + record.temp + " temp)" : "") : "Not set";
 }
@@ -1571,6 +1638,16 @@ async function adjustHp(index, change, status) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
   state.hp = { ...state.hp, [partyName(index)]: changePartyHp(record, change) };
+  // Hurt while already down: a death save failure, on the phone that keeps them.
+  if (change < 0 && record.hp <= 0 && !isHost && index === Number($("character").value)) {
+    const saves = readDeath(index);
+    // Stable (three successes) and hurt again: death saves start over, with this failure.
+    if (saves.failures < 3) {
+      const stable = saves.successes >= 3;
+      storage.set(deathKey(index), JSON.stringify({ successes: stable ? 0 : saves.successes, failures: saves.failures + 1,
+        last: "Took " + -change + " damage while down: one failure" + (stable ? " (no longer stable)" : "") }));
+    }
+  }
   drawCombat();
   const concentrating = !isHost && index === Number($("character").value) && activeConditions().Concentrating;
   const reminder = change < 0 && concentrating
@@ -1594,7 +1671,9 @@ async function saveHp(index, values, status) {
   if (!(max >= 1 && max <= 999)) { status.textContent = "Max HP must be 1 to 999."; return; }
   const ac = values.ac === undefined || values.ac === "" || values.ac === null ? undefined : Math.round(Number(values.ac));
   if (ac !== undefined && !(ac >= 1 && ac <= 40)) { status.textContent = "AC must be 1 to 40."; return; }
-  const record = { max, hp: Math.max(0, Math.min(max, Math.round(Number(values.hp ?? max)))), temp: Math.max(0, Math.round(Number(values.temp) || 0)) };
+  const current = values.hp === undefined || values.hp === null || values.hp === "" ? max : Number(values.hp);
+  if (!Number.isFinite(current)) { status.textContent = "Current HP must be a number."; return; }
+  const record = { max, hp: Math.max(0, Math.min(max, Math.round(current))), temp: Math.max(0, Math.round(Number(values.temp) || 0)) };
   const keptAc = ac ?? hpRecord(index)?.ac;
   if (keptAc) record.ac = keptAc;
   state.hp = { ...state.hp, [partyName(index)]: record };
@@ -1818,7 +1897,7 @@ function deathSaveBox(index) {
       pip.textContent = saves[key] >= n ? mark : "";
       pip.setAttribute("aria-label", label + " " + n);
       pip.onclick = () => {
-        const next = { ...readDeath(index), [key]: saves[key] >= n ? n - 1 : n };
+        const next = { ...readDeath(index), [key]: saves[key] >= n ? n - 1 : n, last: "" };
         storage.set(deathKey(index), JSON.stringify(next));
         drawHp();
       };
@@ -1846,12 +1925,14 @@ function deathSaveBox(index) {
     }
     const result = deathSave(before, natural);
     const { outcome: what, ...counts } = result;
-    storage.set(deathKey(index), JSON.stringify(counts));
     const summary = what === "revived" ? "natural 20 — back up with 1 HP!"
       : what === "dead" ? "fails — dead" : what === "stable" ? "succeeds — stable"
       : (natural >= 10 ? "success" : natural === 1 ? "natural 1, two failures" : "failure") + " (" + counts.successes + " ✓ / " + counts.failures + " ✗)";
-    $("dice-status").textContent = "Death save " + natural + ": " + summary;
-    if (what) dice.onResult = null; // revived, stable, or dead: that's the last roll
+    storage.set(deathKey(index), JSON.stringify({ ...counts, last: "Rolled " + natural + ": " + summary }));
+    // One death save per turn: say it's recorded, then close the tray.
+    $("dice-status").textContent = "✓ Recorded. Death save " + natural + ": " + summary;
+    dice.onResult = null;
+    setTimeout(closeDice, 1800);
     if (what === "revived") await adjustHp(index, 1, $("dice-status"));
     if (backend.postAction && Array.isArray(state?.actions)) {
       backend.postAction(room, index, "💀 death save " + natural + ": " + summary).then(sync).catch(() => {});
@@ -1860,8 +1941,12 @@ function deathSaveBox(index) {
   });
   const hint = document.createElement("p");
   hint.className = "fineprint";
-  hint.textContent = "Taking damage while down is a failure (a critical hit is two) — tap a box. Any healing brings you back.";
-  box.append(title, row("Successes", "successes", "✓"), row("Failures", "failures", "✗"), rollButton, hint);
+  hint.textContent = "Roll once at the start of each of your turns. Damage while down is a failure (counted for you when it's entered here; a critical hit is two, tap a box). Any healing brings you back.";
+  const last = document.createElement("p");
+  last.className = "death-last";
+  last.textContent = saves.last ? "Recorded · " + saves.last : "";
+  last.hidden = !saves.last;
+  box.append(title, row("Successes", "successes", "✓"), row("Failures", "failures", "✗"), last, rollButton, hint);
   return box;
 }
 
@@ -1927,7 +2012,7 @@ function tableContext(index) {
   const res = readRes(index);
   const me = [
     record ? "HP " + record.hp + "/" + record.max + (record.temp ? " (+" + record.temp + " temp)" : "") + (record.hp <= 0 ? ", down and making death saves" : "") : "HP not tracked",
-    ac ? "AC " + ac : "",
+    ac ? "AC " + ac.text : "",
     res.raging ? "raging" : ""
   ].filter(Boolean);
   if (Number($("character").value) === index && !isHost) {
@@ -1973,7 +2058,7 @@ function pips(total, left, onSet, label) {
   return row;
 }
 function resourcesWidget(index) {
-  const sheet = sheets[partyName(index)];
+  const sheet = sheets[partyName(index)] ?? { resources: [] };
   const res = readRes(index);
   const box = document.createElement("div");
   box.className = "res-widget";
@@ -1981,14 +2066,14 @@ function resourcesWidget(index) {
   head.className = "res-head";
   const title = document.createElement("p");
   title.className = "eyebrow red";
-  title.textContent = "RESOURCES · " + partyName(index).toUpperCase();
+  title.textContent = (sheet.resources?.length ? "RESOURCES · " : "RESTS · ") + partyName(index).toUpperCase();
   head.append(title);
   box.append(head);
   const set = (key, left) => {
     const max = resourceLeft(sheet, { used: {} }, key);
     writeRes(index, { ...res, used: { ...res.used, [key]: Math.max(0, Math.min(max, max - left)) } });
   };
-  for (const resource of sheet.resources) {
+  for (const resource of sheet.resources ?? []) {
     const block = document.createElement("div");
     block.className = "res-block";
     const name = document.createElement("strong");
@@ -2163,7 +2248,7 @@ function drawHp() {
     $("hp-badge").textContent = "❤️ " + (record ? (health === "down" ? "DOWN" : record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Set HP");
     fillHp($("hp-sheet"), me);
     if (!$("hp-combat").hidden) fillHp($("hp-combat"), me);
-    const hasResources = Boolean(sheets[partyName(me)]?.resources?.length) && !isHost;
+    const hasResources = !isHost; // rests for everyone, plus any limited features on the sheet
     $("res-sheet").hidden = !hasResources;
     $("res-combat").hidden = !hasResources || $("hp-combat").hidden;
     if (hasResources) {
@@ -2184,6 +2269,19 @@ function drawHp() {
     [...list.children].forEach((slot, index) => fillHp(slot, index, { compact: true }));
   }
 }
+// Before the first fight: everyone with a known max HP starts full, in one tap.
+$("party-full").onclick = async () => {
+  const ready = (state?.party ?? []).map((_, index) => [index, hpRecord(index)?.max ?? sheetMaxHp(index)]).filter(([, max]) => max);
+  const missing = (state?.party ?? []).filter((_, index) => !(hpRecord(index)?.max ?? sheetMaxHp(index))).map(character => character.name);
+  if (!ready.length) { $("party-full-status").textContent = "Nobody has a max HP yet: set one on each card."; return; }
+  if (!window.confirm("Set " + ready.length + " characters to full HP (temp HP cleared)?")) return;
+  $("party-full").disabled = true;
+  const status = $("party-full-status");
+  status.textContent = "";
+  for (const [index, max] of ready) await saveHp(index, { hp: max, max, temp: 0, ac: hpRecord(index)?.ac }, status);
+  $("party-full").disabled = false;
+  if (!status.textContent) status.textContent = "Everyone is at full HP." + (missing.length ? " Still needs a max HP: " + missing.join(", ") + "." : "");
+};
 $("hp-badge").onclick = () => {
   showTab("sheet");
   $("hp-sheet").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2238,6 +2336,34 @@ $("hit-report").onsubmit = async event => {
 // ── The attack flow: pick one of your attacks, roll to hit (the DM calls
 // hit or miss; a natural 20 is a crit, a natural 1 misses), roll the right
 // damage, send it to the DM. Save spells skip the to-hit roll. ──
+// Attacks a player adds themselves (Roan has no full sheet yet), kept on this
+// phone per character like resources: per campaign, or per practice table.
+const signedNumber = value => (value >= 0 ? "+" : "−") + Math.abs(value);
+const customKey = index => "dnd-custom-attacks:" + (isPractice() ? room : "campaign") + ":" + partyName(index);
+const customAttacks = index => readJson(customKey(index), []).filter(entry =>
+  entry && typeof entry.name === "string" && Number.isInteger(entry.hit) && parseDice(String(entry.damage ?? "")))
+  .map(entry => ({ ...entry, custom: true }));
+const attacksFor = index => [...(sheets[partyName(index)]?.attacks ?? []), ...customAttacks(index)];
+$("attack-custom-form").onsubmit = event => {
+  event.preventDefault();
+  const me = Number($("character").value);
+  const name = $("custom-name").value.trim();
+  const hit = Math.round(Number($("custom-hit").value));
+  const damage = $("custom-damage").value.replace(/\s+/g, "").toLowerCase();
+  const type = $("custom-type").value.trim();
+  const status = $("custom-status");
+  if (!name) { status.textContent = "Give the attack a name."; return; }
+  if ($("custom-hit").value === "" || !(hit >= -5 && hit <= 20)) { status.textContent = "To hit is the bonus you add to the d20, like 7."; return; }
+  if (!parseDice(damage) || !/d/.test(damage)) { status.textContent = "Damage is dice plus a bonus, like 1d8+4."; return; }
+  if (attacksFor(me).some(entry => entry.name.toLowerCase() === name.toLowerCase())) { status.textContent = "There's already an attack called " + name + "."; return; }
+  const saved = readJson(customKey(me), []);
+  storage.set(customKey(me), JSON.stringify([...saved, { name, hit, damage, type }].slice(-12)));
+  for (const id of ["custom-name", "custom-hit", "custom-damage", "custom-type"]) $(id).value = "";
+  status.textContent = "Added " + name + ". Pick it above to attack.";
+  attackFlow.index = attacksFor(me).length - 1;
+  resetAttack();
+  drawAttack();
+};
 const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [], level: null, spent: false, spentManeuver: false, notes: [] };
 function resetAttack(keepChoice = true) {
   // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
@@ -2306,10 +2432,11 @@ function drawAttack() {
   if (card.hidden) return;
   const me = Number($("character").value);
   const sheet = sheets[partyName(me)] ?? {};
+  $("attack-custom").open ||= !attacksFor(me).length;
   if (attackFlow.character !== me) { attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
   const optionState = attackOptionsState(me, sheet, combat);
   attackFlow.options = new Set(optionState.names);
-  const attacks = sheet.attacks ?? [];
+  const attacks = attacksFor(me);
   const baseAttack = attacks[attackFlow.index];
   const res = readRes(me);
   const lastingKey = me + ":" + baseAttack?.name;
@@ -2339,7 +2466,13 @@ function drawAttack() {
     return chip;
   }));
   const options = attack && !attack.save ? sheet.attackOptions ?? [] : [];
-  if (attack) {
+  if (attack?.custom) {
+    $("attack-note").replaceChildren(...["To hit: " + signedNumber(attack.hit), "Damage: " + attack.damage + (attack.type ? " " + attack.type : ""), "Your own attack (kept on this phone)."].map((text, index) => {
+      const line = document.createElement(index < 2 ? "strong" : "span");
+      line.textContent = text;
+      return line;
+    }));
+  } else if (attack) {
     const math = attackBreakdown(attack, sheet, options.filter(isOn));
     const lines = [
       math.hit ? "To hit: " + math.hit : "Save: " + math.dc,
@@ -2353,7 +2486,7 @@ function drawAttack() {
       return line;
     }));
   } else {
-    $("attack-note").textContent = "No attacks on this sheet yet — use Other damage below.";
+    $("attack-note").textContent = "No attacks on this sheet yet: add your own below (name, to hit, damage), or use Other damage.";
   }
   $("attack-options").replaceChildren(...options.map(option => {
     const label = document.createElement("label");
@@ -2457,6 +2590,15 @@ function drawAttack() {
   const next = stepButton("Next attack", "quiet", () => { resetAttack(); drawAttack(); });
 
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
+  if (attackFlow.step === "ready" && baseAttack.custom) {
+    parts.push(stepButton("Remove " + baseAttack.name, "quiet", () => {
+      if (!window.confirm("Remove " + baseAttack.name + " from your attacks?")) return;
+      storage.set(customKey(me), JSON.stringify(customAttacks(me).filter(entry => entry.name !== baseAttack.name)));
+      attackFlow.index = 0;
+      resetAttack();
+      drawAttack();
+    }));
+  }
   if (attackFlow.step === "ready" && up) {
     parts.push(stepText(baseAttack.name + " is up (cast with a " + ORDINAL[attackFlow.level] + "-level slot): this attack uses no slot.", "fineprint"),
       stepButton("Cast it again", "quiet", () => { lastingUp.delete(lastingKey); drawAttack(); }));
@@ -2720,6 +2862,7 @@ async function stepTurn(direction) {
   }
 }
 $("combat-advance").onclick = () => stepTurn(1);
+$("combat-finish").onclick = () => $("enc-combat").click();
 $("combat-prev").onclick = () => stepTurn(-1);
 $("enc-combat").onclick = async () => {
   if (state?.combatUnavailable) {
@@ -2981,18 +3124,23 @@ function enemyCard(enemy) {
     target.setAttribute("aria-label", enemy.name + " attacks");
     target.append(new Option("🎯 Target…", ""), ...state.party.map(({ name }, index) => {
       const ac = partyAc(index);
-      return new Option(name.replace(/^The /, "") + (ac ? " · AC " + ac : ""), String(index));
+      return new Option(name.replace(/^The /, "") + (ac ? " · AC " + ac.text : ""), String(index));
     }));
     target.value = enemyTargets.get(enemy.id) ?? "";
     target.onchange = () => enemyTargets.set(enemy.id, target.value);
     attacks.append(target);
   }
   for (const [label, hit, damage] of enemy.attacks) {
+    // "Longsword (×2)" is a multiattack: one tap rolls every swing.
+    const times = Number(label.match(/\(×(\d)\)/)?.[1] ?? 1);
+    const name = label.replace(/\s*\(×\d\)/, "");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ghost";
-    button.textContent = label + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "");
-    button.onclick = () => {
+    button.textContent = (times > 1 ? times + " × " + name : label) + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "");
+    if (times > 1) button.setAttribute("aria-label", "Roll all " + times + " " + name + " attacks");
+    const rollOne = swing => {
+      const label = times > 1 ? name + " " + swing + " of " + times : name;
       const toHit = roll("d20" + (hit >= 0 ? "+" : "") + hit);
       const harm = damage ? roll(damage) : null;
       const critDamage = harm && toHit.critical ? roll(critExpression(damage)) : null;
@@ -3010,11 +3158,12 @@ function enemyCard(enemy) {
         const verdict = document.createElement("strong");
         verdict.className = "verdict is-" + outcome;
         verdict.textContent = outcome === "crit" ? "CRITICAL HIT on " + who + "!"
-          : outcome === "hit" ? "HIT " + who + " (AC " + ac + ")"
-          : outcome === "miss" ? "MISS " + who + (ac ? " (AC " + ac + ")" : "")
+          : outcome === "hit" ? "HIT " + who + " (AC " + ac.text + ")"
+          : outcome === "miss" ? "MISS " + who + (ac ? " (AC " + ac.text + ")" : "")
+          : outcome === "unsure" ? toHit.total + " vs " + who + "'s unconfirmed AC " + ac.text + ": it hits if their AC is " + toHit.total + " or less. You decide."
           : who + "'s AC isn't set — the DM decides.";
         parts.push(verdict);
-        if (shown && (outcome === "hit" || outcome === "crit" || outcome === "unknown")) {
+        if (shown && (outcome === "hit" || outcome === "crit" || outcome === "unknown" || outcome === "unsure")) {
           const row = document.createElement("div");
           row.className = "apply-row";
           const status = document.createElement("span");
@@ -3038,6 +3187,16 @@ function enemyCard(enemy) {
           row.append(full, half, status);
           parts.push(row);
         }
+      }
+      return parts;
+    };
+    button.onclick = () => {
+      const parts = [];
+      for (let swing = 1; swing <= times; swing++) {
+        const one = document.createElement("div");
+        one.className = "enemy-swing";
+        one.append(...rollOne(swing));
+        parts.push(one);
       }
       result.replaceChildren(...parts);
       result.hidden = false;
@@ -3320,7 +3479,7 @@ function drawBoard() {
     name.textContent = member.name.replace(/^The /, "");
     const numbers = document.createElement("span");
     const ac = partyAc(index);
-    numbers.textContent = (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP not set") + (ac ? " · AC " + ac : "");
+    numbers.textContent = (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP not set") + (ac ? " · AC " + ac.text : "");
     const bar = document.createElement("div");
     bar.className = "hp-bar";
     const fill = document.createElement("i");

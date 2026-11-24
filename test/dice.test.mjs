@@ -338,3 +338,20 @@ test("a sheet's \"adv.\" (Feral Instinct) rolls with advantage; nothing else doe
   assert.equal(rollModeFrom("+7"), "normal");
   assert.equal(rollModeFrom("Advanced"), "normal");
 });
+
+test("an unconfirmed AC is a range: rolls inside it are the DM's call", async () => {
+  const { acRange, attackOutcome } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const dumDum = acRange(sheets["Dum Dum"], null);
+  assert.deepEqual([dumDum.low, dumDum.high, dumDum.unconfirmed, dumDum.text], [18, 20, true, "18–20?"]);
+  assert.equal(attackOutcome({ total: 19 }, dumDum), "unsure");
+  assert.equal(attackOutcome({ total: 20 }, dumDum), "hit");
+  assert.equal(attackOutcome({ total: 17 }, dumDum), "miss");
+  // The DM's number on the Party HP card settles it.
+  assert.equal(attackOutcome({ total: 19 }, acRange(sheets["Dum Dum"], { hp: 1, max: 9, ac: 18 })), "hit");
+  const logan = acRange(sheets["Logan Ninefingers"], null);
+  assert.deepEqual([logan.low, logan.high, logan.unconfirmed, logan.text], [16, 16, false, "16"]);
+  assert.equal(attackOutcome({ total: 15 }, 16), "miss");
+  assert.equal(attackOutcome({ total: 16 }, 16), "hit");
+  assert.equal(attackOutcome({ total: 16 }, null), "unknown");
+});
