@@ -62,7 +62,7 @@ export const party = [
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · speed 40 · played by Derek", [
     "combat | Rage — Bonus action, 4 per long rest: advantage on Strength checks and saves, +3 damage, resistance to physical damage.",
     "combat | Greataxe — +8 to hit; 1d12+4, or 1d12+7 raging. Reach 5 ft.",
-    "combat | Handaxe, Javelin — Thrown: +8 to hit, 1d6+4 (1d6+7 raging). Handaxe 20/60 ft (2 carried), javelin 30/120 ft (4 carried).",
+    "combat | Handaxe, Javelin — Thrown: +8 to hit, 1d6+4. Handaxe 20/60 ft (2 carried), javelin 30/120 ft (4 carried). Thrown attacks are ranged: no Rage damage, Reckless, or Brutal Critical.",
     "combat | Extra Attack — Two swings per Attack action.",
     "combat | Savage Attacker — Feat: once a turn, reroll a melee weapon's damage dice and use either total.",
     "combat | Reckless Attack — 2d20 keep the higher; enemies get advantage on you until your next turn. A prone foe gives advantage without the downside.",
@@ -130,12 +130,17 @@ export const sheets = {
     // choices: which one (a maneuver), named in the hit report with its save.
     // perAction: attacks per Attack action (Extra Attack), counted on the card.
     // unconfirmed: not yet approved by the DM; the card says so.
+    // ranged: a thrown or ranged attack, so melee-only options (melee: true,
+    // like Raging and Reckless) and Brutal Critical don't apply.
+    // concentration (on a lasting spell): casting it starts Concentrating, and
+    // it stops being free once concentration ends.
     attacks: [
       { name: "Spiritual Weapon", ability: "WIS", slot: 2, lasting: true, hit: 8, damage: "1d8+4", type: "force", note: "Bonus action; no concentration. One slot when cast; it lasts a minute, and attacking with it again is free." },
       { name: "Guiding Bolt", ability: "WIS", slot: 1, upcast: "1d6", hit: 8, addMod: false, damage: "4d6", type: "radiant", note: "1st-level slot; next attack on the target has advantage." },
       { name: "Sacred Flame", ability: "WIS", save: "Dex", dc: 16, damage: "2d8+4", type: "radiant", note: "Cantrip; nothing on a save." },
-      { name: "Toll the Dead", ability: "WIS", save: "Wis", dc: 16, damage: "2d12+4", type: "necrotic", note: "Cantrip; 2d12+4 if the target is missing any HP, 2d8+4 if it's unhurt. Nothing on a save." },
-      { name: "Spirit Guardians", ability: "WIS", slot: 3, upcast: "1d8", lasting: true, addMod: false, save: "Wis", dc: 16, damage: "3d8", type: "radiant", half: true, note: "Concentration, 10 minutes, 15-ft aura: each enemy that starts its turn there or enters it saves. One slot when cast; later rounds are free." },
+      { name: "Toll the Dead · hurt target", ability: "WIS", save: "Wis", dc: 16, damage: "2d12+4", type: "necrotic", note: "Cantrip, against a target that's missing any HP (Bloodied, or hit earlier). Nothing on a save." },
+      { name: "Toll the Dead · unhurt target", ability: "WIS", save: "Wis", dc: 16, damage: "2d8+4", type: "necrotic", note: "Cantrip, against a target at full HP. Nothing on a save." },
+      { name: "Spirit Guardians", ability: "WIS", slot: 3, upcast: "1d8", lasting: true, concentration: true, addMod: false, save: "Wis", dc: 16, damage: "3d8", type: "radiant", half: true, note: "Concentration, 10 minutes, 15-ft aura: each enemy that starts its turn there or enters it saves. One slot when cast (you start concentrating); later rounds are free until concentration ends." },
       { name: "Fireball", ability: "WIS", slot: 3, upcast: "1d6", addMod: false, save: "Dex", dc: 16, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
       { name: "Flame Strike", ability: "WIS", slot: 5, addMod: false, save: "Dex", dc: 16, damage: "4d6+4d6", type: "fire + radiant", half: true, note: "5th-level slot." },
       { name: "Radiance of the Dawn", ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 16, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
@@ -240,12 +245,12 @@ export const sheets = {
   "Logan Ninefingers": {
     attacks: [
       { name: "Greataxe", ability: "STR", perAction: 2, hit: 8, damage: "1d12+4", type: "slashing", note: "Two swings per Attack action; Frenzy adds a bonus-action swing while raging. Savage Attacker: once a turn, reroll the damage dice and keep either." },
-      { name: "Handaxe", ability: "STR", perAction: 2, hit: 8, damage: "1d6+4", type: "slashing", note: "Thrown 20/60 ft (2 carried); Raging adds +3." },
-      { name: "Javelin", ability: "STR", perAction: 2, hit: 8, damage: "1d6+4", type: "piercing", note: "Thrown 30/120 ft; 4 carried (tracked under Resources). Raging adds +3." }
+      { name: "Handaxe (thrown)", ability: "STR", perAction: 2, ranged: true, hit: 8, damage: "1d6+4", type: "slashing", note: "Thrown 20/60 ft (2 carried). A ranged attack: no Rage damage, Reckless, or Brutal Critical." },
+      { name: "Javelin (thrown)", ability: "STR", perAction: 2, ranged: true, hit: 8, damage: "1d6+4", type: "piercing", note: "Thrown 30/120 ft; 4 carried (tracked under Resources). A ranged attack: no Rage damage, Reckless, or Brutal Critical." }
     ],
     attackOptions: [
-      { name: "Raging", damage: "+3", note: "+3 damage on Strength attacks.", rage: true },
-      { name: "Reckless", mode: "advantage", lasts: "turn", note: "Advantage on your attacks this turn; enemies get advantage on you until your next turn." }
+      { name: "Raging", damage: "+3", melee: true, note: "+3 damage on melee weapon attacks using Strength.", rage: true },
+      { name: "Reckless", mode: "advantage", melee: true, lasts: "turn", note: "Advantage on your attacks this turn; enemies get advantage on you until your next turn." }
     ],
     critExtraDice: 1, // Brutal Critical
     resources: [

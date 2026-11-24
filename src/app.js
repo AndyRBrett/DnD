@@ -2702,6 +2702,9 @@ function drawAttack() {
   const baseAttack = attacks[attackFlow.index];
   const res = readRes(me);
   const lastingKey = me + ":" + baseAttack?.name;
+  // A lasting concentration spell (Spirit Guardians) is up only while the
+  // caster is still Concentrating: when that ends, the next use costs a slot.
+  if (baseAttack?.concentration && lastingUp.has(lastingKey) && !activeConditions().Concentrating) lastingUp.delete(lastingKey);
   const up = Boolean(baseAttack?.lasting) && lastingUp.has(lastingKey);
   const levels = castableLevels(baseAttack, sheet, res);
   if (up) attackFlow.level = lastingUp.get(lastingKey);
@@ -2727,7 +2730,8 @@ function drawAttack() {
     chip.setAttribute("aria-pressed", String(index === attackFlow.index));
     return chip;
   }));
-  const options = attack && !attack.save ? sheet.attackOptions ?? [] : [];
+  // Melee-only options (Raging, Reckless) don't apply to a thrown or ranged attack.
+  const options = attack && !attack.save ? (sheet.attackOptions ?? []).filter(option => !(option.melee && attack.ranged)) : [];
   if (attack?.custom) {
     $("attack-note").replaceChildren(...["To hit: " + signedNumber(attack.hit), "Damage: " + attack.damage + (attack.type ? " " + attack.type : ""), "Your own attack (kept on this phone)."].map((text, index) => {
       const line = document.createElement(index < 2 ? "strong" : "span");
@@ -2816,7 +2820,7 @@ function drawAttack() {
   const steps = $("attack-steps");
   if (!attack) { steps.replaceChildren(); return; }
   const chosenOptions = options.filter(isOn);
-  const built = buildAttack(attack, chosenOptions, { crit: attackFlow.crit, extraCritDice: sheet.critExtraDice ?? 0 });
+  const built = buildAttack(attack, chosenOptions, { crit: attackFlow.crit, extraCritDice: attack.ranged ? 0 : sheet.critExtraDice ?? 0 }); // Brutal Critical is melee only
   const parts = [];
   // Spend the slot (or Channel Divinity) when the spell is cast, and a
   // superiority die when its maneuver is used on a hit.
@@ -2828,6 +2832,7 @@ function drawAttack() {
         next = spendResource(sheet, next, slotKey(attackFlow.level));
         notes.push("Used a " + ORDINAL[attackFlow.level] + "-level slot (" + resourceLeft(sheet, next, slotKey(attackFlow.level)) + " left)");
         if (baseAttack.lasting) lastingUp.set(lastingKey, attackFlow.level);
+        if (baseAttack.concentration) setCondition("Concentrating", 1);
       }
       if (baseAttack.spends) {
         next = spendResource(sheet, next, baseAttack.spends);
