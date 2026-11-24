@@ -537,6 +537,9 @@ button.danger-soft{background:var(--red-dim);border:1px solid var(--red-border);
 /* ── TV board (?board=1) ── */
 body.board-mode main{max-width:none;padding:24px 32px}
 body.board-mode .hdr .role-pill{display:none}
+/* Quiet on a TV, but always there: the board hides every other control. */
+.board-exit{font:700 .8rem/1 var(--font-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--border2);border-radius:999px;padding:10px 14px}
+.board-exit:hover,.board-exit:focus-visible{color:var(--text);border-color:var(--red)}
 .board{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:28px;align-items:start}
 @media (max-width:820px){.board{grid-template-columns:1fr}}
 .board-main,.board-panel{background:var(--card);border:1px solid var(--border2);border-radius:22px;padding:26px 28px}
