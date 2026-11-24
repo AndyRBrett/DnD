@@ -47,7 +47,7 @@ test("off without a key: state says so and nothing is sent", async () => {
 test("a player can ask; the request respects the sheet and the answer is trimmed to three", async () => {
   const { call, post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
   assert.equal((await call("")).body.ai, true);
-  const result = await post("/advise", { character: 0 });
+  const result = await post("/advise", { character: 1 }); // Arcturus: one line still to confirm
   assert.equal(result.status, 200);
   assert.equal(result.body.options.length, 3);
   assert.equal(result.body.options[2].declare, "The White Wizard shouts a warning.");
@@ -59,13 +59,13 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
   assert.equal(body.output_config.format.type, "json_schema");
   const prompt = body.messages[0].content.map(block => block.text).join("\n");
   assert.ok(!body.messages[0].content.some(block => block.text.startsWith("CAMPAIGN HISTORY")), "no history block when the campaign has none");
-  assert.match(prompt, /The White Wizard/);
+  assert.match(prompt, /Arcturus/);
   assert.match(prompt, /LATEST DM UPDATE:\nRoll initiative/);
   assert.match(prompt, /THIS SESSION SO FAR[\s\S]*Last time: the party reached the casino/);
   const [ready, unconfirmed] = prompt.split("UNCONFIRMED");
-  assert.match(ready, /Sacred Flame/);
-  assert.doesNotMatch(ready, /Revivify/);
-  assert.match(unconfirmed, /Revivify/);
+  assert.match(ready, /Longbow/);
+  assert.doesNotMatch(ready, /Additional ability/);
+  assert.match(unconfirmed, /Additional ability/);
   assert.match(body.system, /Never recommend anything listed under UNCONFIRMED/);
 });
 

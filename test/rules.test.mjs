@@ -6,7 +6,8 @@ import { party } from "../src/campaign.js";
 // Moves that exist only at this table; they show the table's note instead of a rule.
 const tableSpecific = new Set([
   "Living-shadow swap", "Cause a distraction", "Distraction", "Lead the ambush", "Speak plainly",
-  "Current HP", "Current HP and AC", "Current HP and slots", "Wisdom 20", "Weakness sense", "Other maneuvers", "Note from the sheet"
+  "Current HP", "Current HP and AC", "Current HP and slots", "Wisdom 20", "Weakness sense", "Other maneuvers", "Note from the sheet",
+  "Choker of Caution", "Agility Ring", "Additional ability"
 ].map(name => name.toLowerCase()));
 
 test("every ability on the roster has a built-in rule or is a known table move", () => {
@@ -22,25 +23,28 @@ test("the White Wizard's sheet reads like a character sheet", () => {
   const sheet = organizeSheet(party.find(member => member.name === "The White Wizard"));
   assert.deepEqual(sheet.stats.slice(0, 2), ["Half-Elf Light Domain cleric", "Level 10"]);
   const titles = sheet.sections.map(section => section.title);
-  assert.deepEqual(titles, ["Cantrips", "1st-level spells", "2nd-level spells", "3rd-level spells", "4th-level spells", "5th-level spells", "Features & traits", "Skills"]);
+  assert.deepEqual(titles, ["Cantrips", "1st-level spells", "2nd-level spells", "3rd-level spells", "4th-level spells", "5th-level spells", "Features & traits", "Skills", "Table moves"]);
   const ready = sheet.sections.flatMap(section => section.entries);
   const fifth = sheet.sections.find(section => section.title === "5th-level spells").entries.map(entry => entry.name);
-  assert.deepEqual(fifth.sort(), ["Flame Strike", "Scrying"], "domain spells are always prepared");
+  assert.deepEqual(fifth.sort(), ["Flame Strike", "Greater Restoration", "Scrying"], "domain spells are always prepared, plus the prepared one");
   const fireball = ready.find(entry => entry.name === "Fireball");
   assert.match(fireball.rule.meta, /Action · 150 ft · Dex save/);
   assert.match(fireball.notes[0], /24/);
-  const confirmNames = sheet.confirm.map(entry => entry.name);
-  for (const name of ["Wisdom 20", "Guidance", "Silence", "Revivify", "Current HP and slots"]) assert.ok(confirmNames.includes(name), name);
-  for (const name of ["Radiance of the Dawn", "Divine Intervention", "Turn Undead", "Thaumaturgy"]) assert.ok(ready.some(entry => entry.name === name), name);
+  assert.deepEqual(sheet.confirm, [], "the playable defaults settle every open line");
+  for (const name of ["Radiance of the Dawn", "Divine Intervention", "Turn Undead", "Thaumaturgy", "Guidance", "Toll the Dead", "Spare the Dying",
+    "Silence", "Revivify", "Cure Wounds", "Lesser Restoration", "Death Ward", "Choker of Caution", "Agility Ring"]) assert.ok(ready.some(entry => entry.name === name), name);
 });
 
 test("lists of names split into separate entries, aliases resolve, duplicates merge", () => {
   const dumDum = organizeSheet(party.find(member => member.name === "Dum Dum"));
   const ready = dumDum.sections.flatMap(section => section.entries.map(entry => entry.name));
-  for (const name of ["Trip Attack", "Goading Attack", "Menacing Attack", "Battle Master maneuvers", "Action Surge", "Indomitable"]) assert.ok(ready.includes(name), name);
-  const confirm = dumDum.confirm.map(entry => entry.name);
-  assert.deepEqual(confirm.slice(0, 2), ["Precision Attack", "Other maneuvers"]);
-  assert.ok(!confirm.includes("Battle Master maneuvers"), "the known dice aren't also listed as unconfirmed");
+  for (const name of ["Trip Attack", "Goading Attack", "Menacing Attack", "Disarming Attack", "Pushing Attack", "Precision Attack", "Riposte",
+    "Battle Master maneuvers", "Action Surge", "Indomitable", "Shield Master", "Dueling", "Longsword"]) assert.ok(ready.includes(name), name);
+  assert.deepEqual(dumDum.confirm, [], "all seven maneuvers are known");
+  const logan = organizeSheet(party.find(member => member.name === "Logan Ninefingers"));
+  const loganReady = logan.sections.flatMap(section => section.entries.map(entry => entry.name));
+  for (const name of ["Handaxe", "Javelin", "Savage Attacker"]) assert.ok(loganReady.includes(name), name);
+  assert.ok(!loganReady.includes("Great Weapon Master"));
   const roan = organizeSheet(party.find(member => member.name === "Roan the Last Shadow"));
   const swap = roan.sections.flatMap(section => section.entries).find(entry => entry.name === "Living-shadow swap");
   assert.equal(swap.notes.length, 2, "both shadow-swap notes kept on one entry");
@@ -79,14 +83,15 @@ test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async 
   const full = sheets.Arcturus;
   assert.equal(full.abilities.find(([label]) => label === "DEX")[1], 20);
   assert.equal(full.skills.length, 18);
-  assert.deepEqual(full.skills.filter(row => row[3] === "proficient").map(row => row[0]), ["Persuasion", "Stealth"]);
-  assert.equal(full.questions.length, 6);
+  assert.deepEqual(full.skills.filter(row => row[3] === "proficient").map(row => row[0]), ["History", "Insight", "Perception", "Persuasion", "Stealth", "Survival"]);
+  assert.ok(full.questions.length >= 4);
   const sheet = organizeSheet(arcturus);
   const ready = sheet.sections.flatMap(section => section.entries.map(entry => entry.name));
-  for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist"]) assert.ok(ready.includes(name), name);
+  for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist",
+    "Hunter's Mark", "Hide in Plain Sight", "Rope Trick", "Fear", "Dagger", "Iron Mind", "Cure Wounds", "Pass Without Trace", "Mask of the Wild"]) assert.ok(ready.includes(name), name);
   const confirm = sheet.confirm.map(entry => entry.name);
-  for (const name of ["Hunter's Mark", "Lightning Arrow", "Hide in Plain Sight", "Tireless", "Rope Trick", "Fear", "Dagger", "Iron Mind"]) assert.ok(confirm.includes(name), name);
-  assert.ok(!ready.includes("Hunter's Mark"), "Hunter's Mark stays unconfirmed until the DM says it's known");
+  assert.deepEqual(confirm, ["Additional ability"], "only the DM's extra Level 10 ability is still open");
+  for (const name of ["Lightning Arrow", "Tireless", "Silence"]) assert.ok(!ready.includes(name) && !confirm.includes(name), name + " is out of the default loadout");
   assert.match(arcturus.moves, /Longbow — \+11 to hit/);
 });
 
