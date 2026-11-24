@@ -2237,7 +2237,7 @@ function resourcesWidget(index) {
     name.textContent = resource.name;
     const per = document.createElement("span");
     per.className = "res-per";
-    per.textContent = resource.per === "short" ? "back on a short or long rest" : "back on a long rest";
+    per.textContent = resource.per === "short" ? "back on a short or long rest" : resource.per === "never" ? "not refilled by rests; tap a dot when you get more" : "back on a long rest";
     const top = document.createElement("div");
     top.className = "res-top";
     top.append(name, per);
@@ -2375,7 +2375,9 @@ function healingBlock(index, sheet, res) {
     tellTable(index, "💚 " + (target === index ? "regains " : "heals " + partyName(target) + " for ") + total + " HP (" + what + ")");
     drawHp();
   };
-  for (const entry of [...(sheet.heals ?? []), POTION]) {
+  // A sheet that tracks its potions spends one per drink.
+  const potion = (sheet.resources ?? []).some(resource => resource.name === "Healing potions") ? { ...POTION, spends: "Healing potions" } : POTION;
+  for (const entry of [...(sheet.heals ?? []), potion]) {
     const row = document.createElement("div");
     row.className = "heal-row";
     const levels = entry.slot ? castableLevels({ slot: entry.slot }, sheet, res) : [];

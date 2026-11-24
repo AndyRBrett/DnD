@@ -142,10 +142,13 @@ test("combat stats come from the sheet, with a confirmed AC on top", async () =>
   const wizard = combatStats(sheets["The White Wizard"]);
   assert.equal(pick(wizard, "AC").value, "17");
   assert.equal(pick(wizard, "Speed").value, "30 ft");
-  assert.equal(pick(wizard, "Passive Perc.").value, "19");
-  assert.equal(pick(wizard, "Spell DC").value, "17");
+  assert.equal(pick(wizard, "Passive Perc.").value, "18");
+  assert.equal(pick(wizard, "Spell DC").value, "16");
   const dumDum = combatStats(sheets["Dum Dum"]);
-  assert.equal(pick(dumDum, "AC").unconfirmed, true);
+  assert.equal(pick(dumDum, "AC").value, "20");
+  assert.equal(pick(dumDum, "AC").unconfirmed, false);
+  // An unsure sheet AC is still flagged until the DM sets it.
+  assert.equal(pick(combatStats({ combat: [["AC", "20 plate, or 18 half plate"]] }), "AC").unconfirmed, true);
   assert.equal(pick(combatStats(sheets["Dum Dum"], { ac: 20 }), "AC").value, "20");
   assert.equal(pick(combatStats(sheets["Dum Dum"], { ac: 20 }), "AC").unconfirmed, false);
   assert.equal(pick(combatStats(sheets["Logan Ninefingers"]), "Initiative").value, "+2 adv.");
@@ -185,18 +188,21 @@ test("character attacks: options, crits, Brutal Critical, and the report line", 
   assert.equal(critExpression("4d6+4d6"), "8d6+8d6");
 
   const logan = sheets["Logan Ninefingers"];
-  const [rage, reckless, gwm] = logan.attackOptions;
+  const [rage, reckless] = logan.attackOptions;
   const greataxe = logan.attacks[0];
   assert.deepEqual(buildAttack(greataxe, [rage]), { save: null, toHit: "d20+8", hitBonus: 8, mode: "normal", damage: "1d12+4+3" });
   assert.equal(buildAttack(greataxe, [rage, reckless]).mode, "advantage");
-  assert.equal(buildAttack(greataxe, [rage, gwm]).toHit, "d20+3");
-  assert.equal(buildAttack(greataxe, [rage, gwm]).damage, "1d12+4+3+10");
+  assert.ok(!logan.attackOptions.some(option => option.name === "Great Weapon Master"), "Savage Attacker build: no Great Weapon Master");
+  // An option with a to-hit change still works (any sheet could add one).
+  const powerful = { name: "Test", hit: -5, damage: "+10" };
+  assert.equal(buildAttack(greataxe, [rage, powerful]).toHit, "d20+3");
+  assert.equal(buildAttack(greataxe, [rage, powerful]).damage, "1d12+4+3+10");
   assert.equal(buildAttack(greataxe, [rage], { crit: true, extraCritDice: logan.critExtraDice }).damage, "3d12+4+3"); // matches the sheet's 3d12+7
 
   const fireball = sheets["The White Wizard"].attacks.find(attack => attack.name === "Fireball");
   const built = buildAttack(fireball, []);
   assert.equal(built.toHit, null);
-  assert.equal(built.save, "Dex save, DC 17, half on a save");
+  assert.equal(built.save, "Dex save, DC 16, half on a save");
 
   for (const sheet of Object.values(sheets)) {
     for (const attack of sheet.attacks) {
@@ -224,7 +230,9 @@ test("attacks show their ability modifier, and the math adds up", async () => {
   const arcturus = sheets.Arcturus;
   assert.equal(attackBreakdown(arcturus.attacks[0], arcturus).hit, "d20 + DEX +5 + Prof +4 + Archery +2 = +11");
   const wizard = sheets["The White Wizard"];
-  assert.equal(attackBreakdown(wizard.attacks.find(attack => attack.name === "Fireball"), wizard).dc, "DC 17 = 8 + WIS +5 + Prof +4");
+  assert.equal(attackBreakdown(wizard.attacks.find(attack => attack.name === "Fireball"), wizard).dc, "DC 16 = 8 + WIS +4 + Prof +4");
+  const dumDum = sheets["Dum Dum"];
+  assert.equal(attackBreakdown(dumDum.attacks[0], dumDum).damage, "1d8 + STR +4 + Dueling +2");
   // Every attack's listed bonus matches ability + proficiency + bonuses, and
   // weapon damage includes the ability modifier.
   for (const sheet of Object.values(sheets)) {
@@ -234,7 +242,8 @@ test("attacks show their ability modifier, and the math adds up", async () => {
       assert.ok(Number.isFinite(mod), attack.name + " has an ability");
       if (attack.save) assert.equal(attack.dc, 8 + mod + prof, attack.name + " DC");
       else assert.equal(attack.hit, mod + prof + (attack.bonus ?? []).reduce((sum, [, value]) => sum + value, 0), attack.name + " to hit");
-      if (attack.addMod !== false) assert.ok(attack.damage.endsWith("+" + mod), attack.name + " damage includes " + attack.ability);
+      const flat = mod + (attack.damageBonus ?? []).reduce((sum, [, value]) => sum + value, 0);
+      if (attack.addMod !== false) assert.ok(attack.damage.endsWith("+" + flat), attack.name + " damage includes " + attack.ability + " and its bonuses");
     }
   }
 });
@@ -293,7 +302,7 @@ test("a spent ability is never suggested, by Moves or to Claude", async () => {
 
   const usable = withoutSpent(wizard, spent);
   // A line listing several keeps the ones still usable.
-  assert.ok(usable.moves.includes("combat | Bless, Spiritual Weapon — "), "grouped line trimmed");
+  assert.ok(usable.moves.includes("combat | Bless, Command, Guiding Bolt, Spiritual Weapon — "), "grouped line trimmed");
   assert.ok(!usable.moves.includes("Spirit Guardians"));
   for (let id = 1; id <= 40; id++) {
     const scenes = [{ id, text: "Roll initiative! Guards open fire on the party." }];
@@ -342,13 +351,17 @@ test("a sheet's \"adv.\" (Feral Instinct) rolls with advantage; nothing else doe
 test("an unconfirmed AC is a range: rolls inside it are the DM's call", async () => {
   const { acRange, attackOutcome } = await import("../src/encounter.js");
   const { sheets } = await import("../src/campaign.js");
-  const dumDum = acRange(sheets["Dum Dum"], null);
-  assert.deepEqual([dumDum.low, dumDum.high, dumDum.unconfirmed, dumDum.text], [18, 20, true, "18–20?"]);
-  assert.equal(attackOutcome({ total: 19 }, dumDum), "unsure");
-  assert.equal(attackOutcome({ total: 20 }, dumDum), "hit");
-  assert.equal(attackOutcome({ total: 17 }, dumDum), "miss");
+  // A sheet whose armor isn't settled (Dum Dum's was, before the defaults).
+  const unsure = { combat: [["AC", "20 plate + shield, or 18 half plate + shield (unconfirmed)"]], rolls: [["AC", "18–20*"]] };
+  const range = acRange(unsure, null);
+  assert.deepEqual([range.low, range.high, range.unconfirmed, range.text], [18, 20, true, "18–20?"]);
+  assert.equal(attackOutcome({ total: 19 }, range), "unsure");
+  assert.equal(attackOutcome({ total: 20 }, range), "hit");
+  assert.equal(attackOutcome({ total: 17 }, range), "miss");
   // The DM's number on the Party HP card settles it.
-  assert.equal(attackOutcome({ total: 19 }, acRange(sheets["Dum Dum"], { hp: 1, max: 9, ac: 18 })), "hit");
+  assert.equal(attackOutcome({ total: 19 }, acRange(unsure, { hp: 1, max: 9, ac: 18 })), "hit");
+  assert.deepEqual(acRange(sheets["Dum Dum"], null).text, "20");
+  assert.deepEqual(acRange(sheets.Arcturus, null).text, "17");
   const logan = acRange(sheets["Logan Ninefingers"], null);
   assert.deepEqual([logan.low, logan.high, logan.unconfirmed, logan.text], [16, 16, false, "16"]);
   assert.equal(attackOutcome({ total: 15 }, 16), "miss");

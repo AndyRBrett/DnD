@@ -376,6 +376,7 @@ export function attackBreakdown(attack, sheet, options = []) {
   const damageParts = [dice];
   if (attack.addMod !== false && attack.ability) damageParts.push(attack.ability + " " + signed(mod));
   else if (flat) damageParts.push(flat.replace(/^\+/, "+"));
+  for (const [name, value] of attack.damageBonus ?? []) damageParts.push(name + " " + signed(value));
   for (const option of options.filter(option => option.damage)) damageParts.push(option.name.replace(/ \(.*\)$/, "") + " " + option.damage);
   return {
     hit: "d20 + " + [...parts, ...extraHit.map(option => [option.name, option.hit])].map(([name, value]) => name + " " + signed(value)).join(" + ") + " = " + signed(total),
@@ -428,6 +429,7 @@ export function rest(sheet, state, kind) {
     if (!used[HIT_DICE]) delete used[HIT_DICE];
   }
   for (const resource of sheet?.resources ?? []) {
+    if (resource.per === "never") continue; // potions, javelins: only the DM gives more
     if (kind !== "long" && resource.per !== "short") continue;
     if (resource.slots) for (const level of Object.keys(resource.slots)) delete used[slotKey(level)];
     else delete used[resource.name];
