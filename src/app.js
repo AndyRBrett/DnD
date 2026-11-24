@@ -3247,6 +3247,9 @@ function enterRoom() {
   if (boardMode) {
     document.body.classList.add("board-mode");
     for (const id of ["tabbar", "dice-fab", "copy", "help"]) $(id).hidden = true;
+    // The one way out: back to this table's normal view.
+    $("board-exit").href = "?room=" + room;
+    $("board-exit").hidden = false;
   }
   setHost(false);
   sync();
@@ -3369,6 +3372,7 @@ async function showLobby(message = "") {
   $("table").hidden = true;
   $("board").hidden = true;
   document.body.classList.remove("board-mode");
+  $("board-exit").hidden = true;
   $("lobby-status").textContent = message;
   const user = backend.user();
   $("signin").hidden = !backend.hosted || Boolean(user);
