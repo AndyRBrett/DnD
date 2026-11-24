@@ -11,6 +11,8 @@ import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, en
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 
 const $ = id => document.getElementById(id);
+// Longest player action (migration 0016: was 300).
+const ACTION_MAX = 1000;
 // Replaces a container's contents only when the new markup differs from what
 // was last drawn there. The 1.5-second poll redraws often; skipping identical
 // redraws keeps taps from landing on a button that was just swapped out, and
@@ -169,7 +171,7 @@ function claudeOption(option, characterIndex) {
     form.className = "declare";
     const field = document.createElement("textarea");
     field.rows = 2;
-    field.maxLength = 300;
+    field.maxLength = ACTION_MAX;
     field.value = option.declare;
     field.setAttribute("aria-label", "Edit this action before adding it to the story");
     const button = document.createElement("button");
@@ -962,7 +964,7 @@ function openStoryEditor(container, entry) {
   const area = document.createElement("textarea");
   area.value = entry.text;
   area.rows = entry.kind === "scene" ? 4 : 2;
-  area.maxLength = entry.kind === "scene" ? 1500 : 300;
+  area.maxLength = entry.kind === "scene" ? 1500 : ACTION_MAX;
   area.setAttribute("aria-label", entry.kind === "scene" ? "Edit this update" : "Edit " + entry.name + "'s action");
   const row = document.createElement("div");
   row.className = "action-row";
@@ -1065,7 +1067,7 @@ function drawPartyActions() {
     const row = document.createElement("form");
     row.className = "action-row party-action";
     const input = document.createElement("input");
-    input.maxLength = 300;
+    input.maxLength = ACTION_MAX;
     input.autocomplete = "off";
     input.placeholder = name + "…";
     input.setAttribute("aria-label", "What is " + name + " doing?");
@@ -1095,11 +1097,11 @@ function drawPartyActions() {
   }));
 }
 
-// The action box stops at 300 characters (the table's limit): say so before it does.
+// The action box stops at ACTION_MAX characters (the table's limit): say so before it does.
 function countAction() {
   const box = $("action-text");
   const left = box.maxLength - box.value.length;
-  $("action-count").hidden = left > 60;
+  $("action-count").hidden = left > 150;
   $("action-count").textContent = left > 0 ? left + " characters left" : "That's the limit: post this, then add the rest in a second post.";
 }
 $("action-text").addEventListener("input", countAction);
@@ -1465,7 +1467,7 @@ $("dice-roll").onclick = async () => {
     return;
   }
   if (share) {
-    const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, 300);
+    const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, ACTION_MAX);
     try {
       await backend.postAction(room, Number($("character").value), text);
       $("dice-status").textContent = "Shared with the table.";

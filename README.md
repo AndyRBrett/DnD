@@ -18,7 +18,7 @@ The terminal shows `Claude suggestions · on` at startup. Nothing is sent until 
 
 The app uses the UFC Picked Fight visual system: near-black cards, red primary and gold secondary, Barlow and Barlow Condensed type (SIL OFL, `src/fonts/`), and a fixed bottom tab bar. Inside a table:
 
-- **Scene:** the DM's current scene, *Since then* (players' actions, newest first), earlier updates, and *What is <character> doing?* (the button says who you're posting as; a counter appears near the 300-character limit). On the DM's phone, posts that arrived while an update was being written stay in *Since then*, marked "posted while you were writing", until the next update. The DM's *Transcript and manual updates* box remembers whether it was open.
+- **Scene:** the DM's current scene, *Since then* (players' actions, newest first), earlier updates, and *What is <character> doing?* (the button says who you're posting as; a counter appears near the 1000-character limit, `supabase/migrations/0016_dnd_longer_actions.sql`). On the DM's phone, posts that arrived while an update was being written stay in *Since then*, marked "posted while you were writing", until the next update. The DM's *Transcript and manual updates* box remembers whether it was open.
 - **Moves ("What can I do?"):** quick ideas from your sheet first (labeled *From your sheet*), then Ask Claude underneath (labeled *Claude reads the whole story*). When Claude is off, one line says so instead of a missing tab.
 - **Sheet:** roll tiles (tap one to roll it), the full character sheet, D&D basics, and copy-to-AI-chat.
 - **Combat** (only during a fight): initiative order, whose turn it is, and enemies as Healthy, Bloodied, or Down.
