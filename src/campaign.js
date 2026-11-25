@@ -475,7 +475,7 @@ export const sheets = {
     ],
     questions: [
       "Favored terrains and enemies are campaign defaults (forest, Underdark, mountain; humanoids, dragons): has the DM looked them over?",
-      "Primeval Awareness (legacy ranger): spend a slot to sense favored enemies for a minute per slot level, within 1 mile (6 in a favored terrain). Track it in the app?",
+      "Primeval Awareness (legacy ranger): spend a slot to sense whether aberrations, celestials, dragons, elementals, fey, fiends, or undead are within 1 mile (6 in a favored terrain), a minute per slot level; no location or count, and not humanoids. Track it in the app?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
     ]
