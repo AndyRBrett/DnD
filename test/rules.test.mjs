@@ -7,7 +7,7 @@ import { party } from "../src/campaign.js";
 const tableSpecific = new Set([
   "Living-shadow swap", "Cause a distraction", "Distraction", "Lead the ambush", "Speak plainly",
   "Current HP", "Current HP and AC", "Current HP and slots", "Wisdom 20", "Weakness sense", "Other maneuvers", "Note from the sheet",
-  "Choker of Caution", "Agility Ring", "Additional ability", "Third-eye amulet"
+  "Choker of Caution", "Agility Ring", "Additional ability", "Third-eye amulet", "Constitution 18", "Shadow vision", "Thieves' tools"
 ].map(name => name.toLowerCase()));
 
 test("every ability on the roster has a built-in rule or is a known table move", () => {
@@ -46,8 +46,12 @@ test("lists of names split into separate entries, aliases resolve, duplicates me
   for (const name of ["Handaxe", "Javelin", "Savage Attacker"]) assert.ok(loganReady.includes(name), name);
   assert.ok(!loganReady.includes("Great Weapon Master"));
   const roan = organizeSheet(party.find(member => member.name === "Roan the Last Shadow"));
-  const swap = roan.sections.flatMap(section => section.entries).find(entry => entry.name === "Living-shadow swap");
-  assert.equal(swap.notes.length, 2, "both shadow-swap notes kept on one entry");
+  const roanReady = roan.sections.flatMap(section => section.entries.map(entry => entry.name));
+  for (const name of ["Wrist blade", "Razor Shuriken", "Sneak Attack", "Living Shadow", "Shadow Slash", "Death Mark", "Contempt for the Weak", "Cunning Action", "Uncanny Dodge", "Evasion"]) assert.ok(roanReady.includes(name), name);
+  assert.equal(lookupRule("Living-shadow swap").name, "Living Shadow");
+  // Two lines naming the same ability merge into one entry with both notes.
+  const merged = organizeSheet({ role: "", moves: "explore | Living Shadow — Swap in the casino.\ndanger | Living Shadow — Reposition if it's safe." });
+  assert.equal(merged.sections.flatMap(section => section.entries).find(entry => entry.name === "Living Shadow").notes.length, 2);
   assert.equal(lookupRule("Hunter’s Mark").name, "Hunter's Mark");
   assert.equal(lookupRule("Improved Flare").name, "Warding Flare");
   assert.equal(lookupRule("superiority dice").name, "Battle Master maneuvers");

@@ -398,6 +398,7 @@ test("Hit Dice: from the sheet, spent one at a time, half back on a long rest", 
   assert.equal(resourceLeft(dumDum, state, HIT_DICE), 3);
   assert.equal(resourceLeft(dumDum, rest(dumDum, state, "short"), HIT_DICE), 3); // a short rest gives none back
   assert.equal(resourceLeft(dumDum, rest(dumDum, state, "long"), HIT_DICE), 8);  // half of 10 back
-  assert.equal(hitDice(sheets["Roan the Last Shadow"]), null);
+  assert.deepEqual(hitDice(sheets["Roan the Last Shadow"]), { max: 10, die: 8, con: 4, roll: "1d8+4" });
+  assert.equal(hitDice({ combat: [] }), null);
   assert.equal(sheets["The White Wizard"].heals[0].name, "Healing Word");
 });

@@ -230,6 +230,30 @@ export const rules = {
   "Indomitable": feature("Fighter (level 9) · Once per long rest",
     "Reroll a saving throw you failed. You must use the new roll."),
 
+  // ── Rogue (Roan) and his homebrew Master of Shadows subclass ──
+  "Sneak Attack": feature("Rogue · Once per turn · 5d6 at level 10",
+    "Add the extra dice to one hit with a finesse or ranged weapon when you have advantage, or when an ally who isn't incapacitated is within 5 feet of the target and you don't have disadvantage. Critical hits double these dice too."),
+  "Cunning Action": feature("Rogue · Bonus action",
+    "Dash, Disengage, or Hide as a bonus action, so you can still attack with your action."),
+  "Uncanny Dodge": feature("Rogue · Reaction",
+    "When an attacker you can see hits you with an attack, halve that attack's damage against you."),
+  "Evasion": feature("Rogue · Dexterity saves",
+    "When an effect lets you make a Dexterity save to take half damage, you take none on a success and only half on a failure."),
+  "Thieves' Cant": feature("Rogue",
+    "A secret mix of slang, jargon, and signs that lets rogues hide messages in normal talk or leave marks only they can read."),
+  "Wrist blade": attack("Roan's weapon · Finesse · 1d6 slashing",
+    "A melee weapon attack using Dexterity: d20 + 9 to hit, 1d6 + 5 slashing. Sneak Attack and Contempt for the Weak can ride on it."),
+  "Razor Shuriken": attack("Roan's Q · Action · 60 ft · Homebrew",
+    "A ranged weapon attack, d20 + 9, for 1d6 + 5 piercing, free. With Living Shadow up, spend 1 Shadow Energy for the shadow to throw a second shuriken at the same target from its own position: a separate roll for 1d6 piercing. Either hit can carry Sneak Attack, once per turn.", ["Q", "Razor Shuriken (Q)"]),
+  "Living Shadow": feature("Roan's W · Bonus action · 1 Shadow Energy · Homebrew",
+    "Create a shadow double in a space you can see within 30 feet for 1 minute (AC 17, 1 HP, immune to conditions; one at a time). It moves 30 feet on your turn for free and copies Q and E. As a later bonus action, swap places with it within 60 feet for free.", ["W", "Living-shadow swap", "Shadow swap"]),
+  "Shadow Slash": feature("Roan's E · Bonus action · 1 Shadow Energy · DC 17 Dex save · Homebrew",
+    "Roan and his shadow slash around themselves: each enemy within 5 feet of either saves once. On a fail, 2d6 slashing and 10 feet less speed until the start of Roan's next turn; on a save, half damage. It can't carry Sneak Attack.", ["E"]),
+  "Death Mark": feature("Roan's R · Bonus action · 2 Shadow Energy · Once per short rest · Homebrew",
+    "Teleport next to an enemy you can see within 30 feet and mark it until the end of your next turn, leaving a return shadow where you stood (swap back as a bonus action). When the mark ends, it takes 2d6 necrotic plus half the damage you dealt it while marked (that half at most 20). No roll or save.", ["R"]),
+  "Contempt for the Weak": feature("Roan's passive · Once per turn · Homebrew",
+    "When Roan hits a creature at or below half its maximum HP, it takes an extra 1d6 necrotic. The DM confirms the target qualifies. It stacks with Sneak Attack."),
+
   // ── Skills ──
   "Intimidation": skill("Charisma", "Pressure or frighten someone into talking or backing down. The DM sets the difficulty and decides how they react."),
   "Persuasion": skill("Charisma", "Convince someone honestly: ask, bargain, or reassure. The DM sets the difficulty."),
@@ -244,6 +268,7 @@ export const rules = {
   "Religion": skill("Intelligence", "Recall lore about gods, rites, holy symbols, cults, and the undead."),
   "Arcana": skill("Intelligence", "Recall lore about spells, magic items, symbols, planes, and magical creatures."),
   "History": skill("Intelligence", "Recall lore about past events, kingdoms, wars, noble houses, and famous people."),
+  "Sleight of Hand": skill("Dexterity", "Pick a pocket, palm an object, plant something on someone, or do fine work with your hands unseen."),
   "Medicine": skill("Wisdom", "Stabilize a dying companion or diagnose an illness."),
   "Insight": skill("Wisdom", "Read a person: are they lying, nervous, or hiding something?")
 };
