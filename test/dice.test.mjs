@@ -415,3 +415,15 @@ test("Roan's Shadow Energy gates his shadow moves, Death Mark at 2", async () =>
   assert.deepEqual(names({ "Shadow Energy": 6 }).sort(), ["Death Mark", "Living Shadow", "Shadow Slash"]);
   assert.ok(names({ "Death Mark": 1 }).includes("Death Mark"), "used this rest");
 });
+
+test("Primeval Awareness waits for a spell slot like a spell does", async () => {
+  const { spentAbilities, spendResource, slotKey } = await import("../src/encounter.js");
+  const { party, sheets } = await import("../src/campaign.js");
+  const arcturus = party.find(member => member.name === "Arcturus");
+  const sheet = sheets.Arcturus;
+  let state = {};
+  for (const level of [1, 2, 3]) state = spendResource(sheet, state, slotKey(level), 9);
+  const names = spentAbilities(arcturus, sheet, state).map(line => line.split(":")[0]);
+  assert.ok(names.includes("Primeval Awareness"), "no slots: no Primeval Awareness");
+  assert.ok(!spentAbilities(arcturus, sheet, {}).some(line => line.startsWith("Primeval Awareness")));
+});
