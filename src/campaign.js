@@ -58,8 +58,8 @@ export const party = [
     "explore | Perception, Survival, Insight, History — Proficient: +6, +6, +6, +5 (passive Perception 16).",
     "social | Persuasion — +4, proficient from the Exiled Noble background.",
     "social | Disguise Self — Gloom Stalker spell: 1 action, 1 hour, no concentration, looks only. Passed as a casino guard (natural 20 on Performance).",
-    "explore | Favored Enemy — Humanoids (humans and dwarves): advantage on Survival checks to track them and on Intelligence checks to recall information about them. Speaks Dwarvish.",
-    "explore | Natural Explorer — Favored terrain: forest. On an hour or more of forest travel, difficult terrain doesn't slow the group, they can't get lost except by magic, and he stays alert while foraging, tracking, or navigating (normal-pace stealth only when alone)."
+    "explore | Favored Enemy — Humanoids (humans and dwarves) and dragons: advantage on Survival checks to track them and on Intelligence checks to recall information about them. Speaks Dwarvish and Draconic.",
+    "explore | Natural Explorer — Favored terrains: forest, Underdark, mountain. On an hour or more of travel there, difficult terrain doesn't slow the group, they can't get lost except by magic, and he stays alert while foraging, tracking, or navigating (normal-pace stealth only when alone)."
   ]),
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · speed 40 · played by Derek", [
     "combat | Rage — Bonus action, 4 per long rest: advantage on Strength checks and saves, +3 damage, resistance to physical damage.",
@@ -416,10 +416,12 @@ export const sheets = {
     note: "Playable defaults from the campaign chat: legacy (2014) Gloom Stalker rules and spell text, with the table's Sharpshooter ruling.",
     identity: [
       ["Ancestry", "Wood elf with a dark-elf look: Darkvision, Fey Ancestry, Trance, Fleet of Foot (35 ft), Mask of the Wild"],
-      ["Class", "Ranger 10 (Gloom Stalker) · Favored Enemy: humanoids (humans and dwarves) · Favored terrain: forest"],
+      ["Class", "Ranger 10 (Gloom Stalker)"],
+      ["Favored enemies", "Humanoids (humans and dwarves) at level 1 · dragons at level 6"],
+      ["Favored terrains", "Forest (level 1) · Underdark (level 6) · mountain (level 10)"],
       ["Feat", "Alert (Level 10 bonus feat from the DM)"],
       ["Background", "Exiled Noble"],
-      ["Languages", "Common, Elvish, Sylvan, Dwarvish (Favored Enemy)"],
+      ["Languages", "Common, Elvish, Sylvan, Dwarvish and Draconic (Favored Enemy)"],
       ["Appearance", "6 ft 5 in, ash-gray skin, glowing green eyes, hooded dark battle-worn leather with subtle gold trim and earrings, longbow. Named for the orange-red star."],
       ["Personality", "Quiet, strategic, observant shadow archer and emerging leader"]
     ],
@@ -472,8 +474,8 @@ export const sheets = {
       "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
     ],
     questions: [
-      "Legacy rangers gain a second favored terrain at level 6 and a third at level 10: which two besides forest?",
-      "Legacy rangers also gain a second favored enemy at level 6: humanoids only so far, or is another picked?",
+      "Favored terrains and enemies are campaign defaults (forest, Underdark, mountain; humanoids, dragons): has the DM looked them over?",
+      "Primeval Awareness (legacy ranger): spend a slot to sense favored enemies for a minute per slot level, within 1 mile (6 in a favored terrain). Track it in the app?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
     ]
