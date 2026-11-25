@@ -110,3 +110,11 @@ export function critExpression(expression, extra = 0) {
   });
   return extra > 0 && first ? doubled.replace(new RegExp("(\\d+)d" + first), (_, count) => (Number(count) + extra) + "d" + first) : doubled;
 }
+
+// Advantage or disadvantage rolled as two separate d20s (the second one after
+// the first was already in): keep the higher (or lower) natural roll, so a
+// natural 20 on either die with advantage is the one that counts.
+export function keepD20(first, second, mode) {
+  const better = mode === "disadvantage" ? second.natural < first.natural : second.natural > first.natural;
+  return { ...(better ? second : first), mode };
+}

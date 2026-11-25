@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, roll, normalize, poolExpression, rollableFrom } from "../src/dice.js";
+import { parse, roll, normalize, poolExpression, rollableFrom, keepD20 } from "../src/dice.js";
 import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
@@ -426,4 +426,19 @@ test("Primeval Awareness waits for a spell slot like a spell does", async () => 
   const names = spentAbilities(arcturus, sheet, state).map(line => line.split(":")[0]);
   assert.ok(names.includes("Primeval Awareness"), "no slots: no Primeval Awareness");
   assert.ok(!spentAbilities(arcturus, sheet, {}).some(line => line.startsWith("Primeval Awareness")));
+});
+
+test("a second d20 for advantage or disadvantage keeps the right roll", () => {
+  const first = roll("d20+9", { random: faces(20, 6) });
+  const crit = roll("d20+9", { random: faces(20, 20) });
+  const low = roll("d20+9", { random: faces(20, 2) });
+  // Roan's case: a 6 first, then a natural 20 with advantage is a crit.
+  const kept = keepD20(first, crit, "advantage");
+  assert.equal(kept.total, 29);
+  assert.equal(kept.critical, true);
+  assert.equal(kept.mode, "advantage");
+  assert.equal(keepD20(crit, first, "advantage").critical, true);
+  assert.equal(keepD20(first, low, "advantage").natural, 6);
+  assert.equal(keepD20(first, low, "disadvantage").natural, 2);
+  assert.equal(keepD20(crit, first, "disadvantage").critical, false);
 });
