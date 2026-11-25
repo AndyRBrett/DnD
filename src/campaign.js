@@ -58,7 +58,8 @@ export const party = [
     "explore | Perception, Survival, Insight, History — Proficient: +6, +6, +6, +5 (passive Perception 16).",
     "social | Persuasion — +4, proficient from the Exiled Noble background.",
     "social | Disguise Self — Gloom Stalker spell: 1 action, 1 hour, no concentration, looks only. Passed as a casino guard (natural 20 on Performance).",
-    "explore | Favored Enemy — Humanoids (humans and dwarves): advantage on Survival checks to track them and on Intelligence checks to recall information about them."
+    "explore | Favored Enemy — Humanoids (humans and dwarves): advantage on Survival checks to track them and on Intelligence checks to recall information about them. Speaks Dwarvish.",
+    "explore | Natural Explorer — Favored terrain: forest. On an hour or more of forest travel, difficult terrain doesn't slow the group, they can't get lost except by magic, and he stays alert while foraging, tracking, or navigating (normal-pace stealth only when alone)."
   ]),
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · speed 40 · played by Derek", [
     "combat | Rage — Bonus action, 4 per long rest: advantage on Strength checks and saves, +3 damage, resistance to physical damage.",
@@ -415,10 +416,10 @@ export const sheets = {
     note: "Playable defaults from the campaign chat: legacy (2014) Gloom Stalker rules and spell text, with the table's Sharpshooter ruling.",
     identity: [
       ["Ancestry", "Wood elf with a dark-elf look: Darkvision, Fey Ancestry, Trance, Fleet of Foot (35 ft), Mask of the Wild"],
-      ["Class", "Ranger 10 (Gloom Stalker) · Favored Enemy: humanoids (humans and dwarves)"],
+      ["Class", "Ranger 10 (Gloom Stalker) · Favored Enemy: humanoids (humans and dwarves) · Favored terrain: forest"],
       ["Feat", "Alert (Level 10 bonus feat from the DM)"],
       ["Background", "Exiled Noble"],
-      ["Languages", "Common, Elvish, Sylvan"],
+      ["Languages", "Common, Elvish, Sylvan, Dwarvish (Favored Enemy)"],
       ["Appearance", "6 ft 5 in, ash-gray skin, glowing green eyes, hooded dark battle-worn leather with subtle gold trim and earrings, longbow. Named for the orange-red star."],
       ["Personality", "Quiet, strategic, observant shadow archer and emerging leader"]
     ],
@@ -471,8 +472,8 @@ export const sheets = {
       "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
     ],
     questions: [
-      "Which favored terrain (legacy ranger) did Arcturus pick?",
-      "Favored Enemy also teaches a language its creatures speak: Dwarvish?",
+      "Legacy rangers gain a second favored terrain at level 6 and a third at level 10: which two besides forest?",
+      "Legacy rangers also gain a second favored enemy at level 6: humanoids only so far, or is another picked?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
     ]

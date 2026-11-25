@@ -89,7 +89,7 @@ test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async 
   const ready = sheet.sections.flatMap(section => section.entries.map(entry => entry.name));
   for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist",
     "Hunter's Mark", "Hide in Plain Sight", "Rope Trick", "Fear", "Dagger", "Iron Mind", "Cure Wounds", "Pass Without Trace", "Mask of the Wild",
-    "Alert", "Favored Enemy"]) assert.ok(ready.includes(name), name);
+    "Alert", "Favored Enemy", "Natural Explorer"]) assert.ok(ready.includes(name), name);
   const confirm = sheet.confirm.map(entry => entry.name);
   assert.deepEqual(confirm, [], "Alert settled the Level 10 ability");
   assert.equal(full.rolls.find(([label]) => label === "Initiative")[1], "+12");
