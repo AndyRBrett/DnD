@@ -450,6 +450,7 @@ async function sync() {
       $("party-editor").hidden = true;
       $("close-wrap").hidden = true;
       $("copy").hidden = true;
+      $("tv").hidden = true;
       $("edit").hidden = true;
       $("connection").textContent = "ENDED";
       drawBoard();
@@ -3835,6 +3836,10 @@ function enterRoom() {
   $("dice-fab").hidden = false;
   $("help").hidden = boardMode;
   $("home").hidden = boardMode;
+  // Anyone at the table can put the TV board on a big screen: it only shows
+  // what every player already sees, and never acts as the DM.
+  $("tv").href = "?room=" + room + "&board=1";
+  $("tv").hidden = boardMode;
   if (!boardMode) setTimeout(maybeWelcome, 600);
   document.body.classList.add("in-table");
   showTab(storage.get(TAB_KEY) ?? "scene");
@@ -3844,7 +3849,7 @@ function enterRoom() {
   $("board").hidden = !boardMode;
   if (boardMode) {
     document.body.classList.add("board-mode");
-    for (const id of ["tabbar", "dice-fab", "copy", "help"]) $(id).hidden = true;
+    for (const id of ["tabbar", "dice-fab", "copy", "help", "tv"]) $(id).hidden = true;
     // The one way out: back to this table's normal view.
     $("board-exit").href = "?room=" + room;
     $("board-exit").hidden = false;
@@ -3982,6 +3987,7 @@ async function showLobby(message = "") {
   $("dice-fab").hidden = true;
   $("help").hidden = true;
   $("home").hidden = true;
+  $("tv").hidden = true;
   document.body.classList.remove("in-table");
   $("account-line").hidden = !backend.hosted;
   $("join").hidden = !room;
