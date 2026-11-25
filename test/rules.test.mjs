@@ -7,7 +7,7 @@ import { party } from "../src/campaign.js";
 const tableSpecific = new Set([
   "Living-shadow swap", "Cause a distraction", "Distraction", "Lead the ambush", "Speak plainly",
   "Current HP", "Current HP and AC", "Current HP and slots", "Wisdom 20", "Weakness sense", "Other maneuvers", "Note from the sheet",
-  "Choker of Caution", "Agility Ring", "Additional ability"
+  "Choker of Caution", "Agility Ring", "Additional ability", "Third-eye amulet"
 ].map(name => name.toLowerCase()));
 
 test("every ability on the roster has a built-in rule or is a known table move", () => {
@@ -88,9 +88,11 @@ test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async 
   const sheet = organizeSheet(arcturus);
   const ready = sheet.sections.flatMap(section => section.entries.map(entry => entry.name));
   for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist",
-    "Hunter's Mark", "Hide in Plain Sight", "Rope Trick", "Fear", "Dagger", "Iron Mind", "Cure Wounds", "Pass Without Trace", "Mask of the Wild"]) assert.ok(ready.includes(name), name);
+    "Hunter's Mark", "Hide in Plain Sight", "Rope Trick", "Fear", "Dagger", "Iron Mind", "Cure Wounds", "Pass Without Trace", "Mask of the Wild",
+    "Alert", "Favored Enemy"]) assert.ok(ready.includes(name), name);
   const confirm = sheet.confirm.map(entry => entry.name);
-  assert.deepEqual(confirm, ["Additional ability"], "only the DM's extra Level 10 ability is still open");
+  assert.deepEqual(confirm, [], "Alert settled the Level 10 ability");
+  assert.equal(full.rolls.find(([label]) => label === "Initiative")[1], "+12");
   for (const name of ["Lightning Arrow", "Tireless", "Silence"]) assert.ok(!ready.includes(name) && !confirm.includes(name), name + " is out of the default loadout");
   assert.match(arcturus.moves, /Longbow — \+11 to hit/);
 });

@@ -37,7 +37,8 @@ export const party = [
   profile("Arcturus", "Wood Elf Gloom Stalker ranger · Level 10 · AC 17 · spell DC 14, +6", [
     "combat | Longbow — +11 to hit with Archery (+5 Dex, +4 proficiency, +2 Archery), 1d8+5 piercing, 150/600 ft. Two shots per Attack action; disadvantage if a hostile creature that can see you is within 5 ft.",
     "combat | Extra Attack — Two attacks with the Attack action.",
-    "combat | Dread Ambusher — Legacy version: +2 (Wis) to initiative (+7 total), +10 ft on the first combat turn, and a third shot on that turn that deals an extra 1d8.",
+    "combat | Dread Ambusher — Legacy version: +2 (Wis) to initiative, +10 ft on the first combat turn, and a third shot on that turn that deals an extra 1d8.",
+    "combat | Alert — Level 10 bonus feat from the DM: +5 initiative (+12 total), can't be surprised while conscious, and hidden attackers get no advantage just for being unseen.",
     "combat | Archery — Fighting style: +2 to ranged weapon attack rolls.",
     "combat | Sharpshooter — Table ruling: ignore half and three-quarters cover and no long-range disadvantage. The −5/+10 option is off.",
     "combat | Hunter’s Mark — Known. Bonus action, concentration, +1d6 on each hit; moving it is free.",
@@ -57,7 +58,7 @@ export const party = [
     "explore | Perception, Survival, Insight, History — Proficient: +6, +6, +6, +5 (passive Perception 16).",
     "social | Persuasion — +4, proficient from the Exiled Noble background.",
     "social | Disguise Self — Gloom Stalker spell: 1 action, 1 hour, no concentration, looks only. Passed as a casino guard (natural 20 on Performance).",
-    "check | Additional ability — The DM offered an extra ability at Level 10 beyond Hide in Plain Sight; what it is hasn't been settled."
+    "explore | Favored Enemy — Humanoids (humans and dwarves): advantage on Survival checks to track them and on Intelligence checks to recall information about them."
   ]),
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · speed 40 · played by Derek", [
     "combat | Rage — Bonus action, 4 per long rest: advantage on Strength checks and saves, +3 damage, resistance to physical damage.",
@@ -97,7 +98,8 @@ export const party = [
     "danger | Break free — Broke out of a guard's hold (and his wrist). Athletics +8.",
     "danger | Indomitable — Reroll a failed saving throw once per long rest.",
     "explore | Know Your Enemy — Watch or talk with a creature for a minute to learn how it compares to you.",
-    "explore | Weakness sense — Ask the DM: they reveal a clue about a creature's weakness. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
+    "explore | Weakness sense — Dum Dum senses weak points in enemies, structures, and areas (a cracked wall, an unstable floor). Ask the DM: they reveal a clue. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
+    "any | Third-eye amulet — Dum Dum carries it. What it does is up to the DM.",
     "explore | Acrobatics, Insight — Proficient: +5, +5.",
     "social | Intimidation, Performance — Proficient: +3, +3. Gladiator crowd work.",
     "social | Speak plainly — Dum Dum's blunt, protective style got the bartender to point the way."
@@ -205,8 +207,7 @@ export const sheets = {
       ["Cloak", "+2 HP (included in the 75)."],
       ["Choker of Caution", "A passive danger warning, like a spider-sense: the DM says when it triggers. No action and no bonus."],
       ["Agility Ring", "When the DM calls for it, a Dexterity save to dodge; the DM sets the DC and decides the outcome. No automatic bonus or charges."],
-      ["Healing potions", "3 (2d4+2 each), tracked under Resources."],
-      ["Third-eye amulet", "Who holds it is unclear; don't assume the White Wizard does."]
+      ["Healing potions", "3 (2d4+2 each), tracked under Resources."]
     ],
     lists: [
       ["Prepared cleric spells (14)", [
@@ -239,7 +240,7 @@ export const sheets = {
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Anything new from the last session: rests taken, potions drunk, items found?",
       "Does the Agility Ring ever give a set bonus, or is it always the DM's call?",
-      "Who holds the third-eye amulet?"
+      "Any other magic items picked up?"
     ]
   },
   "Logan Ninefingers": {
@@ -345,7 +346,7 @@ export const sheets = {
       ["Background", "Gladiator (Entertainer variant)"],
       ["Tools", "Smith's tools (Student of War)"],
       ["Role", "Frontline control, melee, guard breaker"],
-      ["Special", "Weakness sense: the DM reveals a clue about a creature's weakness when asked"]
+      ["Special", "Weakness sense: senses weak points in enemies, structures, and areas; the DM reveals a clue when asked"]
     ],
     abilities: [["STR", 18, 4], ["DEX", 12, 1], ["CON", 16, 3], ["INT", 10, 0], ["WIS", 12, 1], ["CHA", 8, -1]],
     combat: [
@@ -367,7 +368,7 @@ export const sheets = {
       ["Performance", "CHA", "+3", "proficient"], ["Persuasion", "CHA", "−1", ""], ["Religion", "INT", "+0", ""],
       ["Sleight of Hand", "DEX", "+1", ""], ["Stealth", "DEX", "+1 (disadvantage in heavy armor)", ""], ["Survival", "WIS", "+1", ""]
     ],
-    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."]],
+    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Dum Dum carries it; what it does is up to the DM."]],
     lists: [
       ["Attack cheat sheet", [
         "Normal hit: d20 + 8; damage 1d8 + 6 (Strength +4, Dueling +2).",
@@ -388,6 +389,7 @@ export const sheets = {
     questions: [
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Weakness sense: does it cost an action, have a range or uses, or add damage?",
+      "What does the third-eye amulet do?",
       "Any magic items, or a different weapon for some fights?",
       "Superiority dice left after the last fight?"
     ]
@@ -408,12 +410,13 @@ export const sheets = {
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 2 }, per: "long" }
     ],
-    rolls: [["Longbow", "+11"], ["Damage", "1d8+5"], ["Initiative", "+7"], ["Stealth", "+9"], ["Perception", "+6"], ["Spell DC", "14"], ["DEX save", "+9"], ["AC", "17"]],
+    rolls: [["Longbow", "+11"], ["Damage", "1d8+5"], ["Initiative", "+12"], ["Stealth", "+9"], ["Perception", "+6"], ["Spell DC", "14"], ["DEX save", "+9"], ["AC", "17"]],
     title: "Arcturus — The Exiled Star",
     note: "Playable defaults from the campaign chat: legacy (2014) Gloom Stalker rules and spell text, with the table's Sharpshooter ruling.",
     identity: [
       ["Ancestry", "Wood elf with a dark-elf look: Darkvision, Fey Ancestry, Trance, Fleet of Foot (35 ft), Mask of the Wild"],
-      ["Class", "Ranger 10 (Gloom Stalker)"],
+      ["Class", "Ranger 10 (Gloom Stalker) · Favored Enemy: humanoids (humans and dwarves)"],
+      ["Feat", "Alert (Level 10 bonus feat from the DM)"],
       ["Background", "Exiled Noble"],
       ["Languages", "Common, Elvish, Sylvan"],
       ["Appearance", "6 ft 5 in, ash-gray skin, glowing green eyes, hooded dark battle-worn leather with subtle gold trim and earrings, longbow. Named for the orange-red star."],
@@ -422,7 +425,7 @@ export const sheets = {
     abilities: [["STR", 10, 0], ["DEX", 20, 5], ["CON", 14, 2], ["INT", 12, 1], ["WIS", 14, 2], ["CHA", 10, 0]],
     combat: [
       ["Proficiency", "+4"],
-      ["Initiative", "+7"],
+      ["Initiative", "+12 (Dex +5, Wis +2 Dread Ambusher, Alert +5)"],
       ["Speed", "35 ft (45 ft first turn)"],
       ["HP", "84 max"],
       ["AC", "17 (studded leather, Dex +5)"],
@@ -468,8 +471,8 @@ export const sheets = {
       "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
     ],
     questions: [
-      "What is the extra Level 10 ability the DM offered, beyond Hide in Plain Sight?",
-      "Which favored enemies and favored terrains (legacy ranger) did Arcturus pick?",
+      "Which favored terrain (legacy ranger) did Arcturus pick?",
+      "Favored Enemy also teaches a language its creatures speak: Dwarvish?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
     ]
