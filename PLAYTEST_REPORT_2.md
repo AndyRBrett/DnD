@@ -4,6 +4,7 @@
 **Who:** Claude (Claude Code, cloud session, headless browser) as DM and host. **Muse** ("Molly") as the players: all five characters from one browser.
 **Code version:** `main` at `54bc99c` (PR #62), after the round-1 fixes in PRs #50–#62
 **Purpose:** check the round-1 fixes at a live table, and cover the use cases round 1 skipped or blocked.
+**Sources:** Claude's DM-side notes, plus Muse's written feedback ("Round 2 playtest feedback, final"). Muse's notes name `80b3923` (PR #59) as the code under test, but the deployed site was already at PR #62 when the DM checked.
 **Attribution:** **[DM]** seen by Claude while running the table · **[Player]** reported by Muse · **[Code]** confirmed in the source.
 **Severity:** same scale as round 1. **Critical** = loses or corrupts game state · **High** = wrong numbers or a blocked flow a group hits every session · **Medium** = confusing or easy to get wrong · **Low** = polish.
 
@@ -13,7 +14,7 @@
 
 | Part | What happened | What it covered |
 |---|---|---|
-| **Fight 1** | 3 rounds against built-in stat blocks, won. | Initiative, rage, the Attack card, multi-attack in one tap, Dread Ambusher, Trip Attack and Action Surge, Hunter's Mark, Spiritual Weapon, the hit inbox, End combat |
+| **Fight 1** | Vault Warden (AC 16) + 2 Black Guards (AC 17), the guards surprised in round 1. 3 rounds, won. | Initiative, rage, the Attack card, multi-attack in one tap, Dread Ambusher, Trip Attack and Action Surge, Hunter's Mark, Spiritual Weapon, the hit inbox, End combat |
 | **Fight 2** (vault) | A custom **Rune Golem** (AC 17, 100 HP, saved as a template), 2 Vault Sentries, and a Shadow Assassin. 3 rounds, won. The White Wizard dropped to 0 from Golem slams, a shortsword hit, and the Assassin's poison (failed DC 15 Con save). | Custom enemies and templates, Fireball with one-tap Dex saves, Spirit Guardians with a Wis save, enemy attacks with Apply / Half, poison save, a PC at 0, death saves |
 | **After the fight** | The White Wizard rolls to stable, spends a Hit Die, drinks a potion. Short rest. Ask Claude on the scene. Long rest attempted. | Death saves, healing from 0, Hit Dice, short rest refills, potions, Ask Claude, long rest |
 
@@ -44,7 +45,18 @@ Pauses: Muse went quiet for about 100 minutes mid-fight 2, and the DM's browser 
 | Hit Die healing on a short rest | ✅ 0 → 5 HP, 9 of 10 dice left | [Player] |
 | Healing potion from the Resources card | ✅ 5 → 12 HP, potions 3 → 2 | [Player] |
 | **Ask Claude** on the scene | ✅ about a minute; the bigger picture plus three options (Detect Magic on the plinth, heal then rest, study the staff-room papers), each with "Add to story" | [Player] |
-| Roan's full sheet (PR #61): wrist blade +9, 1d6+5, Sneak Attack 5d6 | ✅ attacks and Sneak Attack rolled from the sheet | [DM] [Player] |
+| Roan's full sheet (PR #61): wrist blade +9, 1d6+5, Sneak Attack 5d6 | ✅ attacks and Sneak Attack rolled from the sheet; Stealth 29, HP 93/93, skills listed | [DM] [Player] |
+| No double-send | ✅ Send turns into "Sent to [target]"; one hit entry per attack, for all five characters | [Player] |
+| Reckless locks after the to-hit roll | ✅ disabled after rolling, back for the next attack, cleared at the end of the turn; it doesn't carry into the next turn | [Player] |
+| Advantage in the dice tray doesn't carry over | ✅ | [Player] |
+| Dice graphic matches the posted result | ✅ every checked roll matched | [Player] |
+| Enemy status labels stable | ✅ Healthy → Bloodied → Down, no flicker (fight 1) | [Player] |
+| Weapon hits no longer say "(2nd-level)" | ✅ "with Longbow, 30 to hit"; the level only shows on spells | [Player] |
+| Maneuvers at 0 superiority dice | ✅ "(none left)", disabled and unchecked, no +1d10 | [Player] |
+| Spirit Guardians marks Concentrating with the Con-save reminder | ✅ | [Player] |
+| Healing Word cast button | ✅ present ("one slot when cast"); not cast | [Player] |
+| Ask Claude uses the current fight | ✅ a mid-fight answer knew about the Fireball, Warding Flare uses and the threat to the Wizard | [Player] |
+| A plain d20 in the dice tray isn't taken as a death save | ✅ | [Player] |
 
 ---
 
@@ -52,12 +64,13 @@ Pauses: Muse went quiet for about 100 minutes mid-fight 2, and the DM's browser 
 
 ### N1. A re-roll for advantage doesn't update the hit that's sent: **High** [DM]
 - **Steps:** roll an attack, then re-roll in the dice tray for advantage (outside the Attack card's own Advantage option), and send the hit.
-- **What happened:** the report sent the *first* roll. Roan's natural 20 arrived as "15 — a miss?", and the crit dice weren't doubled.
-- **Fix idea:** whatever d20 the tray shows last should drive the to-hit and the crit, or the tray should block a re-roll on a pending attack and point to the Advantage option.
+- **What happened:** the report sent the *first* roll. Roan's natural 20 arrived as "15 — a miss?", and the crit dice weren't doubled. Muse saw the same thing from the player side: Roan's Sneak Attack crit was sent as 21, and the DM added the extra 6d6 (+20) by hand. [DM] [Player]
+- **Cause:** the Attack card listens for one roll (`openDice(..., onResult)`, `app.js:2915`). A second d20 rolled after the tray closes goes to the plain tray and never reaches the attack. [Code]
+- **Fix idea:** after the to-hit roll, offer "Advantage? Roll the second d20" (and disadvantage), and keep the higher (or lower) roll, crit included.
 
 ### N2. Two DM screens can apply the same hit twice: **High** [DM] [Code]
 - **What happened:** Muse joined while signed in to an account on the host list (see N3), so its browser was a second DM screen. Its *Hits to apply* still listed four Golem hits the DM had already applied (12 + 19 + 11 + 10 = 52), with live **Apply** buttons. It applied them again, and the Golem dropped from 48 to 0 with no new attacks.
-- The two DM screens also disagreed: 26 damage Muse put on the Assassin from its screen never showed on the DM's screen.
+- The two DM screens also disagreed. Muse put Logan's 28 and Arcturus's 26 on the Assassin from its screen; neither showed on the DM's screen, which still had the Assassin at 59 and then 31 while Muse's screen had him at 5 and then 0. [Both]
 - **Cause:** which hits have been applied, and the encounter's HP, are tracked on each device.
 - **Fix idea:** record "applied" on the action itself (server side), and let the server's encounter copy win across DM screens. Rare at a real table, but a co-DM or a second tablet would hit it.
 
@@ -98,19 +111,39 @@ Presence follows the selected character, so the list flickers as the player swit
 ### N12. A short rest is allowed during combat: **Low** [Player]
 The White Wizard and Dum Dum took short rests while the fight was still running (round 3). A warning ("You're in a fight; rest anyway?") would catch mistakes.
 
-### N13. Smaller things: **Low**
+### N13. A miss leaves no trace in the story: **Medium** [Player]
+Tapping **Miss** on the Attack card posts nothing, so the DM can't tell a miss from a skipped turn. The DM thought Roan's fight-2 round-1 turn and Arcturus's round-3 turn "went by" when both had attacked and missed.
+- **Fix idea:** post "🎯 missed [target] with [weapon] (13 to hit)" on Miss.
+
+### N14. Concentration doesn't end at 0 HP: **Medium** [Player] [Code]
+When the White Wizard dropped to 0, his Conditions still showed "1 ACTIVE — CONCENTRATING" until it was removed by hand. The rules end concentration when you're knocked out. Conditions are stored on the player's phone per character (`app.js:1137`), and nothing clears them at 0 HP.
+
+### N15. "Next attack" allows unlimited attacks: **Medium** [Player]
+After the last attack of an Attack action, **Next attack** resets the card to a fresh attack with no limit and no label (it isn't marked as a bonus action such as Frenzy). Muse didn't abuse it, but a player could attack again and again.
+
+### N16. Concentrating can be marked on a character with no concentration spell: **Low** [Player]
+Roan (no concentration spells) could be marked Concentrating with no warning. Muse did it by accident.
+
+### N17. Smaller things: **Low**
 - Apply and Half (N) on an enemy's attack: after a tap there's no clear label of which one was used. [DM]
-- Muse accidentally toggled Concentrating on Roan; the toggle is easy to hit. [DM]
+- A stray "Damage: 3 (d6: 3)" line appeared in Roan's dice log from a damage quick-roll before the real 10. [Player]
+- In the player view during fight 2, all four enemies stayed "Healthy" despite damage. This was during the host-account mix-up (N2, N3), so it needs a re-check before it's treated as a bug. [Player]
+
+### Not a bug
+- **No Great Weapon Master toggle on Logan's Greataxe.** Logan has Savage Attacker, not Great Weapon Master (`src/campaign.js:281`).
 
 ---
 
 ## 3. Player behavior (Muse)
 
 - **Slow:** a few minutes per action, plus one 100-minute silence.
-- **Hit reporting:** in fight 1 it mostly used Send. While on the host account (N3) it typed hits and damage, which never reaches *Hits to apply*.
-- **Stale information:** it sent hits at downed enemies and kept its own count of enemy HP. It was wrong twice: it called the Assassin "Bloodied at 31 HP", then called it dead when it was at 31, then at 5.
-- **Skipped turns:** Logan (fight 2, round 2), Roan (fight 2, round 1), and Arcturus (fight 1, round 3) passed with no post. Dum Dum often used one of his two attacks in fight 1.
-- **Good:** caught the advantage rule, checked slot counts, reported precise steps for the death-save and long-rest problems, and asked where missing buttons should be instead of guessing.
+- **Sign-in:** Muse spent part of fight 2 signed in to a host account (N3). It switched to a player account near the end of the fight, after which no enemies were left to test Send against.
+- **Hit reporting:** in fight 1 it used Send. While on the host account it typed hits, or applied damage on its own DM screen, so they never reached the DM's *Hits to apply*.
+- **Enemy HP:** it kept its own count from its DM screen, which disagreed with the DM's (N2). That's why it called the Assassin "Bloodied at 31 HP" and then dead while the DM's screen had him at 31.
+- **Turns that looked skipped weren't:** Roan and Arcturus missed (misses post nothing, N13), and Logan's round-2 attack went onto Muse's DM screen. Dum Dum sometimes used one of his two attacks.
+- **Close calls:** after the DM asked it to roll and Send without asking "does it hit?", it asked only on close rolls.
+- **Ending the table:** it asked three times for the table to be ended. The DM confirmed the table was practice-only, but left it open rather than delete it without your OK.
+- **Good:** caught the advantage rule, checked slot counts, deliberately re-rolled to test the death-save limit, and reported precise steps for the death-save and long-rest problems.
 
 ---
 
@@ -118,7 +151,9 @@ The White Wizard and Dum Dum took short rests while the fight was still running 
 
 | Use case | Why |
 |---|---|
-| Concentration-save prompt after damage (R4) | The hits landed while Muse was on the host account; Concentrating was cleared by hand afterwards |
+| Concentration-save prompt after damage (R4) | The hits landed while Muse was on the host account, so no player phone was there to show the prompt |
+| Send end to end as a player | No enemies were standing once Muse was on a player account |
+| Ending the table | Left open on purpose (see Player behavior); practice tables expire after 8 hours |
 | Long rest | Blocked by the confirm popup (N5) |
 | Second Wind | Dum Dum took no damage all fight (94/94) |
 | Healing Word | Not used; the potion covered healing from 0 instead |
@@ -129,9 +164,10 @@ The White Wizard and Dum Dum took short rests while the fight was still running 
 
 ## 5. Suggested order
 
-1. **N1** advantage re-roll sends the wrong roll (wrong numbers, every session with Reckless or hidden attacks).
+1. **N1** advantage re-roll sends the wrong roll (wrong numbers and missed crits).
 2. **N5** replace native confirms with in-page confirms (unblocks long rest and End combat for test agents, and gives feedback when cancelled).
-3. **N4** one death save per round.
-4. **N3** + **N2** tell a host they're in DM mode, and keep applied hits on the server.
-5. **N7**, **N8**, **N6** rule hints (rage resistance, poison on the attack, advantage from hiding).
-6. The rest as polish.
+3. **N4**, **N14** one death save per round; concentration ends at 0 HP.
+4. **N13**, **N15** post misses; cap "Next attack" at the Attack action.
+5. **N3** + **N2** tell a host they're in DM mode, and keep applied hits on the server.
+6. **N7**, **N8**, **N6** rule hints (rage resistance, poison on the attack, advantage from hiding).
+7. The rest as polish.
