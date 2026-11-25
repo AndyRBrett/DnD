@@ -469,9 +469,11 @@ export function spentAbilities(character, sheet, state) {
   if (slots) {
     for (const name of moveNames(character)) {
       const rule = lookupRule(name);
-      if (rule?.section !== "spells" || !(rule.level > 0)) continue;
-      const open = Object.keys(slots).map(Number).some(level => level >= rule.level && resourceLeft(sheet, state, slotKey(level)) > 0);
-      if (!open) spent.set(name, name + ": no " + ORDINALS[rule.level] + "-level or higher spell slot left");
+      // A leveled spell, or a feature that spends a slot (Primeval Awareness: slot 1).
+      const needs = rule?.section === "spells" ? rule.level : rule?.slot;
+      if (!(needs > 0)) continue;
+      const open = Object.keys(slots).map(Number).some(level => level >= needs && resourceLeft(sheet, state, slotKey(level)) > 0);
+      if (!open) spent.set(name, name + ": no " + ORDINALS[needs] + "-level or higher spell slot left");
     }
   }
   // covers: the abilities a resource pays for; an entry can be [name, cost]
