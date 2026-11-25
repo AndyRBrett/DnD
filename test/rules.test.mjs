@@ -7,7 +7,7 @@ import { party } from "../src/campaign.js";
 const tableSpecific = new Set([
   "Living-shadow swap", "Cause a distraction", "Distraction", "Lead the ambush", "Speak plainly",
   "Current HP", "Current HP and AC", "Current HP and slots", "Wisdom 20", "Weakness sense", "Other maneuvers", "Note from the sheet",
-  "Choker of Caution", "Agility Ring", "Additional ability", "Third-eye amulet", "Constitution 18", "Shadow vision", "Thieves' tools"
+  "Choker of Caution", "Agility Ring", "Additional ability", "Third-eye amulet", "Languages"
 ].map(name => name.toLowerCase()));
 
 test("every ability on the roster has a built-in rule or is a known table move", () => {
@@ -65,7 +65,7 @@ test("every full sheet is complete and every sheet fits the database limits", as
     assert.equal(full.abilities.length, 6, name);
     assert.equal(full.saves.length, 6, name);
     assert.equal(full.skills.length, 18, name);
-    assert.ok(full.questions.length >= 4, name);
+    assert.ok(full.defaults.length >= 4, name);
   }
   for (const member of party) {
     assert.ok(member.role.length <= 90, member.name + " role");
@@ -88,7 +88,7 @@ test("Arcturus: full sheet data and the confirmed vs. unconfirmed split", async 
   assert.equal(full.abilities.find(([label]) => label === "DEX")[1], 20);
   assert.equal(full.skills.length, 18);
   assert.deepEqual(full.skills.filter(row => row[3] === "proficient").map(row => row[0]), ["History", "Insight", "Perception", "Persuasion", "Stealth", "Survival"]);
-  assert.ok(full.questions.length >= 4);
+  assert.ok(full.defaults.length >= 4);
   const sheet = organizeSheet(arcturus);
   const ready = sheet.sections.flatMap(section => section.entries.map(entry => entry.name));
   for (const name of ["Longbow", "Extra Attack", "Dread Ambusher", "Archery", "Disguise Self", "Stealth", "Persuasion", "Defensive Duelist",

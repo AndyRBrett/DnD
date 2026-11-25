@@ -53,6 +53,7 @@ export const party = [
     "explore | Umbral Sight — Darkvision to 90 ft at this table; invisible to creatures relying on darkvision to see you in darkness (not automatically hidden).",
     "explore | Hide in Plain Sight — Level 10 (legacy ranger): a minute of camouflage gives +10 Stealth while you stay still.",
     "explore | Pass Without Trace, Rope Trick — Known: +10 Stealth for the party (concentration); a hidden space for a short rest.",
+    "explore | Primeval Awareness — Action, spend a spell slot: for 1 minute per slot level, sense whether aberrations, celestials, dragons, elementals, fey, fiends, or undead are within 1 mile (6 in a favored terrain). No location or count.",
     "explore | Mask of the Wild — Wood elf: try to hide when only lightly obscured by foliage, rain, snow, or mist.",
     "explore | Stealth — +9; +19 under Pass Without Trace. Moving into cover alone doesn't give advantage; hiding needs the DM's OK and normally your action.",
     "explore | Perception, Survival, Insight, History — Proficient: +6, +6, +6, +5 (passive Perception 16).",
@@ -99,8 +100,8 @@ export const party = [
     "danger | Break free — Broke out of a guard's hold (and his wrist). Athletics +8.",
     "danger | Indomitable — Reroll a failed saving throw once per long rest.",
     "explore | Know Your Enemy — Watch or talk with a creature for a minute to learn how it compares to you.",
-    "explore | Weakness sense — Dum Dum senses weak points in enemies, structures, and areas (a cracked wall, an unstable floor). Ask the DM: they reveal a clue. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
-    "danger | Third-eye amulet — Dum Dum carries it: it brings down force fields and can draw in large amounts of power and energy. How much, how often, and where the energy goes is the DM's call (its last wearer, a warlock, became a dragon when it was pulled from his forehead).",
+    "explore | Weakness sense — No action, once per turn: Dum Dum senses weak points in a creature, structure, or area he can see within 60 ft (a cracked wall, an unstable floor). The DM gives one clue. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
+    "danger | Third-eye amulet — Dum Dum carries it. Action, touching it: bring down a force field or magical barrier, or draw in a large burst of power or energy. Once per long rest (again sooner risks a backlash); where the energy goes is the DM's call (its last wearer, a warlock, became a dragon when it was pulled from his forehead).",
     "explore | Acrobatics, Insight — Proficient: +5, +5.",
     "social | Intimidation, Performance — Proficient: +3, +3. Gladiator crowd work.",
     "social | Speak plainly — Dum Dum's blunt, protective style got the bartender to point the way."
@@ -121,9 +122,9 @@ export const party = [
     "explore | Sleight of Hand — +9, proficient.",
     "explore | Thieves' Cant — Rogue coded speech and signs.",
     "social | Intimidation — +5, proficient.",
-    "check | Constitution 18 — Proposed Level 10 increase (max HP 93); the DM confirms it.",
-    "check | Shadow vision — Seeing through the shadow before a swap was allowed in play; its action cost and limits are the DM's call.",
-    "check | Thieves' tools — Proposed proficiency (+9) from his rogue foundation."
+    "explore | Shadow vision — Bonus action: see (not hear) through the Living Shadow until the start of his next turn, his own eyes shut meanwhile. Not through closed doors.",
+    "explore | Thieves' tools — +9, proficient: locks and traps.",
+    "social | Languages — Common, Dwarvish, and Thieves' Cant."
   ])
 ];
 
@@ -252,11 +253,12 @@ export const sheets = {
         "Only one concentration spell at a time."
       ]]
     ],
-    questions: [
-      "These are playable defaults from the campaign chat: has the DM looked them over?",
-      "Anything new from the last session: rests taken, potions drunk, items found?",
-      "Does the Agility Ring ever give a set bonus, or is it always the DM's call?",
-      "Any other magic items picked up?"
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "Sheet values are the table's playable defaults from the campaign chat.",
+      "No rests since the casino fight; 3 healing potions; no other magic items.",
+      "Agility Ring: no fixed bonus; the DM calls for the Dexterity save and sets the DC.",
+      "Choker of Caution: the DM says when it warns; it never costs an action."
     ]
   },
   "Logan Ninefingers": {
@@ -322,11 +324,12 @@ export const sheets = {
         "Rage resistance halves physical damage; check whether the DM already halved it."
       ]]
     ],
-    questions: [
-      "These are playable defaults from the campaign chat: has Derek looked them over?",
-      "Any exhaustion left from Frenzy?",
-      "Javelins and handaxes left after the last fight?",
-      "Has Logan picked up any magic items?"
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "Sheet values are the table's playable defaults (Derek can change them).",
+      "No exhaustion from Frenzy carried into this session.",
+      "All 4 javelins and 2 handaxes on hand.",
+      "No magic items."
     ]
   },
   "Dum Dum": {
@@ -351,7 +354,8 @@ export const sheets = {
       { name: "Superiority dice", max: 5, per: "short", covers: ["Combat Superiority", "Trip Attack", "Goading Attack", "Menacing Attack", "Precision Attack", "Disarming Attack", "Pushing Attack", "Riposte"], note: "d10 each; maneuver DC 16." },
       { name: "Action Surge", max: 1, per: "short", note: "One extra action on your turn (four attacks)." },
       { name: "Second Wind", max: 1, per: "short", note: "Bonus action: regain 1d10+10 HP." },
-      { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." }
+      { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." },
+      { name: "Third-eye amulet", max: 1, per: "long", note: "Bring down a force field or draw in a burst of energy. Using it again before a long rest risks a backlash." }
     ],
     rolls: [["Longsword", "+8"], ["Damage", "1d8+6"], ["Maneuver DC", "16"], ["Superiority", "5 × d10"], ["AC", "20"], ["Initiative", "+1"], ["STR save", "+8"], ["Athletics", "+8"]],
     title: "Dum Dum the Gladiator — Battle Master Fighter",
@@ -384,7 +388,7 @@ export const sheets = {
       ["Performance", "CHA", "+3", "proficient"], ["Persuasion", "CHA", "−1", ""], ["Religion", "INT", "+0", ""],
       ["Sleight of Hand", "DEX", "+1", ""], ["Stealth", "DEX", "+1 (disadvantage in heavy armor)", ""], ["Survival", "WIS", "+1", ""]
     ],
-    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Brings down force fields and draws in large amounts of power and energy. Limits and side effects are the DM's call."]],
+    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Action, touching it: brings down a force field or magical barrier, or draws in a large burst of power or energy. Once per long rest; again sooner risks a backlash."]],
     lists: [
       ["Attack cheat sheet", [
         "Normal hit: d20 + 8; damage 1d8 + 6 (Strength +4, Dueling +2).",
@@ -402,12 +406,12 @@ export const sheets = {
         "Weakness sense on the shadow clones: fire, lightning, and ordinary physical attacks hurt them."
       ]]
     ],
-    questions: [
-      "These are playable defaults from the campaign chat: has the DM looked them over?",
-      "Weakness sense: does it cost an action, have a range or uses, or add damage?",
-      "Third-eye amulet: any limit on how much power it can take in, how often, or a cost or side effect for the one using it?",
-      "Any magic items, or a different weapon for some fights?",
-      "Superiority dice left after the last fight?"
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "Weakness sense: no action, once per turn, on a creature, structure, or area Dum Dum can see within 60 ft. The DM gives one clue (a resistance, vulnerability, or weak point). No damage bonus by itself.",
+      "Third-eye amulet: an action, touching it to a force field or magical barrier to bring it down, or to a source of power or energy to draw it in. Once per long rest; using it again before then risks a backlash (the DM's call). Where the drawn energy goes is the DM's call.",
+      "Superiority dice: all 5 at the start of the session.",
+      "No other magic items; the longsword is his only weapon."
     ]
   },
   "Arcturus": {
@@ -488,19 +492,20 @@ export const sheets = {
       "Later turns: two shots per Attack action, each 1d8 + 5 + 1d6 while Hunter’s Mark holds.",
       "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
     ],
-    questions: [
-      "Favored terrains and enemies are campaign defaults (forest, Underdark, mountain; humanoids, dragons): has the DM looked them over?",
-      "Primeval Awareness (legacy ranger): spend a slot to sense whether aberrations, celestials, dragons, elementals, fey, fiends, or undead are within 1 mile (6 in a favored terrain), a minute per slot level; no location or count, and not humanoids. Track it in the app?",
-      "These are playable defaults from the campaign chat: has the DM looked them over?",
-      "Any magic items besides the Ring of the Dragon Champion?"
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "Favored terrains (forest, Underdark, mountain) and enemies (humanoids, dragons) are table defaults.",
+      "Primeval Awareness is on the sheet: it spends a spell slot (tap the dot).",
+      "No magic items besides the Ring of the Dragon Champion.",
+      "Shield carried, not equipped: AC stays 17."
     ]
   },
   "Roan the Last Shadow": {
     attacks: [
       { name: "Wrist blade", ability: "DEX", hit: 9, damage: "1d6+5", type: "slashing", note: "Finesse, 5 ft. One attack per Attack action; the second blade gives no free attack." },
-      { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft; Roan's own throw costs no energy. Doesn't pierce several enemies unless the DM rules it." },
-      { name: "Shadow's copied Q", ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage." },
-      { name: "Shadow Slash (E)", ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack." }
+      { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft, one target; Roan's own throw costs no energy and isn't magical." },
+      { name: "Shadow's copied Q", ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage. Magical." },
+      { name: "Shadow Slash (E)", ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack. Magical." }
     ],
     attackOptions: [
       { name: "Sneak Attack", damage: "+5d6", lasts: "attack", note: "Once per turn, on one hit: advantage, or an active ally within 5 ft of the target and no disadvantage. The shadow isn't an ally." },
@@ -512,7 +517,7 @@ export const sheets = {
     ],
     rolls: [["Wrist blade", "+9"], ["Damage", "1d6+5"], ["Sneak Attack", "5d6"], ["Shadow DC", "17"], ["AC", "17"], ["Initiative", "+5"], ["Stealth", "+13"], ["Perception", "+10"]],
     title: "Roan, the Last Shadow — Rogue (Master of Shadows)",
-    note: "A custom rogue with a homebrew shadow subclass, from the campaign chat. Constitution 18 (max HP 93) is the proposed Level 10 increase for the DM to confirm.",
+    note: "A custom rogue with a homebrew shadow subclass, from the campaign chat. Level 10: Constitution 16 → 18, max HP 93.",
     identity: [
       ["Species", "Human"],
       ["Class", "Rogue 10 (Master of Shadows, homebrew)"],
@@ -520,14 +525,15 @@ export const sheets = {
       ["Role", "Mobile damage dealer, infiltrator, priority-target assassin"],
       ["Appearance", "Dark leather armor, steel wrist blades, throwing shurikens, and a shadow that sometimes moves on its own"],
       ["Personality", "Confident, calculating, pragmatic, dry sense of humor"],
-      ["Languages", "Common (more to confirm)"],
+      ["Languages", "Common, Dwarvish"],
+      ["Tools", "Thieves' tools (+9)"],
       ["Motto", "If you can see my shadow, you're watching the wrong one."]
     ],
     abilities: [["STR", 10, 0], ["DEX", 20, 5], ["CON", 18, 4], ["INT", 12, 1], ["WIS", 14, 2], ["CHA", 12, 1]],
     combat: [
       ["Proficiency", "+4"],
       ["AC", "17 (studded leather, Dex +5)"],
-      ["HP", "93 max (Con 18, proposed)"],
+      ["HP", "93 max"],
       ["Speed", "30 ft"],
       ["Initiative", "+5"],
       ["Hit Dice", "10d8"],
@@ -547,7 +553,8 @@ export const sheets = {
     items: [
       ["Studded leather armor", "AC 12 + Dex."],
       ["Two wrist blades", "Finesse, 1d6 slashing. Not magical unless the DM says so."],
-      ["Throwing shurikens", "For Q, 1d6 piercing, 60 ft. How many he carries isn't set."]
+      ["Throwing shurikens (20)", "For Q, 1d6 piercing, 60 ft; picked up after a fight."],
+      ["Thieves' tools", "+9 to pick locks and disarm traps."]
     ],
     lists: [
       ["Shadow abilities (energy)", [
@@ -566,12 +573,14 @@ export const sheets = {
         "Double Q, both hit: 2d6 + 5, + 5d6 Sneak Attack and + 1d6 Contempt when they apply (up to 8d6 + 5)."
       ]]
     ],
-    questions: [
-      "Is Constitution 18 (max HP 93) approved for Level 10?",
-      "Seeing through the shadow before a swap: what does it cost, and what are its limits?",
-      "Does Q pierce several enemies (the casino ruling), or one target only?",
-      "Do Roan's shadow attacks count as magical?",
-      "Languages beyond Common, thieves' tools, shuriken count, and any magic items?"
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "Constitution 18 is approved: max HP 93.",
+      "Shadow vision: a bonus action to see (not hear) through the Living Shadow until the start of his next turn; his own eyes are shut meanwhile. It doesn't pass closed doors.",
+      "Q hits one target. Hitting several (the casino fight) was a one-time ruling.",
+      "Shadow-made attacks (the copied Q, Shadow Slash, Death Mark) count as magical; his own wrist blades and shurikens don't.",
+      "Languages: Common and Dwarvish (from the dwarf mage). Thieves' tools proficient (+9) and carried. 20 shurikens, picked up after a fight. No magic items.",
+      "Shadow Energy stays at the recorded 3/6 until a rest."
     ]
   }
 };

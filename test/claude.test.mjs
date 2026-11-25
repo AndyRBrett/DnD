@@ -45,9 +45,13 @@ test("off without a key: state says so and nothing is sent", async () => {
 });
 
 test("a player can ask; the request respects the sheet and the answer is trimmed to three", async () => {
-  const { call, post } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
+  const { call, post, host } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
   assert.equal((await call("")).body.ai, true);
-  const result = await post("/advise", { character: 4 }); // Roan: a few lines still to confirm
+  // Every sheet is settled now, so the DM marks one line on Roan's as unconfirmed.
+  const { body: before } = await call("");
+  const party = before.party.map((member, index) => ({ ...member, moves: index === 4 ? member.moves + "\ncheck | Test move — Proposed by the player; the DM confirms it." : member.moves }));
+  assert.equal((await post("/party", { party }, { "x-table-host": host })).status, 200);
+  const result = await post("/advise", { character: 4 });
   assert.equal(result.status, 200);
   assert.equal(result.body.options.length, 3);
   assert.equal(result.body.options[2].declare, "The White Wizard shouts a warning.");
@@ -64,8 +68,8 @@ test("a player can ask; the request respects the sheet and the answer is trimmed
   assert.match(prompt, /THIS SESSION SO FAR[\s\S]*Last time: the party reached the casino/);
   const [ready, unconfirmed] = prompt.split("UNCONFIRMED");
   assert.match(ready, /Razor Shuriken/);
-  assert.doesNotMatch(ready, /Proposed Level 10 increase/);
-  assert.match(unconfirmed, /Proposed Level 10 increase/);
+  assert.doesNotMatch(ready, /Test move/);
+  assert.match(unconfirmed, /Test move/);
   assert.match(body.system, /Never recommend anything listed under UNCONFIRMED/);
 });
 
