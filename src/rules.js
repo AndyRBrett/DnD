@@ -150,6 +150,8 @@ export const rules = {
     "Advantage on Wisdom (Survival) checks to track your favored enemies and on Intelligence checks to recall information about them. You also learn one language they speak."),
   "Natural Explorer": feature("Ranger (legacy) · Your favored terrain",
     "Intelligence or Wisdom checks about your favored terrain use double proficiency, if you're proficient in the skill. When you travel there for an hour or more: difficult terrain doesn't slow the group, the group can't get lost except by magic, you stay alert while foraging, tracking, or navigating, you move stealthily at a normal pace only when traveling alone, you find twice the food, and tracking tells you the creatures' exact number, size, and how long ago they passed."),
+  "Primeval Awareness": feature("Ranger (legacy) · Action · A spell slot",
+    "For 1 minute per level of the slot spent, you sense whether aberrations, celestials, dragons, elementals, fey, fiends, or undead are within 1 mile (6 miles in a favored terrain). You don't learn where they are or how many."),
   "Brutal Critical": attack("Barbarian · Critical hits",
     "When you score a critical hit with a melee weapon, roll one extra weapon damage die."),
   "Battle Master maneuvers": attack("Fighter · Superiority dice (5 × d10 at level 10, regain on a short rest)",
@@ -255,6 +257,10 @@ export const rules = {
     "When Roan hits a creature at or below half its maximum HP, it takes an extra 1d6 necrotic. The DM confirms the target qualifies. It stacks with Sneak Attack."),
 
   // ── Skills ──
+  "Shadow vision": feature("Roan · Bonus action · Homebrew",
+    "See (not hear) through your Living Shadow's eyes until the start of your next turn, while your own eyes are shut. It can't see through closed doors, so it can't scout behind one."),
+  "Thieves' tools": feature("Tool proficiency",
+    "Pick a lock or disarm a trap with a Dexterity check, adding your proficiency bonus. The DM sets the difficulty."),
   "Intimidation": skill("Charisma", "Pressure or frighten someone into talking or backing down. The DM sets the difficulty and decides how they react."),
   "Persuasion": skill("Charisma", "Convince someone honestly: ask, bargain, or reassure. The DM sets the difficulty."),
   "Deception": skill("Charisma", "Lie convincingly, keep a disguise's story straight, or mislead with words."),

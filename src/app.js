@@ -305,7 +305,7 @@ function drawFullSheet(character) {
     }
     parts.push(items);
   }
-  for (const [title, lines] of [...(full.lists ?? []), ["First-turn attack routine", full.routine], ["Open questions for the DM", full.questions], ["Identity", full.identity?.map(([label, value]) => label + ": " + value)]]) {
+  for (const [title, lines] of [...(full.lists ?? []), ["First-turn attack routine", full.routine], ["Table defaults (the DM can change these)", full.defaults], ["Identity", full.identity?.map(([label, value]) => label + ": " + value)]]) {
     if (!lines?.length) continue;
     const box = element("details", "sheet-section");
     box.append(element("summary", "", title));
