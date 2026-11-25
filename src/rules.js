@@ -149,7 +149,7 @@ export const rules = {
   "Favored Enemy": feature("Ranger (legacy) · Your chosen creature types",
     "Advantage on Wisdom (Survival) checks to track your favored enemies and on Intelligence checks to recall information about them. You also learn one language they speak."),
   "Natural Explorer": feature("Ranger (legacy) · Your favored terrain",
-    "In your favored terrain: double proficiency on Intelligence and Wisdom checks about it, difficult terrain doesn't slow the group's travel, the group can't get lost except by magic, you stay alert while foraging, tracking, or navigating, and you can move stealthily at a normal pace."),
+    "Intelligence or Wisdom checks about your favored terrain use double proficiency, if you're proficient in the skill. When you travel there for an hour or more: difficult terrain doesn't slow the group, the group can't get lost except by magic, you stay alert while foraging, tracking, or navigating, you move stealthily at a normal pace only when traveling alone, you find twice the food, and tracking tells you the creatures' exact number, size, and how long ago they passed."),
   "Brutal Critical": attack("Barbarian · Critical hits",
     "When you score a critical hit with a melee weapon, roll one extra weapon damage die."),
   "Battle Master maneuvers": attack("Fighter · Superiority dice (5 × d10 at level 10, regain on a short rest)",

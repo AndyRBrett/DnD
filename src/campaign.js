@@ -59,7 +59,7 @@ export const party = [
     "social | Persuasion — +4, proficient from the Exiled Noble background.",
     "social | Disguise Self — Gloom Stalker spell: 1 action, 1 hour, no concentration, looks only. Passed as a casino guard (natural 20 on Performance).",
     "explore | Favored Enemy — Humanoids (humans and dwarves): advantage on Survival checks to track them and on Intelligence checks to recall information about them. Speaks Dwarvish.",
-    "explore | Natural Explorer — Favored terrain: forest. Travel there isn't slowed by difficult terrain, the group can't get lost except by magic, and he stays alert while foraging, tracking, or navigating."
+    "explore | Natural Explorer — Favored terrain: forest. On an hour or more of forest travel, difficult terrain doesn't slow the group, they can't get lost except by magic, and he stays alert while foraging, tracking, or navigating (normal-pace stealth only when alone)."
   ]),
   profile("Logan Ninefingers", "Variant Human Berserker barbarian · Level 10 · AC 16 · speed 40 · played by Derek", [
     "combat | Rage — Bonus action, 4 per long rest: advantage on Strength checks and saves, +3 damage, resistance to physical damage.",
