@@ -474,10 +474,16 @@ export function spentAbilities(character, sheet, state) {
       if (!open) spent.set(name, name + ": no " + ORDINALS[rule.level] + "-level or higher spell slot left");
     }
   }
+  // covers: the abilities a resource pays for; an entry can be [name, cost]
+  // when one use takes more than one (Death Mark: 2 Shadow Energy).
   for (const resource of sheet?.resources ?? []) {
-    if (resource.slots || resourceLeft(sheet, state, resource.name) > 0) continue;
-    for (const name of resource.covers ?? [resource.name]) {
-      spent.set(name, name + ": no " + resource.name + " left until a " + (resource.per === "short" ? "short or long" : "long") + " rest");
+    if (resource.slots) continue;
+    const left = resourceLeft(sheet, state, resource.name);
+    const back = resource.per === "never" ? "until the DM gives more" : "until a " + (resource.per === "short" ? "short or long" : "long") + " rest";
+    for (const cover of resource.covers ?? [resource.name]) {
+      const [name, cost = 1] = Array.isArray(cover) ? cover : [cover];
+      if (left >= cost) continue;
+      spent.set(name, name + ": " + (left ? "needs " + cost + " " + resource.name + ", " + left + " left" : "no " + resource.name + " left") + " " + back);
     }
   }
   return [...spent.values()];

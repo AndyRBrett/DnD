@@ -170,7 +170,8 @@ export const sheets = {
       { name: "Cure Wounds", slot: 1, upcast: "1d8", heal: "1d8+4", note: "Action, touch; 1d8 more for each slot level above 1st." }
     ],
     // Limited uses: spell slots by level, and features with uses per rest
-    // (covers: the sheet abilities that need it; default is its own name).
+    // (covers: the sheet abilities that need it, or [name, cost] when one use
+    // takes more; default is its own name).
     // per "never": not refilled by rests (potions, javelins).
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
@@ -506,7 +507,7 @@ export const sheets = {
       { name: "Contempt for the Weak", damage: "+1d6", lasts: "attack", note: "Once per turn: the target is at or below half its HP (the DM confirms). Necrotic." }
     ],
     resources: [
-      { name: "Shadow Energy", max: 6, per: "short", covers: ["Living Shadow", "Shadow Slash"], note: "Copied Q 1 · W (Living Shadow) 1 · E (Shadow Slash) 1 · R (Death Mark) 2. Swapping and Roan's own Q are free. Tap dots for W and R." },
+      { name: "Shadow Energy", max: 6, per: "short", covers: ["Living Shadow", "Shadow Slash", ["Death Mark", 2]], note: "Copied Q 1 · W (Living Shadow) 1 · E (Shadow Slash) 1 · R (Death Mark) 2. Swapping and Roan's own Q are free. Tap dots for W and R." },
       { name: "Death Mark", max: 1, per: "short", note: "R: also spend 2 Shadow Energy. Send the detonation with Other damage: 2d6 necrotic + half the damage Roan dealt the target while marked (that half capped at 20)." }
     ],
     rolls: [["Wrist blade", "+9"], ["Damage", "1d6+5"], ["Sneak Attack", "5d6"], ["Shadow DC", "17"], ["AC", "17"], ["Initiative", "+5"], ["Stealth", "+13"], ["Perception", "+10"]],

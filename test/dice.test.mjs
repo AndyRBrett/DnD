@@ -402,3 +402,16 @@ test("Hit Dice: from the sheet, spent one at a time, half back on a long rest", 
   assert.equal(hitDice({ combat: [] }), null);
   assert.equal(sheets["The White Wizard"].heals[0].name, "Healing Word");
 });
+
+test("Roan's Shadow Energy gates his shadow moves, Death Mark at 2", async () => {
+  const { spentAbilities } = await import("../src/encounter.js");
+  const { party, sheets } = await import("../src/campaign.js");
+  const roan = party.find(member => member.name === "Roan the Last Shadow");
+  const sheet = sheets["Roan the Last Shadow"];
+  const names = used => spentAbilities(roan, sheet, { used }).map(line => line.split(":")[0]);
+  assert.deepEqual(names({}), []);
+  assert.deepEqual(names({ "Shadow Energy": 5 }), ["Death Mark"], "one point left: not enough for Death Mark");
+  assert.match(spentAbilities(roan, sheet, { used: { "Shadow Energy": 5 } })[0], /needs 2 Shadow Energy, 1 left/);
+  assert.deepEqual(names({ "Shadow Energy": 6 }).sort(), ["Death Mark", "Living Shadow", "Shadow Slash"]);
+  assert.ok(names({ "Death Mark": 1 }).includes("Death Mark"), "used this rest");
+});
