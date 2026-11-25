@@ -105,11 +105,25 @@ export const party = [
     "social | Intimidation, Performance — Proficient: +3, +3. Gladiator crowd work.",
     "social | Speak plainly — Dum Dum's blunt, protective style got the bartender to point the way."
   ]),
-  profile("Roan the Last Shadow", "Living-shadow abilities · Level 10", [
-    "explore | Living-shadow swap — Placed a shadow in the casino back room and swapped places with it, leaving it on the casino floor. Ask where the shadow can be placed and what it takes to swap.",
-    "danger | Living-shadow swap — Consider repositioning if your shadow is already somewhere safe. Check range, timing, and availability with the DM.",
+  profile("Roan the Last Shadow", "Human Rogue (Master of Shadows) · Level 10 · AC 17 · shadow DC 17", [
+    "combat | Wrist blade — +9 to hit, 1d6+5 slashing (finesse), 5 ft. One attack per Attack action (no Extra Attack).",
+    "combat | Razor Shuriken — Q: action, +9 ranged weapon attack, 1d6+5 piercing, 60 ft, no energy. With Living Shadow up, 1 energy for the shadow's copied Q: a separate +9 roll, 1d6 piercing, measured from the shadow.",
+    "combat | Sneak Attack — 5d6 once per turn on one hit with advantage, or with an active ally within 5 ft of the target (the shadow doesn't count).",
+    "combat | Contempt for the Weak — Passive: once per turn, +1d6 necrotic on a hit against a creature at or below half its HP (the DM confirms). Stacks with Sneak Attack.",
+    "combat | Shadow Slash — E: bonus action, 1 energy. Every enemy within 5 ft of Roan or his shadow makes a DC 17 Dex save: 2d6 slashing and −10 ft speed, half and no slow on a save. No Sneak Attack.",
+    "combat | Death Mark — R: bonus action, 2 energy, once per short rest. Teleport next to an enemy within 30 ft and mark it; at the end of his next turn it takes 2d6 necrotic + half the damage Roan dealt it meanwhile (that half capped at 20).",
+    "danger | Living Shadow — W: bonus action, 1 energy, a shadow within 30 ft for 1 minute (AC 17, 1 HP). Swap places with it as a bonus action within 60 ft, free.",
+    "danger | Cunning Action — Bonus action: Dash, Disengage, or Hide. No energy.",
+    "danger | Uncanny Dodge — Reaction: halve the damage of an attack that hits Roan from an attacker he can see.",
+    "danger | Evasion — Dex saves for half damage: none on a success, half on a failure.",
     "danger | Cause a distraction — Planned the casino distraction with Logan. Ask what would draw the guards.",
-    "check | Confirm the name, limits, and uses of the shadow feature and add the rest of Roan’s Level 10 sheet."
+    "explore | Stealth, Acrobatics, Perception, Investigation — Expertise: +13, +13, +10, +9 (passive Perception 20).",
+    "explore | Sleight of Hand — +9, proficient.",
+    "explore | Thieves' Cant — Rogue coded speech and signs.",
+    "social | Intimidation — +5, proficient.",
+    "check | Constitution 18 — Proposed Level 10 increase (max HP 93); the DM confirms it.",
+    "check | Shadow vision — Seeing through the shadow before a swap was allowed in play; its action cost and limits are the DM's call.",
+    "check | Thieves' tools — Proposed proficiency (+9) from his rogue foundation."
   ])
 ];
 
@@ -156,7 +170,8 @@ export const sheets = {
       { name: "Cure Wounds", slot: 1, upcast: "1d8", heal: "1d8+4", note: "Action, touch; 1d8 more for each slot level above 1st." }
     ],
     // Limited uses: spell slots by level, and features with uses per rest
-    // (covers: the sheet abilities that need it; default is its own name).
+    // (covers: the sheet abilities that need it, or [name, cost] when one use
+    // takes more; default is its own name).
     // per "never": not refilled by rests (potions, javelins).
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
@@ -478,6 +493,85 @@ export const sheets = {
       "Primeval Awareness (legacy ranger): spend a slot to sense whether aberrations, celestials, dragons, elementals, fey, fiends, or undead are within 1 mile (6 in a favored terrain), a minute per slot level; no location or count, and not humanoids. Track it in the app?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
+    ]
+  },
+  "Roan the Last Shadow": {
+    attacks: [
+      { name: "Wrist blade", ability: "DEX", hit: 9, damage: "1d6+5", type: "slashing", note: "Finesse, 5 ft. One attack per Attack action; the second blade gives no free attack." },
+      { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft; Roan's own throw costs no energy. Doesn't pierce several enemies unless the DM rules it." },
+      { name: "Shadow's copied Q", ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage." },
+      { name: "Shadow Slash (E)", ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack." }
+    ],
+    attackOptions: [
+      { name: "Sneak Attack", damage: "+5d6", lasts: "attack", note: "Once per turn, on one hit: advantage, or an active ally within 5 ft of the target and no disadvantage. The shadow isn't an ally." },
+      { name: "Contempt for the Weak", damage: "+1d6", lasts: "attack", note: "Once per turn: the target is at or below half its HP (the DM confirms). Necrotic." }
+    ],
+    resources: [
+      { name: "Shadow Energy", max: 6, per: "short", covers: ["Living Shadow", "Shadow Slash", ["Death Mark", 2]], note: "Copied Q 1 · W (Living Shadow) 1 · E (Shadow Slash) 1 · R (Death Mark) 2. Swapping and Roan's own Q are free. Tap dots for W and R." },
+      { name: "Death Mark", max: 1, per: "short", note: "R: also spend 2 Shadow Energy. Send the detonation with Other damage: 2d6 necrotic + half the damage Roan dealt the target while marked (that half capped at 20)." }
+    ],
+    rolls: [["Wrist blade", "+9"], ["Damage", "1d6+5"], ["Sneak Attack", "5d6"], ["Shadow DC", "17"], ["AC", "17"], ["Initiative", "+5"], ["Stealth", "+13"], ["Perception", "+10"]],
+    title: "Roan, the Last Shadow — Rogue (Master of Shadows)",
+    note: "A custom rogue with a homebrew shadow subclass, from the campaign chat. Constitution 18 (max HP 93) is the proposed Level 10 increase for the DM to confirm.",
+    identity: [
+      ["Species", "Human"],
+      ["Class", "Rogue 10 (Master of Shadows, homebrew)"],
+      ["Background", "Escaped subject of a dwarf mage's shadow experiments; trained assassin with a personal reason to hunt the mage"],
+      ["Role", "Mobile damage dealer, infiltrator, priority-target assassin"],
+      ["Appearance", "Dark leather armor, steel wrist blades, throwing shurikens, and a shadow that sometimes moves on its own"],
+      ["Personality", "Confident, calculating, pragmatic, dry sense of humor"],
+      ["Languages", "Common (more to confirm)"],
+      ["Motto", "If you can see my shadow, you're watching the wrong one."]
+    ],
+    abilities: [["STR", 10, 0], ["DEX", 20, 5], ["CON", 18, 4], ["INT", 12, 1], ["WIS", 14, 2], ["CHA", 12, 1]],
+    combat: [
+      ["Proficiency", "+4"],
+      ["AC", "17 (studded leather, Dex +5)"],
+      ["HP", "93 max (Con 18, proposed)"],
+      ["Speed", "30 ft"],
+      ["Initiative", "+5"],
+      ["Hit Dice", "10d8"],
+      ["Passive", "Perception 20 · Investigation 19 · Insight 12"],
+      ["Sneak Attack", "5d6"],
+      ["Shadow Energy", "6 per short or long rest · save DC 17"]
+    ],
+    saves: [["STR", "+0", ""], ["DEX", "+9", "proficient"], ["CON", "+4", ""], ["INT", "+5", "proficient"], ["WIS", "+2", ""], ["CHA", "+1", ""]],
+    skills: [
+      ["Acrobatics", "DEX", "+13", "expertise"], ["Animal Handling", "WIS", "+2", ""], ["Arcana", "INT", "+1", ""],
+      ["Athletics", "STR", "+0", ""], ["Deception", "CHA", "+1", ""], ["History", "INT", "+1", ""],
+      ["Insight", "WIS", "+2", ""], ["Intimidation", "CHA", "+5", "proficient"], ["Investigation", "INT", "+9", "expertise"],
+      ["Medicine", "WIS", "+2", ""], ["Nature", "INT", "+1", ""], ["Perception", "WIS", "+10", "expertise"],
+      ["Performance", "CHA", "+1", ""], ["Persuasion", "CHA", "+1", ""], ["Religion", "INT", "+1", ""],
+      ["Sleight of Hand", "DEX", "+9", "proficient"], ["Stealth", "DEX", "+13", "expertise"], ["Survival", "WIS", "+2", ""]
+    ],
+    items: [
+      ["Studded leather armor", "AC 12 + Dex."],
+      ["Two wrist blades", "Finesse, 1d6 slashing. Not magical unless the DM says so."],
+      ["Throwing shurikens", "For Q, 1d6 piercing, 60 ft. How many he carries isn't set."]
+    ],
+    lists: [
+      ["Shadow abilities (energy)", [
+        "Wrist blade and Roan's own Q: free.",
+        "Shadow's copied Q: 1 · W, Living Shadow: 1 · E, Shadow Slash: 1 · R, Death Mark: 2 (once per short rest).",
+        "Swapping with the shadow: free (bonus action, within 60 ft). Dismissing it or losing it refunds nothing.",
+        "Living Shadow: one at a time, lasts 1 minute, moves 30 ft on Roan's turn for free; it can't handle objects, flank, or make opportunity attacks, and vanishes if it ends his turn more than 60 ft away.",
+        "W, E, a swap, and R each use the bonus action: only one per turn."
+      ]],
+      ["Turn combos", [
+        "W, then double Q: summon the shadow (bonus action), throw Q and the copied Q (action). 2 energy.",
+        "Double Q, then E (shadow already up): two throws, then slash around both. 2 energy.",
+        "Wrist blade, then E (shadow up): melee hit, then the slash. 1 energy.",
+        "R, then wrist blade: teleport and mark, then attack. 2 energy.",
+        "Attack, then swap out (shadow up): free unless he adds the copied Q.",
+        "Double Q, both hit: 2d6 + 5, + 5d6 Sneak Attack and + 1d6 Contempt when they apply (up to 8d6 + 5)."
+      ]]
+    ],
+    questions: [
+      "Is Constitution 18 (max HP 93) approved for Level 10?",
+      "Seeing through the shadow before a swap: what does it cost, and what are its limits?",
+      "Does Q pierce several enemies (the casino ruling), or one target only?",
+      "Do Roan's shadow attacks count as magical?",
+      "Languages beyond Common, thieves' tools, shuriken count, and any magic items?"
     ]
   }
 };
