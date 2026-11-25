@@ -100,7 +100,7 @@ export const party = [
     "danger | Indomitable — Reroll a failed saving throw once per long rest.",
     "explore | Know Your Enemy — Watch or talk with a creature for a minute to learn how it compares to you.",
     "explore | Weakness sense — Dum Dum senses weak points in enemies, structures, and areas (a cracked wall, an unstable floor). Ask the DM: they reveal a clue. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
-    "any | Third-eye amulet — Dum Dum carries it. What it does is up to the DM.",
+    "danger | Third-eye amulet — Dum Dum carries it: it brings down force fields and can draw in large amounts of power and energy. How much, how often, and where the energy goes is the DM's call (its last wearer, a warlock, became a dragon when it was pulled from his forehead).",
     "explore | Acrobatics, Insight — Proficient: +5, +5.",
     "social | Intimidation, Performance — Proficient: +3, +3. Gladiator crowd work.",
     "social | Speak plainly — Dum Dum's blunt, protective style got the bartender to point the way."
@@ -369,7 +369,7 @@ export const sheets = {
       ["Performance", "CHA", "+3", "proficient"], ["Persuasion", "CHA", "−1", ""], ["Religion", "INT", "+0", ""],
       ["Sleight of Hand", "DEX", "+1", ""], ["Stealth", "DEX", "+1 (disadvantage in heavy armor)", ""], ["Survival", "WIS", "+1", ""]
     ],
-    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Dum Dum carries it; what it does is up to the DM."]],
+    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Brings down force fields and draws in large amounts of power and energy. Limits and side effects are the DM's call."]],
     lists: [
       ["Attack cheat sheet", [
         "Normal hit: d20 + 8; damage 1d8 + 6 (Strength +4, Dueling +2).",
@@ -390,7 +390,7 @@ export const sheets = {
     questions: [
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Weakness sense: does it cost an action, have a range or uses, or add damage?",
-      "What does the third-eye amulet do?",
+      "Third-eye amulet: any limit on how much power it can take in, how often, or a cost or side effect for the one using it?",
       "Any magic items, or a different weapon for some fights?",
       "Superiority dice left after the last fight?"
     ]
