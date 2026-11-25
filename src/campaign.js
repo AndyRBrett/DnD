@@ -472,7 +472,8 @@ export const sheets = {
       "Stealth: cover alone doesn't grant advantage; hiding needs the DM's OK and normally an action, so you can't usually hide and attack with the same action."
     ],
     questions: [
-      "Legacy rangers gain more favored terrains at levels 6 and 10 and another favored enemy at level 6: forest and humanoids only, or are the others picked?",
+      "Legacy rangers gain a second favored terrain at level 6 and a third at level 10: which two besides forest?",
+      "Legacy rangers also gain a second favored enemy at level 6: humanoids only so far, or is another picked?",
       "These are playable defaults from the campaign chat: has the DM looked them over?",
       "Any magic items besides the Ring of the Dragon Champion?"
     ]
