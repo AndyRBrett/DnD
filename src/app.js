@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -131,7 +131,20 @@ function useOnCard(link, index) {
     button?.classList.add("is-suggested");
     setTimeout(() => button?.classList.remove("is-suggested"), 6000);
   }
-  $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  scrollToCard($("attack-card"));
+}
+
+// Scroll a card so its top sits just under the pinned header and character
+// bar (scrollIntoView's "start" tucks it underneath them).
+function scrollToCard(element) {
+  if (!element) return;
+  requestAnimationFrame(() => {
+    const covered = [document.querySelector(".hdr"), $("char-bar")]
+      .filter(bar => bar && !bar.hidden && bar.offsetParent !== null)
+      .reduce((sum, bar) => sum + bar.getBoundingClientRect().height, 0);
+    const top = element.getBoundingClientRect().top + window.scrollY - covered - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  });
 }
 
 function showOptions() {
@@ -233,7 +246,7 @@ async function askClaude(question = "") {
     $("claude-status").textContent = switched ? "This answer is for " + state.party[Number(index)]?.name + "."
       : movedOn ? "Written for the update before the latest one; ask again for a fresh read." : "";
     if (question) $("question-text").value = "";
-    if (currentTab === "moves") $("claude-answer").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (currentTab === "moves") scrollToCard($("claude-answer"));
   } catch (error) {
     $("claude-status").textContent = error.message || "Claude could not answer. Try again.";
   } finally {
@@ -252,7 +265,7 @@ function goAfterDeclare(option, characterIndex) {
   if (combat && combat.turn === "pc:" + characterIndex) {
     const link = cardLink(option.action ?? "", characterIndex);
     if (link) useOnCard(link, characterIndex);
-    else { showTab("combat"); $("combat-head").scrollIntoView({ behavior: "smooth", block: "start" }); }
+    else { showTab("combat"); scrollToCard($("combat-head")); }
     return;
   }
   showTab("scene");
@@ -1878,7 +1891,7 @@ function drawTurnGuide() {
   let text = "";
   let label = "";
   guideAction = null;
-  const toAttack = () => { showTab("combat"); $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const toAttack = () => { showTab("combat"); scrollToCard($("attack-card")); };
   if (!rolled) {
     text = "Roll initiative (a d20) to find out when your turn comes.";
     label = "🎲 Roll initiative";
@@ -3057,7 +3070,7 @@ $("party-full").onclick = async () => {
 };
 $("hp-badge").onclick = () => {
   showTab("sheet");
-  $("hp-sheet").scrollIntoView({ behavior: "smooth", block: "start" });
+  scrollToCard($("hp-sheet"));
 };
 
 // ── Hit reports: a player tells the DM "🎯 hit Bandit 2 for 14 damage"
@@ -4407,14 +4420,16 @@ function fillEnemyForm(template) {
   $("enemy-saves").value = template?.saves ? formatSaves(template.saves) : "";
 }
 function enemyFormStats() {
+  const typed = [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name)
+    .map(attack => formRiders[attack[0]] ? [...attack, formRiders[attack[0]]] : attack);
   return {
     name: $("enemy-name").value.trim() || "Enemy",
     ac: Number($("enemy-ac").value) || 10,
     hp: $("enemy-hp").value.trim() || "1",
     init: Number($("enemy-init").value) || 0,
     speed: Number($("enemy-speed").value) || 30,
-    attacks: [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name)
-      .map(attack => formRiders[attack[0]] ? [...attack, formRiders[attack[0]]] : attack),
+    // Left the attack fields empty but wrote "Musket +6 (2d8+2)" in the notes: use that.
+    attacks: typed.length ? typed : attacksFromNotes($("enemy-abilities").value),
     abilities: $("enemy-abilities").value.trim(),
     saves: parseSaves($("enemy-saves").value)
   };
