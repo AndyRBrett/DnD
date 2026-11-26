@@ -11,7 +11,7 @@ const flag = name => {
 // a restart of this server; rooms still close after eight idle hours.
 const dbFile = flag("--db") || process.env.TABLE_DB || ":memory:";
 const DB = openDatabase(dbFile);
-DB.sql.prepare("DELETE FROM rooms WHERE last_active < ?").run(Date.now() - 8 * 60 * 60 * 1000);
+DB.sql.prepare("DELETE FROM rooms WHERE last_active < ?").run(Date.now() - 3 * 24 * 60 * 60 * 1000);
 const env = { DB, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" };
 const port = Number(process.env.PORT ?? flag("--port")) || 4173;
 let lanAddresses = [];

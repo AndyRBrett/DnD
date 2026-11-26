@@ -15,7 +15,7 @@ function importHistory(currentParty) {
     };
   });
 }
-const roomAge = 8 * 60 * 60 * 1000;
+const roomAge = 3 * 24 * 60 * 60 * 1000; // 3 days idle
 const types = {"index.html":"text/html", "app.js":"text/javascript", "scene-options.js":"text/javascript", "backend.js":"text/javascript", "campaign.js":"text/javascript", "rules.js":"text/javascript", "dice.js":"text/javascript", "dice3d.js":"text/javascript", "theme.js":"text/javascript", "encounter.js":"text/javascript", "config.js":"text/javascript", "style.css":"text/css", "manifest.json":"application/manifest+json", "sw.js":"text/javascript"};
 
 function json(body, status = 200) {
@@ -306,7 +306,7 @@ export default {
       const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn|here))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
-      // Open until 8 hours after the last activity (any change that succeeds).
+      // Open until 3 days after the last activity (any change that succeeds).
       const room = await env.DB.prepare("SELECT host, party, practice FROM rooms WHERE code = ? AND last_active > ?")
         .bind(code, Date.now() - roomAge).first();
       if (!room) return json({ error: "This room has ended or expired." }, 404);
