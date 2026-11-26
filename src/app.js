@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -4877,23 +4877,53 @@ for (const id of ["character-library", "rules-basics"]) {
 // (scene, combat order, party HP) for a screen everyone can see. Enemies show
 // only as Healthy, Bloodied, or Down, even when the DM's account opens it. ──
 const boardMode = new URLSearchParams(location.search).get("board") === "1";
+function boardEntry(entry) {
+  const item = document.createElement("li");
+  if (entry.dm) {
+    item.className = "is-dm";
+    item.textContent = entry.text;
+    return item;
+  }
+  const { kind, who, text } = entry.line;
+  item.className = "is-" + kind;
+  if (kind === "action") {
+    const name = document.createElement("strong");
+    name.textContent = who + " ";
+    item.append(name, text);
+  } else {
+    item.textContent = ({ hit: "⚔️ ", call: "⚔️ ", miss: "💨 ", pending: "🎲 ", turn: "" }[kind] ?? "") + text;
+  }
+  return item;
+}
 function drawBoard() {
   if (!boardMode || !state) return;
   $("board-scene").textContent = ended ? "Session ended." : state.scenes.at(-1)?.text || "Waiting for the DM.";
+  // The story as a reader needs it: what led here (the DM's earlier posts and
+  // what everyone did, in order, as plain sentences), the DM's latest post,
+  // then what's happened since. Attack bookkeeping reads as sentences.
   const latest = state.scenes.at(-1);
-  const recent = (state.actions ?? []).filter(action => !latest || action.created >= latest.created)
-    .filter(action => !/^⏭️|^🎯/u.test(action.text)).slice(-6).reverse();
-  $("board-actions-wrap").hidden = !recent.length;
-  $("board-actions").replaceChildren(...recent.map(action => {
-    const item = document.createElement("li");
-    const who = document.createElement("strong");
-    who.textContent = action.name.replace(/^The /, "") + " ";
-    item.append(who, action.text);
-    return item;
-  }));
+  const entries = [
+    ...state.scenes.slice(0, -1).map(scene => ({ dm: true, at: scene.created, text: scene.text, id: "s" + scene.id })),
+    ...(state.actions ?? []).map(action => ({ at: action.created, line: chronicleLine(action.name, action.text), id: "a" + action.id }))
+  ].filter(entry => entry.dm || entry.line).sort((a, b) => a.at - b.at);
+  // A to-hit the DM called a hit is said again, with the damage, a moment later.
+  const told = entries.filter((entry, index) => !(entry.line?.kind === "call" && entries.slice(index + 1)
+    .some(later => later.line?.kind === "hit" && later.line.who === entry.line.who && later.line.enemy === entry.line.enemy)));
+  const before = told.filter(entry => !latest || entry.at < latest.created).slice(-10);
+  const after = told.filter(entry => latest && entry.at >= latest.created && !entry.dm).slice(-12);
+  const first = state.scenes[0];
+  const showFirst = first && state.scenes.length > 1 && !before.some(entry => entry.id === "s" + first.id);
+  $("board-previously").hidden = !showFirst;
+  $("board-previously").textContent = showFirst ? "Previously: " + first.text : "";
+  $("board-chronicle").replaceChildren(...before.map(boardEntry));
+  $("board-chronicle").hidden = !before.length;
+  $("board-actions-wrap").hidden = !after.length;
+  $("board-actions").replaceChildren(...after.map(boardEntry));
 
   const combat = state.combat;
   $("board-combat").hidden = !combat;
+  // In a fight the turn order already shows the party's HP.
+  $("board-party-panel").hidden = Boolean(combat);
   if (combat) {
     const order = combatOrder(combat, state.party);
     const current = order.find(entry => entry.key === combat.turn);

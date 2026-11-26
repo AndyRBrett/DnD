@@ -100,16 +100,15 @@
     <section id="board" class="board" hidden>
       <div class="board-left">
       <div class="board-main">
-        <p class="eyebrow red">THE ONYX JEWEL · CURRENT SCENE</p>
+        <p class="eyebrow red">THE ONYX JEWEL · THE STORY SO FAR</p>
+        <p id="board-previously" class="board-previously" hidden></p>
+        <ol id="board-chronicle" class="board-chronicle" aria-label="What happened before this"></ol>
+        <p class="eyebrow red board-now">NOW</p>
         <p id="board-scene" class="board-scene" aria-live="polite">Waiting for the DM.</p>
         <div id="board-actions-wrap" hidden>
           <p class="eyebrow">SINCE THEN</p>
-          <ul id="board-actions" class="board-actions"></ul>
+          <ol id="board-actions" class="board-actions"></ol>
         </div>
-      </div>
-      <div class="board-panel">
-        <p class="eyebrow">THE PARTY</p>
-        <ul id="board-party" class="board-party"></ul>
       </div>
       </div>
       <div class="board-side">
@@ -118,6 +117,10 @@
           <h2 id="board-turn" class="display"></h2>
           <p id="board-next" class="board-next"></p>
           <ol id="board-order" class="board-order"></ol>
+        </div>
+        <div id="board-party-panel" class="board-panel">
+          <p class="eyebrow">THE PARTY</p>
+          <ul id="board-party" class="board-party"></ul>
         </div>
       </div>
     </section>

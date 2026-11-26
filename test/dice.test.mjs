@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, roll, normalize, poolExpression, rollableFrom, keepD20, tableRoll, tablePrompt } from "../src/dice.js";
-import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit } from "../src/encounter.js";
+import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
 const faces = (sides, ...values) => { const queue = [...values]; return () => (queue.shift() - 1) / sides + 1e-9; };
@@ -546,4 +546,21 @@ test("a to-hit roll typed into the story box is recognised", () => {
   assert.equal(parseTypedToHit("I swing my axe at the warden"), null);
   assert.equal(parseTypedToHit("rolled 12 damage"), null);
   assert.equal(parseTypedToHit("Logan charges and rolled 20 to hit then shouts a long battle cry at everyone in the room"), null);
+});
+
+test("the TV board reads attack lines as plain sentences", () => {
+  assert.deepEqual(chronicleLine("Logan Ninefingers", "🎯 hit Puppet Guard 1 for 16 damage — with Greataxe, 20 to hit · ✓ DM applied"),
+    { kind: "hit", who: "Logan Ninefingers", enemy: "Puppet Guard 1", text: "Logan Ninefingers hits Puppet Guard 1 with Greataxe for 16 damage" });
+  assert.equal(chronicleLine("The White Wizard", "🎯 hit Puppet Guard 2 for 28 damage — with Flame Strike (5th-level), Dex save, DC 16, half on a save").text,
+    "White Wizard casts Flame Strike (5th-level) on Puppet Guard 2: 28 damage rolled, Dex save for half");
+  assert.equal(chronicleLine("The White Wizard", "🎯 hit Puppet Guard 1 for 12 damage — with Sacred Flame, Dex save, DC 16, nothing on a save").text,
+    "White Wizard casts Sacred Flame on Puppet Guard 1: 12 damage rolled, Dex save to avoid it");
+  assert.equal(chronicleLine("Roan", "🎯 hit Spider for 12 damage — with Razor Shuriken (Q), 29 to hit, critical").text, "Roan lands a critical hit on Spider with Razor Shuriken (Q) for 12 damage");
+  assert.equal(chronicleLine("Roan", "🎯 hit Spider for 12 damage — with Razor Shuriken (Q), 29 to hit · ✓ DM dismissed"), null);
+  assert.equal(chronicleLine("Dum Dum", "🎯 attacks Spider — with Longsword, 10 to hit · ✗ DM: miss").text, "Dum Dum attacks Spider with Longsword and misses");
+  assert.equal(chronicleLine("Dum Dum", "🎯 attacks Spider — with Longsword, 23 to hit · ✓ DM: hit").kind, "call");
+  assert.equal(chronicleLine("Dum Dum", "🎯 attacks Spider — with Longsword, 23 to hit").text, "Dum Dum attacks Spider with Longsword…");
+  assert.equal(chronicleLine("Dum Dum", "🎯 missed Spider with Longsword (natural 1)").text, "Dum Dum misses Spider with Longsword (rolled a 1)");
+  assert.equal(chronicleLine("Logan", "⏭️ ends their turn").kind, "turn");
+  assert.deepEqual(chronicleLine("Arcturus", "Keeping it G gobble gobble"), { kind: "action", who: "Arcturus", text: "Keeping it G gobble gobble" });
 });

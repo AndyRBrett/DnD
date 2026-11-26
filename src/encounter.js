@@ -352,6 +352,41 @@ export function parseHitReport(text) {
   };
 }
 
+// A story line as a reader at the TV board should see it: a plain sentence
+// for the attack bookkeeping ("🎯 attacks X — with Y, 18 to hit · ✓ DM: hit"),
+// or null for lines nobody needs to read (a dismissed hit). kind sorts the
+// look: hit, miss, call (a to-hit the DM called a hit; its damage line usually
+// follows), pending (waiting for the DM), turn, or action (anything else).
+export function chronicleLine(name, text) {
+  const who = String(name ?? "").replace(/^The /, "");
+  const raw = String(text ?? "");
+  if (/^⏭️/u.test(raw)) return { kind: "turn", who, text: who + " ends their turn" };
+  const ask = parseAttackAsk(raw);
+  if (ask) {
+    const weapon = ask.detail.match(/^with (.+?), \d+ to hit/)?.[1] ?? "";
+    const how = weapon ? " with " + weapon : "";
+    if (ask.verdict === "miss") return { kind: "miss", who, enemy: ask.enemy, text: who + " attacks " + ask.enemy + how + " and misses" };
+    if (ask.verdict === "hit") return { kind: "call", who, enemy: ask.enemy, text: who + " hits " + ask.enemy + how };
+    return { kind: "pending", who, enemy: ask.enemy, text: who + " attacks " + ask.enemy + how + "…" };
+  }
+  if (/ · ✓ DM dismissed$/u.test(raw)) return null;
+  const hit = parseHitReport(raw);
+  if (hit) {
+    const weapon = hit.detail.match(/^with ([^,]+)/)?.[1] ?? "";
+    // A spell with a save: the DM decides what lands (half, or none), so say
+    // what was rolled, not what was dealt.
+    if (hit.save && !hit.save.rider) {
+      return { kind: "hit", who, enemy: hit.enemy, text: who + " casts " + (weapon || "a spell") + " on " + hit.enemy + ": " + hit.amount
+        + " damage rolled, " + hit.save.ability + " save " + (hit.halfOnSave ? "for half" : "to avoid it") };
+    }
+    return { kind: "hit", who, enemy: hit.enemy,
+      text: who + (hit.crit ? " lands a critical hit on " : " hits ") + hit.enemy + (weapon ? " with " + weapon : "") + " for " + hit.amount + " damage" };
+  }
+  const missed = raw.match(/^🎯 missed (.+?) with (.+?)(?: \((.+)\))?$/u);
+  if (missed) return { kind: "miss", who, enemy: missed[1], text: who + " misses " + missed[1] + " with " + missed[2] + (missed[3] === "natural 1" ? " (rolled a 1)" : "") };
+  return { kind: "action", who, text: raw };
+}
+
 // One of a character's attacks with the options they've switched on: the
 // to-hit roll (or the save the target makes), and the damage dice, doubled
 // on a critical hit.
