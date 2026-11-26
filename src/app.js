@@ -232,6 +232,23 @@ async function askClaude(question = "") {
 
 // One Claude option: what to do, why, how it works, and an editable line to
 // post straight into the story.
+// After "Add to story": on your own turn in a fight, the next step is the
+// Combat tab (with the suggestion set up on the Attack card when it names
+// something there); otherwise the Scene, at your post, where the DM answers.
+function goAfterDeclare(option, characterIndex) {
+  if (Number($("character").value) !== characterIndex) return;
+  const combat = state?.combat;
+  if (combat && combat.turn === "pc:" + characterIndex) {
+    const link = cardLink(option.action ?? "", characterIndex);
+    if (link) useOnCard(link, characterIndex);
+    else { showTab("combat"); $("combat-head").scrollIntoView({ behavior: "smooth", block: "start" }); }
+    return;
+  }
+  showTab("scene");
+  const newest = $("since-actions").firstElementChild;
+  (newest && !$("since-wrap").hidden ? newest : $("since-wrap")).scrollIntoView({ behavior: "smooth", block: "center" });
+  $("notice").textContent = "Added to the story. The DM's reply shows up here.";
+}
 function claudeOption(option, characterIndex) {
   const item = document.createElement("li");
   const action = document.createElement("span");
@@ -271,6 +288,7 @@ function claudeOption(option, characterIndex) {
         await backend.postAction(room, characterIndex, text);
         button.textContent = "Added ✓";
         await sync();
+        goAfterDeclare(option, characterIndex);
       } catch (error) {
         button.disabled = false;
         $("claude-status").textContent = error.message;
@@ -1792,7 +1810,7 @@ function drawTurnGuide() {
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
-    const middle = attackFlow.step === "rolled" ? "You don't see enemy AC: if you're not sure, tap Hit and roll damage. The DM checks it and drops misses."
+    const middle = attackFlow.step === "rolled" ? "Roll damage and send it. The DM checks the roll against the enemy's AC."
       : attackFlow.step === "hit" ? "It hit: roll damage."
       : "Pick a weapon or spell and a target, then Roll to hit. Not attacking? Post what you do on the Scene tab, then end your turn.";
     // Name the options on the card, so Reckless or a maneuver isn't missed.
@@ -3322,9 +3340,12 @@ function drawAttack() {
     }
   } else if (attackFlow.step === "rolled") {
     const natural = attackFlow.toHit.natural;
-    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Not sure of the AC? Tap Hit: the DM checks it.", "is-big"),
-      stepButton("Hit", "cta", () => { attackFlow.step = "hit"; drawAttack(); }),
-      stepButton("Miss", "ghost", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
+    // Players never see enemy AC, so there's no "does it hit?" to answer:
+    // roll damage and send it; the DM's Hits to apply checks the roll against
+    // the AC and flags a miss. "It missed" is there for when you know.
+    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Roll damage and send it: the DM checks it against the enemy's AC.", "is-big"),
+      stepButton("Roll damage · " + built.damage, "cta", rollDamage),
+      stepButton("It missed", "quiet", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
   } else if (attackFlow.step === "hit") {
     parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
       stepButton("Roll damage · " + built.damage, "cta", rollDamage), ...secondRoll());
