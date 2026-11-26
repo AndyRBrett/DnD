@@ -3209,6 +3209,8 @@ function drawTurnFeatures(me, sheet, res) {
     const left = resourceLeft(sheet, res, entry.spends);
     items.push(button(left ? "💚 " + entry.name + " · " + entry.heal + " (" + left + " left)" : "💚 " + entry.name + ": none left", () => openDice(entry.heal, entry.name, total => {
       dice.onResult = null;
+      // No HP to heal yet: don't spend the use (as the Sheet's healing does).
+      if (!hpRecord(me)) { $("dice-status").textContent = "Set " + partyName(me) + "'s max HP first (Sheet tab), then heal."; return; }
       if (resourceLeft(sheet, readRes(me), entry.spends) < 1) return;
       saveRes(me, spendResource(sheet, readRes(me), entry.spends));
       adjustHp(me, total, $("dice-status"));
