@@ -1639,6 +1639,7 @@ $("dice-for-text").oninput = () => {
 };
 $("dice-share").onchange = () => { $("dice-for").hidden = !$("dice-share").checked; };
 $("dice-roll").onclick = async () => {
+  if (dice.locked) return;
   const purpose = $("dice-for-text").value.trim();
   if (!$("dice-share-wrap").hidden && $("dice-share").checked && !dice.label && !purpose) {
     $("dice-status").textContent = "What's this roll for? Pick one above (or type it), or untick Share.";
@@ -1657,6 +1658,7 @@ $("dice-roll").onclick = async () => {
 // so crits, death saves, attacks and sharing all work as with the app's dice.
 $("dice-table").onsubmit = async event => {
   event.preventDefault();
+  if (dice.locked) return; // the card already has its roll (see Roll's lock)
   const purpose = $("dice-for-text").value.trim();
   if (!$("dice-share-wrap").hidden && $("dice-share").checked && !dice.label && !purpose) {
     $("dice-status").textContent = "What's this roll for? Pick one above (or type it), or untick Share.";
