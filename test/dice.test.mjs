@@ -348,6 +348,16 @@ test("a sheet's \"adv.\" (Feral Instinct) rolls with advantage; nothing else doe
   assert.equal(rollModeFrom("Advanced"), "normal");
 });
 
+test("a skill like \"+1 (disadvantage in scale mail)\" rolls with disadvantage, from its own dice", async () => {
+  const { rollModeFrom, rollableFrom } = await import("../src/dice.js");
+  assert.equal(rollModeFrom("+1 (disadvantage in scale mail)"), "disadvantage");
+  assert.equal(rollableFrom("+1 (disadvantage in scale mail)"), "d20+1");
+  // Skill values on the sheets: "+2", "−1" (a real minus sign), "+0".
+  assert.equal(rollableFrom("+2"), "d20+2");
+  assert.equal(rollableFrom("−1"), "d20-1");
+  assert.equal(rollableFrom("+0"), "d20+0");
+});
+
 test("an unconfirmed AC is a range: rolls inside it are the DM's call", async () => {
   const { acRange, attackOutcome } = await import("../src/encounter.js");
   const { sheets } = await import("../src/campaign.js");

@@ -624,3 +624,9 @@ body.board-mode .hdr .role-pill{display:none}
 #guide-go{width:100%;margin-bottom:6px}
 #combat-end-turn.is-next{outline:3px solid var(--gold);outline-offset:2px}
 #dm-turn .enemy-card,#dm-turn article{margin-top:4px}
+
+/* Skills you can tap to roll */
+.skill-list li.is-rollable{cursor:pointer;border-radius:8px}
+.skill-list li.is-rollable:hover,.skill-list li.is-rollable:focus-visible{background:var(--inset);outline:1px solid var(--gold-border)}
+.skill-list li.is-rollable strong::after{content:" 🎲";font-size:.8em}
+.dice-skill{width:100%;margin:6px 0}
