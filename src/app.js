@@ -63,28 +63,29 @@ function selectedCharacter() {
 // card (Reckless Attack, Hunter's Mark, Trip Attack, Greataxe) gets a button
 // that opens the Attack card with that attack picked and that option ticked,
 // so "use Reckless" isn't a hunt for the right checkbox. ──
-const baseName = name => name.replace(/\s*\(.*\)\s*$/, "").replace(/\s+(shot|attack)$/i, "").trim().toLowerCase();
+// Curly and straight apostrophes match: the roster says Hunter’s Mark, the
+// Attack card Hunter's Mark.
+const matchable = text => String(text).toLowerCase().replace(/[‘’ʼ]/g, "'");
+const baseName = name => matchable(name.replace(/\s*\(.*\)\s*$/, "").replace(/\s+(shot|attack)$/i, "").trim());
 function cardLink(text, index) {
   const sheet = sheets[partyName(index)];
   if (!sheet || isHost) return null;
   // Only what the suggestion is about (its name, before "—"), never its
   // description: "no Rage damage, Reckless" must not link Reckless.
   const titled = String(text).match(/^(?:From your sheet, if available|Also on your sheet):\s*(.+?)\s+—/);
-  const words = (titled ? titled[1] : String(text)).toLowerCase();
+  const words = matchable(titled ? titled[1] : String(text));
   let option = null;
   let choice = null;
   for (const entry of sheet.attackOptions ?? []) {
     if (entry.rage || entry.hidden) continue; // Raging follows the rage itself
-    const picked = (entry.choices ?? []).find(([name]) => words.includes(name.toLowerCase()));
+    const picked = (entry.choices ?? []).find(([name]) => words.includes(matchable(name)));
     if (picked) { option = entry; choice = picked[0]; break; }
     const base = baseName(entry.name);
     if (!option && base.length > 3 && new RegExp("\\b" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(words)) option = entry;
   }
   const attacks = attacksFor(index);
-  let attackIndex = attacks.findIndex(attack => words.includes(attack.name.toLowerCase()));
+  let attackIndex = attacks.findIndex(attack => words.includes(matchable(attack.name)));
   if (!option && attackIndex < 0) return null;
-  // A melee-only option (Reckless) needs a melee attack picked.
-  if (option?.melee && attackIndex < 0 && attacks[attackFlow.index]?.ranged) attackIndex = attacks.findIndex(attack => !attack.ranged && !attack.save);
   const label = [attackIndex >= 0 ? attacks[attackIndex].name : "", option ? (choice ?? option.name.replace(/\s*\(.*\)\s*$/, "")) : ""].filter(Boolean).join(" + ");
   return { option, choice, attackIndex, label };
 }
@@ -99,7 +100,14 @@ function cardLinkButton(link, index) {
 function useOnCard(link, index) {
   if (Number($("character").value) !== index || !state?.combat) return;
   showTab("combat");
-  if (link.attackIndex >= 0 && link.attackIndex !== attackFlow.index) $("attack-list").children[link.attackIndex]?.click();
+  // Which attack, decided now: a melee-only option (Reckless) needs a melee
+  // weapon picked, whatever was selected when the suggestion was drawn.
+  const attacks = attacksFor(index);
+  let attackIndex = link.attackIndex;
+  if (attackIndex < 0 && link.option?.melee && (attacks[attackFlow.index]?.ranged || attacks[attackFlow.index]?.save)) {
+    attackIndex = attacks.findIndex(attack => !attack.ranged && !attack.save);
+  }
+  if (attackIndex >= 0 && attackIndex !== attackFlow.index) $("attack-list").children[attackIndex]?.click();
   if (link.option) {
     // Tick the card's own checkbox, so whatever it does (spend a slot for
     // Hunter's Mark, start concentrating) happens the usual way.
