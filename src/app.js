@@ -130,6 +130,7 @@ function showOptions() {
   storage.set("dnd-character", $("character").value);
   $("character-role").textContent = character.role;
   drawConditions();
+  drawConcentration(); // a save waiting for this character shows up now
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
   $("quick-roll-chips").replaceChildren(...rollTiles(rolls));
@@ -1290,6 +1291,12 @@ async function setCondition(name, level) {
   if (level) active[name] = level; else delete active[name];
   const key = conditionKey(); // the character this change is for, even if the picker changes meanwhile
   storage.set(key, JSON.stringify(active));
+  if (name === "Concentrating" && !level) {
+    // No spell to hold any more: its waiting saves go too.
+    const index = Number($("character").value);
+    storage.set(pendingKey(), JSON.stringify(pendingSaves().filter(save => save.index !== index)));
+    drawConcentration();
+  }
   drawConditions();
   const character = selectedCharacter();
   if (!character || !backend.postAction || !Array.isArray(state?.actions) || ended) return;
@@ -2080,18 +2087,67 @@ function hpText(record) {
 // Concentrating and hurt, from any source (the DM's Apply, an enemy card, your
 // own Damage): show the Constitution save DC here and tell the table, so the
 // DM sees it too.
+// Every character this phone plays (a shared phone plays several): a hit on
+// any of them while they're concentrating leaves a save waiting for them,
+// shown with a Roll button whenever that character is picked, until it's
+// rolled. (Checking only the picked character lost the save on a shared
+// phone in a playtest.)
+const concentratingHere = index => Boolean(readJson("dnd-conditions:" + room + ":" + index, {}).Concentrating);
+const pendingKey = () => "dnd-conc-pending:" + room;
+const pendingSaves = () => readJson(pendingKey(), []);
 function concentrationCheck(index, damage, key = "") {
-  if (isHost || damage <= 0 || index !== Number($("character").value) || !activeConditions().Concentrating) return "";
+  if (isHost || damage <= 0 || !concentratingHere(index)) return "";
   if ((hpRecord(index)?.hp ?? 1) <= 0) return ""; // knocked out: concentration simply ends
   // Each hit once: a story line is processed once by its id.
   if (key && concentrationSeen.keys.has(key)) return "";
   if (key) concentrationSeen.keys.add(key);
+  if (key && pendingSaves().some(save => save.key === key)) return "";
   const dc = concentrationDc(damage);
-  const text = "🧠 Concentration save: DC " + dc + " Constitution — or the spell ends.";
+  // Its own id, so passing one save clears only that one (damage typed on
+  // this phone has no story line to name it).
+  const id = key || "local:" + Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 8);
+  storage.set(pendingKey(), JSON.stringify([...pendingSaves(), { index, damage, dc, key, id }].slice(-20)));
+  const text = "🧠 " + partyName(index).replace(/^The /, "") + ": Concentration save, DC " + dc + " Constitution, or the spell ends.";
   $("notice").textContent = text;
   navigator.vibrate?.(200);
   tellTable(index, "🧠 took " + damage + " damage while concentrating: DC " + dc + " Constitution save");
+  drawConcentration();
   return text;
+}
+// The waiting saves for the picked character, with one Roll button.
+function drawConcentration() {
+  const me = Number($("character").value);
+  const mine = isHost ? [] : pendingSaves().filter(save => save.index === me);
+  for (const box of document.querySelectorAll(".conc-save")) {
+    box.hidden = !mine.length;
+    if (!mine.length) { box.replaceChildren(); continue; }
+    const save = mine[0];
+    const title = document.createElement("p");
+    title.className = "conc-title";
+    title.textContent = "🧠 " + partyName(me).replace(/^The /, "") + " took " + save.damage + " damage while concentrating";
+    const what = document.createElement("p");
+    what.className = "fineprint";
+    what.textContent = "Constitution save, DC " + save.dc + ": make it or the spell ends." + (mine.length > 1 ? " (" + mine.length + " hits: one save each.)" : "");
+    const con = abilityMods(sheets[partyName(me)]).find(entry => entry.ability === "CON")?.save ?? 0;
+    const roll = document.createElement("button");
+    roll.type = "button";
+    roll.className = "cta";
+    roll.textContent = "Roll Con save (" + (con >= 0 ? "+" : "") + con + ")";
+    roll.onclick = () => openDice("d20" + (con >= 0 ? "+" : "") + con, "Concentration save", total => {
+      dice.onResult = null;
+      const held = total >= save.dc;
+      // Held: just this save is done. Failed: the spell ends, so all of
+      // this character's waiting saves go (other characters' stay).
+      const left = pendingSaves().filter(entry => held ? (entry.id ?? entry.key) !== (save.id ?? save.key) : entry.index !== me);
+      storage.set(pendingKey(), JSON.stringify(left));
+      $("dice-status").textContent = held ? "✓ " + total + " vs DC " + save.dc + ": you keep concentrating." : "✗ " + total + " vs DC " + save.dc + ": the spell ends.";
+      tellTable(me, held ? "🧠 keeps concentrating (Con save " + total + " vs DC " + save.dc + ")" : "🧠 loses concentration (Con save " + total + " vs DC " + save.dc + ")");
+      if (!held) setCondition("Concentrating", 0);
+      drawConcentration();
+      setTimeout(closeDice, 1500);
+    });
+    box.replaceChildren(title, what, roll);
+  }
 }
 const concentrationSeen = { keys: new Set(), lastAction: null };
 // Knocked to 0 HP: concentration ends (5e), wherever the damage came from.
@@ -2101,7 +2157,9 @@ function concentrationEndsAtZero() {
   const record = hpRecord(me);
   if (!record || record.hp > 0 || !activeConditions().Concentrating) return;
   $("notice").textContent = "🧠 Down at 0 HP: your concentration ends.";
+  storage.set(pendingKey(), JSON.stringify(pendingSaves().filter(save => save.index !== me)));
   setCondition("Concentrating", 0);
+  drawConcentration();
 }
 // Damage from another phone. Where the story is shared (hosted), the phone
 // that entered it posts "🩸 takes 12 damage" for that character, so each hit
@@ -2115,8 +2173,9 @@ function checkRemoteDamage(previous, fresh) {
     const newest = Math.max(0, ...fresh.actions.map(action => Number(action.id) || 0));
     if (concentrationSeen.lastAction === null) { concentrationSeen.lastAction = newest; return; } // not the history
     for (const action of fresh.actions) {
-      const hurt = Number(action.id) > concentrationSeen.lastAction && action.name === name && String(action.text).match(/^🩸 takes (\d+) damage/u);
-      if (hurt) concentrationCheck(me, Number(hurt[1]), "action:" + action.id);
+      const hurt = Number(action.id) > concentrationSeen.lastAction && String(action.text).match(/^🩸 takes (\d+) damage/u);
+      const index = hurt ? (state.party ?? []).findIndex(character => character.name === action.name) : -1;
+      if (hurt && index >= 0) concentrationCheck(index, Number(hurt[1]), "action:" + action.id);
     }
     concentrationSeen.lastAction = Math.max(concentrationSeen.lastAction, newest);
     return;
