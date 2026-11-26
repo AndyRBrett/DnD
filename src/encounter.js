@@ -3,8 +3,11 @@
 import { roll, parse, critExpression } from "./dice.js";
 import { lookupRule } from "./rules.js";
 
-// Standard 5e (SRD 5.1) stat lines, summarized. attacks: [name, to-hit, damage].
+// Standard 5e (SRD 5.1) stat lines, summarized. attacks: [name, to-hit,
+// damage, rider?]. A rider is what else a hit does: extra damage, a save the
+// target makes, or both ({ damage, type, save, dc, half, effect }).
 // saves: saving throw bonuses in the order Str, Dex, Con, Int, Wis, Cha.
+const ASSASSIN_POISON = { damage: "7d6", type: "poison", save: "Con", dc: 15, half: true };
 export const templates = [
   { name: "Guard", ac: 16, hp: "2d8+2", init: 1, speed: 30, saves: [1, 1, 1, 0, 0, 0], attacks: [["Spear", 3, "1d6+1"]],
     abilities: "Chain shirt and shield. Spear can be thrown (20/60 ft)." },
@@ -22,26 +25,26 @@ export const templates = [
     abilities: "Spell DC 14, +6. Mage Armor (AC 15). Spells: Misty Step, Counterspell, Fireball (8d6, Dex save), Ice Storm, Greater Invisibility, Cone of Cold (8d8, Con save)." },
   { name: "Goblin", ac: 15, hp: "2d6", init: 2, speed: 30, saves: [-1, 2, 0, 0, -1, -1], attacks: [["Scimitar", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
     abilities: "Nimble Escape: Disengage or Hide as a bonus action." },
-  { name: "Wolf", ac: 13, hp: "2d8+2", init: 2, speed: 40, saves: [1, 2, 1, -4, 1, -2], attacks: [["Bite", 4, "2d4+2"]],
+  { name: "Wolf", ac: 13, hp: "2d8+2", init: 2, speed: 40, saves: [1, 2, 1, -4, 1, -2], attacks: [["Bite", 4, "2d4+2", { save: "Str", dc: 11, effect: "knocked prone" }]],
     abilities: "Bite: DC 11 Strength save or knocked prone. Pack Tactics. Keen Hearing and Smell." },
   { name: "Ogre", ac: 11, hp: "7d10+21", init: -1, speed: 40, saves: [4, -1, 3, -3, -2, -2], attacks: [["Greatclub", 6, "2d8+4"], ["Javelin", 6, "2d6+4"]],
     abilities: "Large. Javelin range 30/120 ft." },
   // Tougher foes for a level 10 party (challenge 5 to 8).
-  { name: "Gladiator", ac: 16, hp: "15d8+45", init: 2, speed: 30, saves: [7, 5, 6, 0, 1, 2], attacks: [["Spear (×3)", 7, "2d6+4"], ["Shield Bash", 7, "2d4+4"]],
+  { name: "Gladiator", ac: 16, hp: "15d8+45", init: 2, speed: 30, saves: [7, 5, 6, 0, 1, 2], attacks: [["Spear (×3)", 7, "2d6+4"], ["Shield Bash", 7, "2d4+4", { save: "Str", dc: 15, effect: "knocked prone" }]],
     abilities: "Multiattack: three melee attacks (or two ranged spear throws, 20/60 ft). Shield Bash: DC 15 Strength save or knocked prone. Parry (reaction): +3 AC against one melee hit it can see." },
   { name: "Troll", ac: 15, hp: "8d10+40", init: 1, speed: 30, saves: [4, 1, 5, -2, -1, -2], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "1d6+4"]],
     abilities: "Large. Multiattack: a bite and two claws. Regeneration: regains 10 HP at the start of its turn unless it took acid or fire damage since its last turn; it only dies at 0 HP if it doesn't regenerate. Keen Smell." },
   { name: "Hill Giant", ac: 13, hp: "10d12+40", init: -1, speed: 40, saves: [5, -1, 4, -3, -1, -2], attacks: [["Greatclub (×2)", 8, "3d8+5"], ["Rock", 8, "3d10+5"]],
     abilities: "Huge. Multiattack: two greatclub attacks. Rock range 60/240 ft." },
-  { name: "Wraith", ac: 13, hp: "9d8+27", init: 3, speed: 60, saves: [-2, 3, 3, 1, 2, 2], attacks: [["Life Drain", 6, "4d8+3"]],
+  { name: "Wraith", ac: 13, hp: "9d8+27", init: 3, speed: 60, saves: [-2, 3, 3, 1, 2, 2], attacks: [["Life Drain", 6, "4d8+3", { save: "Con", dc: 14, effect: "max HP drops by the damage until a long rest" }]],
     abilities: "Flies (60 ft) and moves through creatures and objects. Life Drain is necrotic: DC 14 Constitution save or the target's max HP drops by the damage until a long rest. Resists most nonmagical weapon damage; immune to necrotic and poison. Sunlight: disadvantage on attacks and Perception." },
   { name: "Oni", ac: 16, hp: "13d10+39", init: 0, speed: 30, saves: [4, 3, 6, 2, 4, 5], attacks: [["Glaive (×2)", 7, "2d10+4"]],
     abilities: "Large; flies 30 ft. Multiattack: two glaive attacks. Regenerates 10 HP a turn while above 0 HP. Innate spells (DC 13): darkness, invisibility, charm person, cone of cold (8d8, Con save), gaseous form, sleep. Can change shape." },
-  { name: "Stone Giant", ac: 17, hp: "11d12+55", init: 2, speed: 40, saves: [6, 5, 8, 0, 4, -1], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6"]],
+  { name: "Stone Giant", ac: 17, hp: "11d12+55", init: 2, speed: 40, saves: [6, 5, 8, 0, 4, -1], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6", { save: "Str", dc: 17, effect: "knocked prone" }]],
     abilities: "Huge. Multiattack: two greatclub attacks. Rock (60/240 ft): DC 17 Strength save or knocked prone. Rock Catching (reaction): DC 10 Dex save to catch a thrown rock." },
-  { name: "Assassin", ac: 15, hp: "12d8+24", init: 3, speed: 30, saves: [0, 6, 2, 4, 0, 0], attacks: [["Shortsword (×2)", 6, "1d6+3"], ["Light crossbow", 6, "1d8+3"]],
+  { name: "Assassin", ac: 15, hp: "12d8+24", init: 3, speed: 30, saves: [0, 6, 2, 4, 0, 0], attacks: [["Shortsword (×2)", 6, "1d6+3", ASSASSIN_POISON], ["Light crossbow", 6, "1d8+3", ASSASSIN_POISON]],
     abilities: "Multiattack: two shortsword attacks. Each hit also deals 7d6 poison (DC 15 Constitution save for half). Sneak Attack +4d6 once a turn. Assassinate: advantage against anyone who hasn't acted yet, and any hit on a surprised creature is a critical. Evasion." },
-  { name: "Young Green Dragon", ac: 18, hp: "16d10+48", init: 1, speed: 40, saves: [4, 4, 6, 3, 4, 5], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "2d10+4"]],
+  { name: "Young Green Dragon", ac: 18, hp: "16d10+48", init: 1, speed: 40, saves: [4, 4, 6, 3, 4, 5], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "2d10+4", { damage: "2d6", type: "poison" }]],
     abilities: "Large; flies 80 ft, swims 40 ft. Multiattack: a bite and two claws; the bite adds 2d6 poison. Poison Breath (recharge 5–6): 30-ft cone, DC 14 Constitution save, 12d6 poison, half on a save. Amphibious. Immune to poison." }
 ];
 
@@ -81,7 +84,8 @@ export function createEnemies(stats, count = 1, random, existing = []) {
       maxHp: max,
       init: Number(stats.init) || 0,
       speed: Number(stats.speed) || 30,
-      attacks: (stats.attacks ?? []).filter(([name]) => name).map(([name, hit, damage]) => [String(name), Number(hit) || 0, String(damage || "")]),
+      attacks: (stats.attacks ?? []).filter(([name]) => name).map(([name, hit, damage, rider]) =>
+        rider ? [String(name), Number(hit) || 0, String(damage || ""), rider] : [String(name), Number(hit) || 0, String(damage || "")]),
       abilities: String(stats.abilities ?? ""),
       saves: normalizeSaves(stats.saves),
       initiative: null
@@ -295,20 +299,29 @@ export function attackOutcome(toHit, ac) {
 // Fireball, DC 17 Dex save, half on a save").
 export const hitReportText = (enemy, amount, detail = "") =>
   ("🎯 hit " + enemy + " for " + amount + " damage" + (detail ? " — " + detail : "")).slice(0, 300);
+// The DM's phone marks a hit it applied (or dismissed) on the story line
+// itself, so a second DM screen at the same table never applies it again.
+const HANDLED_MARK = / · ✓ DM (applied|dismissed)$/u;
+export const hitHandledText = (text, how = "applied") => String(text ?? "").replace(HANDLED_MARK, "") + " · ✓ DM " + how;
 export function parseHitReport(text) {
-  const match = String(text ?? "").match(/^🎯 hit (.+?) for (\d{1,3}) damage(?: — (.+))?$/u);
+  const handled = HANDLED_MARK.test(String(text ?? ""));
+  const match = String(text ?? "").replace(HANDLED_MARK, "").match(/^🎯 hit (.+?) for (\d{1,3}) damage(?: — (.+))?$/u);
   if (!match) return null;
   const detail = match[3] ?? "";
   const toHit = detail.match(/(\d+) to hit/);
   return {
-    enemy: match[1], amount: Number(match[2]), detail,
+    enemy: match[1], amount: Number(match[2]), detail, handled,
     toHit: toHit ? Number(toHit[1]) : null,
     crit: /critical/i.test(detail),
     halfOnSave: /half on a save/i.test(detail),
-    // "Dex save, DC 17": the enemy's save, which the DM can roll in one tap.
+    // "Dex save, DC 17": the enemy's save against a spell, which the DM can
+    // roll in one tap. "DC 16 Strength save or knocked prone" (a maneuver):
+    // the damage lands either way and the save only decides the effect.
     save: (() => {
       const found = detail.match(/\b(Str|Dex|Con|Int|Wis|Cha) save, DC (\d+)/i);
-      return found ? { ability: found[1][0].toUpperCase() + found[1].slice(1).toLowerCase(), dc: Number(found[2]) } : null;
+      if (found) return { ability: found[1][0].toUpperCase() + found[1].slice(1).toLowerCase(), dc: Number(found[2]) };
+      const rider = detail.match(/\bDC (\d+) (Str|Dex|Con|Int|Wis|Cha)[a-z]* save(?: or ([^(),]+))?/i);
+      return rider ? { ability: rider[2][0].toUpperCase() + rider[2].slice(1).toLowerCase(), dc: Number(rider[1]), rider: true, effect: rider[3]?.trim() ?? "" } : null;
     })()
   };
 }
@@ -504,4 +517,13 @@ export function pickEncounter({ cloud, local, dirty, pending, savedHere }) {
     return JSON.stringify(cloud.enemies) === JSON.stringify(local ?? []) ? "keep" : "cloud";
   }
   return savedHere ? "push" : "keep";
+}
+
+// What a rider adds to a hit, in words: "+7d6 poison (DC 15 Con save for
+// half)" or "DC 11 Str save or knocked prone".
+export function riderText(rider) {
+  if (!rider) return "";
+  const save = rider.save ? "DC " + rider.dc + " " + rider.save + " save" : "";
+  if (rider.damage) return "+" + rider.damage + " " + (rider.type ?? "") + (save ? " (" + save + (rider.half ? " for half" : " or none") + ")" : "");
+  return save + (rider.effect ? " or " + rider.effect : "");
 }
