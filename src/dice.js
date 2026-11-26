@@ -120,3 +120,45 @@ export function keepD20(first, second, mode) {
   const better = mode === "disadvantage" ? second.natural < first.natural : second.natural > first.natural;
   return { ...(better ? second : first), mode };
 }
+
+// A roll made with real dice at the table: the player enters what the d20
+// shows (the app adds the modifier, and a 20 or a 1 is still a crit or a
+// fumble), or for anything else the dice total before the modifier. Returns
+// a result shaped like roll()'s, or null when the number can't come from
+// those dice.
+export function tableRoll(expression, value, mode = "normal") {
+  const parsed = parse(expression);
+  const shown = Math.round(Number(value));
+  if (!parsed || !parsed.dice.length || String(value).trim() === "" || !Number.isFinite(shown)) return null;
+  const single20 = parsed.dice.length === 1 && parsed.dice[0].count === 1 && parsed.dice[0].sides === 20 && parsed.dice[0].sign === 1;
+  const low = parsed.dice.reduce((sum, die) => sum + die.sign * (die.sign > 0 ? die.count : die.count * die.sides), 0);
+  const high = parsed.dice.reduce((sum, die) => sum + die.sign * (die.sign > 0 ? die.count * die.sides : die.count), 0);
+  if (shown < low || shown > high) return null;
+  const natural = single20 ? shown : null;
+  const mod = parsed.modifier;
+  return {
+    expression: normalize(expression),
+    total: shown + mod,
+    groups: parsed.dice.map((die, at) => ({ ...die, results: at === 0 ? [shown] : [] })),
+    modifier: mod,
+    mode: single20 ? mode : "normal",
+    dropped: null,
+    natural,
+    critical: natural === 20,
+    fumble: natural === 1,
+    table: true,
+    breakdown: "table dice: " + shown + (mod ? (mod > 0 ? " + " : " − ") + Math.abs(mod) : "")
+  };
+}
+
+// What to ask for when the player rolls real dice: the d20's face, or the
+// dice total (the app adds the modifier).
+export function tablePrompt(expression, mode = "normal") {
+  const parsed = parse(expression);
+  if (!parsed || !parsed.dice.length) return "";
+  const single20 = parsed.dice.length === 1 && parsed.dice[0].count === 1 && parsed.dice[0].sides === 20;
+  const mod = parsed.modifier ? " (the app adds " + (parsed.modifier > 0 ? "+" : "−") + Math.abs(parsed.modifier) + ")" : "";
+  if (single20) return (mode === "advantage" ? "Roll two d20s, enter the higher" : mode === "disadvantage" ? "Roll two d20s, enter the lower" : "What does your d20 show?") + mod;
+  const dice = parsed.dice.map(die => (die.sign < 0 ? "−" : "") + die.count + "d" + die.sides).join(" + ");
+  return "Add up your dice (" + dice + ")" + mod;
+}

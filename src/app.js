@@ -5,7 +5,7 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
-import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20 } from "./dice.js";
+import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
@@ -1424,6 +1424,7 @@ function stageDice(faces) {
   return slots;
 }
 function previewDice() {
+  drawTablePrompt(); // the real-dice box asks for the right number
   const parsed = parseDice($("dice-expression").value.trim() || "d20");
   if (!parsed) return stageDice([]);
   const faces = parsed.dice.flatMap(die => Array.from({ length: die.count }, () => ({ sides: die.sides })));
@@ -1630,6 +1631,33 @@ $("dice-roll").onclick = async () => {
     $("dice-status").textContent = "Try something like d20+5, 2d6+3, or 1d12+7.";
     return;
   }
+  await landRoll(result, purpose);
+};
+// Real dice at the table: the same roll, from the number the player enters,
+// so crits, death saves, attacks and sharing all work as with the app's dice.
+$("dice-table").onsubmit = async event => {
+  event.preventDefault();
+  const purpose = $("dice-for-text").value.trim();
+  if (!$("dice-share-wrap").hidden && $("dice-share").checked && !dice.label && !purpose) {
+    $("dice-status").textContent = "What's this roll for? Pick one above (or type it), or untick Share.";
+    return;
+  }
+  const expression = $("dice-expression").value.trim() || "d20";
+  const result = tableRoll(expression, $("dice-table-value").value, dice.mode);
+  if (!result) {
+    $("dice-status").textContent = parseDice(expression)?.dice.length
+      ? "Those dice can't show " + $("dice-table-value").value + ". Check what you rolled and try again."
+      : "Pick the dice first (like d20+5 or 2d6+3).";
+    return;
+  }
+  $("dice-table-value").value = "";
+  await landRoll(result, purpose);
+};
+function drawTablePrompt() {
+  const expression = $("dice-expression").value.trim() || "d20";
+  $("dice-table-label").textContent = "Rolled real dice? " + (tablePrompt(expression, dice.mode) || "Pick the dice first.");
+}
+async function landRoll(result, purpose) {
   $("dice-status").textContent = "";
   $("dice-result").hidden = true;
   $("dice-roll").disabled = true;
@@ -1639,7 +1667,7 @@ $("dice-roll").onclick = async () => {
   const { label, onResult } = dice;
   const share = !$("dice-share-wrap").hidden && $("dice-share").checked;
   try {
-    await spinDice(result);
+    if (!result.table) await spinDice(result); // real dice already landed
   } finally {
     $("dice-roll").disabled = false;
   }
@@ -1671,7 +1699,7 @@ $("dice-roll").onclick = async () => {
       $("dice-status").textContent = error.message;
     }
   }
-};
+}
 
 // ── Combat mode: the DM starts it from the encounter tracker; every phone
 // sees the initiative order, whose turn it is, and enemies as Healthy,
