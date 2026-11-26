@@ -151,6 +151,7 @@
           </div>
           <div id="scene-current"><p id="scene">Waiting for an update.</p></div>
           <div id="since-wrap" hidden><p class="eyebrow">SINCE THEN · NEWEST FIRST</p><ul id="since-actions" class="feed"></ul></div>
+          <div id="recent-wrap" hidden><p class="eyebrow">JUST BEFORE</p><ul id="recent-earlier" class="feed"></ul></div>
           <details class="fold"><summary>Earlier updates</summary><ol id="history" class="feed"></ol></details>
         </section>
         <section id="conditions" class="card stack" aria-labelledby="conditions-title">
@@ -168,6 +169,7 @@
         <form id="action-form" class="card stack" hidden>
           <label for="action-text" id="action-label" class="display xs">What is your character doing?</label>
           <textarea id="action-text" rows="3" maxlength="1000" autocomplete="off" enterkeyhint="send" placeholder="e.g. looks around the tavern for anyone watching us"></textarea>
+          <div id="action-roll" class="callout action-roll" hidden><span id="action-roll-text"></span><button id="action-roll-send" type="button" class="secondary"></button></div>
           <p id="action-count" class="fineprint" aria-live="polite" hidden></p>
           <button id="action-submit" type="submit" class="cta">Add to story</button>
           <p id="action-status" class="fineprint"></p>
@@ -476,12 +478,14 @@
         </div>
       </div>
       <button id="dice-roll" class="cta" type="button">Roll</button>
-      <form id="dice-table" class="dice-table">
+      <button id="dice-real-on" class="link dice-real-toggle" type="button">Rolling your own dice at the table? Enter what they show</button>
+      <form id="dice-table" class="dice-table" hidden>
         <label for="dice-table-value" id="dice-table-label">Rolled real dice? What does your d20 show?</label>
         <div class="dice-table-row">
           <input id="dice-table-value" type="number" inputmode="numeric" placeholder="Die" aria-describedby="dice-table-label">
           <button class="ghost" type="submit">Use my roll</button>
         </div>
+        <button id="dice-real-off" class="link dice-real-toggle" type="button">Only using the app's dice</button>
       </form>
       <button id="dice-clear" class="quiet" type="button">Clear</button>
       <p id="dice-status" class="fineprint"></p>
