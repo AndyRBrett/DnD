@@ -3026,7 +3026,7 @@ function resetAttack(keepChoice = true) {
     saveAttackOptions(attackFlow.character);
   }
   flushMiss(); // a miss left on the card is final once the player moves on
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set() });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -3241,7 +3241,12 @@ function drawAttack() {
   if (!attackFlow.area) attackFlow.area = new Set();
   const standingNames = [...select.options].map(option => option.value).filter(Boolean);
   for (const name of [...attackFlow.area]) if (!standingNames.includes(name) && !attackFlow.sent.includes(name)) attackFlow.area.delete(name);
-  if (area && !attackFlow.area.size && select.value) attackFlow.area.add(select.value);
+  // Start from the dropdown's enemy once per attack; after that an empty
+  // list means the player unticked everyone.
+  if (area && !attackFlow.areaSeeded) {
+    attackFlow.areaSeeded = true;
+    if (select.value && !attackFlow.area.size) attackFlow.area.add(select.value);
+  }
   if (area) {
     const box = document.createElement("fieldset");
     box.className = "area-targets";
@@ -3425,10 +3430,14 @@ function drawAttack() {
       const send = stepButton(waiting.length ? "Send " + attackFlow.damage + " to the DM · " + waiting.join(", ")
         : attackFlow.sent.length ? "Sent to " + attackFlow.sent.join(", ") : "Tick the targets above to send", "cta", async () => {
         send.disabled = true;
+        // This roll and its sent list, taken now: Next attack or another
+        // attack mid-batch starts a fresh flow, and must not get these.
+        const damage = attackFlow.damage;
+        const sentList = attackFlow.sent;
         try {
           for (const name of waiting) {
-            await backend.postAction(room, me, hitReportText(name, attackFlow.damage, detail));
-            attackFlow.sent.push(name);
+            await backend.postAction(room, me, hitReportText(name, damage, detail));
+            sentList.push(name);
           }
           sync();
           drawAttack();
