@@ -3294,8 +3294,11 @@ function attacksThisTurn(index) {
 // Spells and other one-use attacks (no Extra Attack) take the turn's action
 // or bonus action: once per turn, unless the player says otherwise.
 const usedOnce = new Map(); // "index:attack name" → turn tag it was used on
-const usedOnceThisTurn = (index, attack) => !attack.perAction && usedOnce.get(index + ":" + attack.name) === turnTag();
-const markUsedOnce = (index, attack) => { if (!attack.perAction) usedOnce.set(index + ":" + attack.name, turnTag()); };
+// Only while turns are running: before round 1 (or with no fight) there's no
+// turn boundary to clear it, so it would warn forever.
+const turnsRunning = () => Boolean(state?.combat?.turn);
+const usedOnceThisTurn = (index, attack) => turnsRunning() && !attack.perAction && usedOnce.get(index + ":" + attack.name) === turnTag();
+const markUsedOnce = (index, attack) => { if (turnsRunning() && !attack.perAction) usedOnce.set(index + ":" + attack.name, turnTag()); };
 function countAttack(index) {
   attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
 }
