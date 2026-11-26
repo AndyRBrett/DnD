@@ -3145,7 +3145,10 @@ function drawHitInbox() {
     // Sent at an enemy that's already down or isn't in this encounter (a
     // stale view, a typo): the DM can point it at one that's still standing.
     const named = enemies.find(enemy => enemy.name === report.enemy);
-    const picked = enemies.find(enemy => enemy.id === hitRetargets.get(action.id));
+    // A picked enemy that has since gone down (another hit finished it) no
+    // longer counts: the DM picks again.
+    const picked = enemies.find(enemy => enemy.id === hitRetargets.get(action.id) && enemy.hp > 0);
+    if (!picked) hitRetargets.delete(action.id);
     const target = picked ?? named;
     let retarget = null;
     if (!named || named.hp <= 0) {
@@ -3172,7 +3175,10 @@ function drawHitInbox() {
     apply.type = "button";
     apply.className = "danger-soft";
     apply.textContent = "Apply";
-    apply.disabled = !target;
+    // Pointed at a downed or unknown enemy with no standing one picked: the
+    // hit would be lost, so it waits for a pick (or Dismiss).
+    const needsPick = Boolean(retarget) && !picked;
+    apply.disabled = !target || needsPick;
     const who = action.name.replace(/^The /, "");
     const how = report.detail.match(/^with ([^,]+)/)?.[1] ?? "";
     const hitEnemy = (amount, note = "") => {
@@ -3199,12 +3205,12 @@ function drawHitInbox() {
       half.type = "button";
       half.className = "ghost";
       half.textContent = "Saved: " + Math.floor(report.amount / 2);
-      half.disabled = !target;
+      half.disabled = !target || needsPick;
       half.onclick = () => hitEnemy(Math.floor(report.amount / 2), " (saved for half)");
       buttons.append(half);
     }
     // One tap: roll the enemy's save against the spell's DC and apply the result.
-    if (report.save && target) {
+    if (report.save && target && !needsPick) {
       const bonus = saveBonus(target, report.save.ability);
       const saveButton = document.createElement("button");
       saveButton.type = "button";
