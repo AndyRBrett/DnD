@@ -613,3 +613,14 @@ body.board-mode .hdr .role-pill{display:none}
 .here-line strong{color:var(--text)}
 .section-meaning{font-size:.85rem;color:var(--muted2);margin:2px 0 8px}
 .pair-meaning{display:block;font-size:.8rem;color:var(--muted2);margin-top:2px}
+/* Turn guide: the next thing to do in a fight */
+.turn-guide{list-style:none;margin:10px 0 6px;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;counter-reset:step}
+.turn-guide li{counter-increment:step;font:700 .72rem/1.2 var(--font-body);text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:center;padding:6px 2px;border-radius:8px;background:var(--inset);border:1px solid var(--border)}
+.turn-guide li::before{content:counter(step) " ";opacity:.7}
+.turn-guide li.is-done{color:var(--green);border-color:var(--green-dim)}
+.turn-guide li.is-done::before{content:"✓ "}
+.turn-guide li.is-now{color:var(--on-accent);background:var(--gold);border-color:var(--gold)}
+.guide-hint{margin:4px 0 8px;font-weight:600}
+#guide-go{width:100%;margin-bottom:6px}
+#combat-end-turn.is-next{outline:3px solid var(--gold);outline-offset:2px}
+#dm-turn .enemy-card,#dm-turn article{margin-top:4px}
