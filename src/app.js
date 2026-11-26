@@ -84,10 +84,14 @@ function cardLink(text, index) {
     if (!option && base.length > 3 && new RegExp("\\b" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(words)) option = entry;
   }
   const attacks = attacksFor(index);
-  let attackIndex = attacks.findIndex(attack => words.includes(matchable(attack.name)));
-  if (!option && attackIndex < 0) return null;
-  const label = [attackIndex >= 0 ? attacks[attackIndex].name : "", option ? (choice ?? option.name.replace(/\s*\(.*\)\s*$/, "")) : ""].filter(Boolean).join(" + ");
-  return { option, choice, attackIndex, label };
+  // "Razor Shuriken (Q)" is named "Razor Shuriken" in a suggestion.
+  let attackIndex = attacks.findIndex(attack => words.includes(matchable(attack.name)) || (baseName(attack.name).length > 3 && words.includes(baseName(attack.name))));
+  // A feature on the "This turn" strip (Living Shadow, Action Surge, Rage).
+  const features = (sheet.resources ?? []).flatMap(resource => [resource.name, ...(resource.covers ?? []).map(entry => Array.isArray(entry) ? entry[0] : entry)]);
+  const feature = features.find(name => name.length > 3 && words.includes(matchable(name))) ?? null;
+  if (!option && attackIndex < 0 && !feature) return null;
+  const label = [feature ?? "", attackIndex >= 0 ? attacks[attackIndex].name : "", option ? (choice ?? option.name.replace(/\s*\(.*\)\s*$/, "")) : ""].filter(Boolean).join(" + ");
+  return { option, choice, attackIndex, feature, label };
 }
 function cardLinkButton(link, index) {
   const button = document.createElement("button");
@@ -120,6 +124,12 @@ function useOnCard(link, index) {
         if (live && [...live.options].some(entry => entry.value === link.choice)) { live.value = link.choice; live.dispatchEvent(new Event("change")); }
       });
     }
+  }
+  // A strip feature isn't spent for them: point at its button instead.
+  if (link.feature) {
+    const button = [...$("turn-features").querySelectorAll("button, .turn-feature")].find(item => matchable(item.textContent).includes(matchable(link.feature)));
+    button?.classList.add("is-suggested");
+    setTimeout(() => button?.classList.remove("is-suggested"), 6000);
   }
   $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -3141,6 +3151,9 @@ const lastingUp = new Map();
 // attack in this Attack action" (Extra Attack is easy to forget).
 const attacksMade = new Map();
 const turnTag = () => state?.combat ? state.combat.round + ":" + state.combat.turn : "";
+// Resource features used this turn (Living Shadow…), shown as used.
+const usedFeatures = new Map(); // character index → { turn, names }
+const featuresThisTurn = index => { const entry = usedFeatures.get(index); return entry && entry.turn === turnTag() ? entry.names : []; };
 // Action Surge this turn: each one adds a whole Attack action.
 const surges = new Map(); // character index → { turn, count }
 const surgesThisTurn = index => { const entry = surges.get(index); return entry && entry.turn === turnTag() ? entry.count : 0; };
@@ -3196,6 +3209,36 @@ function drawTurnFeatures(me, sheet, res) {
         drawHp();
         drawAttack();
       }, !left));
+    }
+  }
+  // Features a resource pays for that aren't attacks (Roan's Living Shadow and
+  // Death Mark, Turn Undead, Precision Attack): one tap spends it, tells the
+  // table and shows it's used this turn.
+  const attackNames = new Set(attacksFor(me).map(attack => baseName(attack.name)));
+  const optionNames = new Set((sheet.attackOptions ?? []).flatMap(option => [baseName(option.name), ...(option.choices ?? []).map(([name]) => baseName(name))]));
+  for (const resource of sheet.resources ?? []) {
+    for (const covered of resource.covers ?? []) {
+      const [name, cost] = Array.isArray(covered) ? covered : [covered, 1];
+      if (/^Combat Superiority$/i.test(name) || attackNames.has(baseName(name)) || optionNames.has(baseName(name))) continue;
+      const own = (sheet.resources ?? []).find(entry => entry.name === name && entry.max); // Death Mark has its own use too
+      const left = resourceLeft(sheet, res, resource.name);
+      const ownLeft = own ? resourceLeft(sheet, res, own.name) : Infinity;
+      // Usable again while there's something left (Precision Attack on each
+      // swing); the count says it's already in play this turn.
+      const used = featuresThisTurn(me).filter(entry => entry === name).length;
+      const can = left >= cost && ownLeft >= 1;
+      const item = button((used ? "✓ " : "✨ ") + name + (used ? " ×" + used + " this turn" : "") + " · uses " + cost + " (" + resource.name + ": " + left + " left)", () => {
+        let next = readRes(me);
+        for (let n = 0; n < cost; n++) next = spendResource(sheet, next, resource.name);
+        if (own) next = spendResource(sheet, next, own.name);
+        saveRes(me, next);
+        usedFeatures.set(me, { turn: turnTag(), names: [...featuresThisTurn(me), name] });
+        tellTable(me, "✨ uses " + name + " (" + resourceLeft(sheet, next, resource.name) + " " + resource.name + " left)");
+        drawHp();
+        drawAttack();
+      }, !can);
+      item.dataset.feature = name;
+      items.push(item);
     }
   }
   // A spell that stays up (Hunter's Mark): show it's on, so it isn't cast twice.
