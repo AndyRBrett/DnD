@@ -158,10 +158,10 @@ export const sheets = {
       { name: "Sacred Flame", ability: "WIS", save: "Dex", dc: 16, damage: "2d8+4", type: "radiant", note: "Cantrip; nothing on a save." },
       { name: "Toll the Dead · hurt target", ability: "WIS", save: "Wis", dc: 16, damage: "2d12+4", type: "necrotic", note: "Cantrip, against a target that's missing any HP (Bloodied, or hit earlier). Nothing on a save." },
       { name: "Toll the Dead · unhurt target", ability: "WIS", save: "Wis", dc: 16, damage: "2d8+4", type: "necrotic", note: "Cantrip, against a target at full HP. Nothing on a save." },
-      { name: "Spirit Guardians", ability: "WIS", slot: 3, upcast: "1d8", lasting: true, concentration: true, addMod: false, save: "Wis", dc: 16, damage: "3d8", type: "radiant", half: true, note: "Concentration, 10 minutes, 15-ft aura: each enemy that starts its turn there or enters it saves. One slot when cast (you start concentrating); later rounds are free until concentration ends." },
-      { name: "Fireball", ability: "WIS", slot: 3, upcast: "1d6", addMod: false, save: "Dex", dc: 16, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
-      { name: "Flame Strike", ability: "WIS", slot: 5, addMod: false, save: "Dex", dc: 16, damage: "4d6+4d6", type: "fire + radiant", half: true, note: "5th-level slot." },
-      { name: "Radiance of the Dawn", ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 16, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
+      { name: "Spirit Guardians", area: true, ability: "WIS", slot: 3, upcast: "1d8", lasting: true, concentration: true, addMod: false, save: "Wis", dc: 16, damage: "3d8", type: "radiant", half: true, note: "Concentration, 10 minutes, 15-ft aura: each enemy that starts its turn there or enters it saves. One slot when cast (you start concentrating); later rounds are free until concentration ends." },
+      { name: "Fireball", area: true, ability: "WIS", slot: 3, upcast: "1d6", addMod: false, save: "Dex", dc: 16, damage: "8d6", type: "fire", half: true, note: "3rd-level slot; 20-ft radius, each creature takes the same roll." },
+      { name: "Flame Strike", area: true, ability: "WIS", slot: 5, addMod: false, save: "Dex", dc: 16, damage: "4d6+4d6", type: "fire + radiant", half: true, note: "5th-level slot." },
+      { name: "Radiance of the Dawn", area: true, ability: "WIS", spends: "Channel Divinity", addMod: false, save: "Con", dc: 16, damage: "2d10+10", type: "radiant", half: true, note: "Channel Divinity; enemies within 30 ft." }
     ],
     attackOptions: [],
     // Healing from the Resources card: heal is the dice (with the modifier);
@@ -505,7 +505,7 @@ export const sheets = {
       { name: "Wrist blade", ability: "DEX", hit: 9, damage: "1d6+5", type: "slashing", note: "Finesse, 5 ft. One attack per Attack action; the second blade gives no free attack." },
       { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft, one target; Roan's own throw costs no energy and isn't magical." },
       { name: "Shadow's copied Q", ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage. Magical." },
-      { name: "Shadow Slash (E)", ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack. Magical." }
+      { name: "Shadow Slash (E)", area: true, ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack. Magical." }
     ],
     attackOptions: [
       { name: "Sneak Attack", damage: "+5d6", lasts: "attack", note: "Once per turn, on one hit: advantage, or an active ally within 5 ft of the target and no disadvantage. The shadow isn't an ally." },

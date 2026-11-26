@@ -638,3 +638,7 @@ body.in-combat .card-link{display:block}
 .dice-table label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
 .dice-table-row{display:flex;gap:8px}
 .dice-table-row input{width:6.5em}
+/* Area spells: every target in the area */
+.area-targets{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:0 0 8px;display:grid;gap:6px}
+.area-targets legend{font-weight:700;font-size:.85rem;padding:0 4px}
+.area-targets label{display:flex;align-items:center;gap:8px}
