@@ -1535,6 +1535,9 @@ const initiativeMode = () => rollModeFrom(initiativeEntry()?.[1] ?? "");
 function combatChanged(previous) {
   const before = previous?.combat;
   const now = state.combat;
+  // A new fight (or one that ended), or a round lower than a saved one: the
+  // death-save round lock belongs to the old fight.
+  if (!before !== !now || (before && now && now.round < before.round)) forgetDeathRounds();
   drawCombat();
   if (!before && now) {
     // Don't pull a player away from an action they're still typing.
@@ -2066,6 +2069,14 @@ function readDeath(index) {
 // The round of the last death save rolled in a fight, so a second roll on
 // the same turn doesn't count. Outside a fight there's no limit.
 const deathRolledThisRound = index => Boolean(state?.combat?.round) && readDeath(index).round === state.combat.round;
+// A fight started or ended: a save from the last fight doesn't lock this one
+// (the counts stay; only the round is forgotten).
+function forgetDeathRounds() {
+  (state?.party ?? []).forEach((_, index) => {
+    const local = readJson(deathKey(index), null);
+    if (local?.round != null) storage.set(deathKey(index), JSON.stringify({ ...local, round: null }));
+  });
+}
 function writeDeath(index, { successes, failures, last, round }) {
   const res = readRes(index);
   const used = { ...(res.used ?? {}) };
@@ -2661,6 +2672,16 @@ $("attack-custom-form").onsubmit = event => {
   drawAttack();
 };
 const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [], level: null, spent: false, spentManeuver: false, notes: [] };
+// A miss goes in the story too, so the DM can tell it from a skipped turn.
+// It's posted once it's final: straight away when no second d20 can change
+// it, otherwise when the player moves on (next attack, another attack or
+// character, End my turn).
+function flushMiss() {
+  if (attackFlow.step !== "miss" || attackFlow.missTold || !attackFlow.missText || attackFlow.character === null) return;
+  if (!backend.postAction || !Array.isArray(state?.actions)) return;
+  attackFlow.missTold = true;
+  backend.postAction(room, attackFlow.character, attackFlow.missText).then(sync).catch(() => {});
+}
 function resetAttack(keepChoice = true) {
   // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
   if (attackFlow.step !== "ready" && attackFlow.character !== null) {
@@ -2669,7 +2690,8 @@ function resetAttack(keepChoice = true) {
     }
     saveAttackOptions(attackFlow.character);
   }
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false });
+  flushMiss(); // a miss left on the card is final once the player moves on
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "" });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -2747,7 +2769,7 @@ function drawAttack() {
   const me = Number($("character").value);
   const sheet = sheets[partyName(me)] ?? {};
   $("attack-custom").open ||= !attacksFor(me).length;
-  if (attackFlow.character !== me) { attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
+  if (attackFlow.character !== me) { flushMiss(); attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
   const optionState = attackOptionsState(me, sheet, combat);
   attackFlow.options = new Set(optionState.names);
   const attacks = attacksFor(me);
@@ -2924,7 +2946,7 @@ function drawAttack() {
   const actionDone = Boolean(baseAttack.perAction) && made >= baseAttack.perAction;
   const next = stepButton(baseAttack.perAction && made && made < baseAttack.perAction
     ? "Next attack (" + (baseAttack.perAction - made) + " more in this Attack action)"
-    : actionDone ? "Attack action done (" + made + " of " + baseAttack.perAction + ")" : "Next attack", "quiet", event => {
+    : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
       if (actionDone && !confirmTap(event.currentTarget, "Tap again: an extra attack (Action Surge or a bonus action)")) return;
       resetAttack(); drawAttack();
     });
@@ -2941,7 +2963,6 @@ function drawAttack() {
         attackFlow.toHit = kept;
         attackFlow.crit = kept.critical;
         attackFlow.step = kept.critical ? "hit" : kept.fumble ? "miss" : "rolled";
-        attackFlow.missTold = attackFlow.missTold && attackFlow.step === "miss";
         attackFlow.notes = [...(attackFlow.notes ?? []), "Rolled " + first.natural + " and " + result.natural + " with " + mode + ": " + kept.natural + " counts."];
         drawAttack();
         setTimeout(closeDice, 1200);
@@ -2949,13 +2970,11 @@ function drawAttack() {
     });
     return [take("advantage"), take("disadvantage")];
   };
-  // A miss goes in the story too, so the DM can tell it from a skipped turn.
   const tellMiss = () => {
-    if (attackFlow.missTold || !backend.postAction || !Array.isArray(state?.actions)) return;
-    attackFlow.missTold = true;
     const target = $("attack-target").value;
     const rolled = attackFlow.toHit ? " (" + (attackFlow.toHit.fumble ? "natural 1" : attackFlow.toHit.total + " to hit") + ")" : "";
-    backend.postAction(room, me, "🎯 missed " + (target || "the target") + " with " + attack.name + rolled).then(sync).catch(() => { attackFlow.missTold = false; });
+    attackFlow.missText = "🎯 missed " + (target || "the target") + " with " + attack.name + rolled;
+    if (!secondRoll().length) flushMiss(); // nothing left to change it
   };
 
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
@@ -3021,7 +3040,7 @@ function drawAttack() {
   } else if (attackFlow.step === "miss") {
     tellMiss();
     parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"),
-      stepText(attackFlow.missTold ? "The table sees the miss." : "", "fineprint"), next, ...secondRoll());
+      stepText(!backend.postAction || !Array.isArray(state?.actions) ? "" : attackFlow.missTold ? "The table sees the miss." : "The miss goes to the table when you move on.", "fineprint"), next, ...secondRoll());
   } else if (attackFlow.step === "damage") {
     const choiceNotes = chosenOptions.filter(option => option.choices).map(option => {
       const name = attackFlow.choice?.[option.name] ?? option.choices[0][0];
@@ -3175,6 +3194,7 @@ $("combat-ask").onclick = () => {
   askClaude("It's my turn in this fight. What are my best options this turn?");
 };
 $("combat-end-turn").onclick = async () => {
+  flushMiss();
   const button = $("combat-end-turn");
   const me = Number($("character").value);
   button.disabled = true;
