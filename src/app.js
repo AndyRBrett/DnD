@@ -3223,10 +3223,11 @@ function drawTurnFeatures(me, sheet, res) {
       const own = (sheet.resources ?? []).find(entry => entry.name === name && entry.max); // Death Mark has its own use too
       const left = resourceLeft(sheet, res, resource.name);
       const ownLeft = own ? resourceLeft(sheet, res, own.name) : Infinity;
-      const used = featuresThisTurn(me).includes(name);
-      if (used) { items.push(chip("✓ " + name + " used")); continue; }
+      // Usable again while there's something left (Precision Attack on each
+      // swing); the count says it's already in play this turn.
+      const used = featuresThisTurn(me).filter(entry => entry === name).length;
       const can = left >= cost && ownLeft >= 1;
-      const item = button("✨ " + name + " · uses " + cost + " (" + resource.name + ": " + left + " left)", () => {
+      const item = button((used ? "✓ " : "✨ ") + name + (used ? " ×" + used + " this turn" : "") + " · uses " + cost + " (" + resource.name + ": " + left + " left)", () => {
         let next = readRes(me);
         for (let n = 0; n < cost; n++) next = spendResource(sheet, next, resource.name);
         if (own) next = spendResource(sheet, next, own.name);
