@@ -140,13 +140,15 @@ test("the player whose turn it is can pass it, in initiative order", async () =>
   assert.equal((await call(room)).body.combat.turn, "pc:0");
 });
 
-test("tables stay open while there's activity, and close after 8 idle hours", async () => {
+test("tables stay open while there's activity, and close after 3 idle days", async () => {
   const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
   const room = "/api/rooms/" + code;
   const hour = 60 * 60 * 1000;
-  env.DB.sql.prepare("UPDATE rooms SET created = ?, last_active = ? WHERE code = ?").run(Date.now() - 10 * hour, Date.now() - 10 * hour, code);
-  env.DB.sql.prepare("UPDATE scenes SET created = ? WHERE code = ?").run(Date.now() - 10 * hour, code);
-  assert.equal((await call(room)).status, 404, "started 10h ago with no activity since: closed");
+  env.DB.sql.prepare("UPDATE rooms SET created = ?, last_active = ? WHERE code = ?").run(Date.now() - 20 * hour, Date.now() - 20 * hour, code);
+  assert.equal((await call(room)).status, 200, "idle overnight: still open, the game picks up where it stopped");
+  env.DB.sql.prepare("UPDATE rooms SET created = ?, last_active = ? WHERE code = ?").run(Date.now() - 80 * hour, Date.now() - 80 * hour, code);
+  env.DB.sql.prepare("UPDATE scenes SET created = ? WHERE code = ?").run(Date.now() - 80 * hour, code);
+  assert.equal((await call(room)).status, 404, "no activity for over 3 days: closed");
   env.DB.sql.prepare("UPDATE rooms SET last_active = ? WHERE code = ?").run(Date.now() - hour, code);
   assert.equal((await call(room)).status, 200, "activity an hour ago keeps it open");
   assert.equal((await post(room + "/scene", { text: "Roll initiative." }, { "x-table-host": host })).status, 200);

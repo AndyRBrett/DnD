@@ -553,12 +553,12 @@ async function sync() {
     applyRoom(fresh);
     cacheRoom(fresh);
   } catch (error) {
-    // The server says the table is gone (ended, or idle for 8 hours). It can
+    // The server says the table is gone (ended, or idle for 3 days). It can
     // answer with 404 or 400 depending on the error code, so read the message.
     if (error.status === 404 || /ended or expired/i.test(error.message)) {
       ended = true;
       stopMic();
-      $("notice").textContent = "This table has ended. Tables close after 8 hours without any activity. The DM can start a new one from the home screen; HP, spell slots, and the campaign carry over.";
+      $("notice").textContent = "This table has ended. Tables close after 3 days without any activity. The DM can start a new one from the home screen; a campaign's HP, spell slots, and story carry over.";
       $("scene").textContent = "Session ended.";
       $("history").replaceChildren();
       $("action-form").hidden = true;
@@ -637,6 +637,8 @@ function applyRoom(fresh, { cached = false } = {}) {
 // when it changed; dropped after the table's 8 idle hours).
 const roomCacheKey = () => "dnd-room-cache:" + room;
 let stateCached = false;
+// Tables close after 3 days idle (dnd_live_room / worker roomAge).
+const tableAge = 3 * 24 * 60 * 60 * 1000;
 let cachedText = "";
 function cacheRoom(fresh) {
   const text = JSON.stringify(fresh);
@@ -647,7 +649,7 @@ function cacheRoom(fresh) {
 function showCachedRoom() {
   if (state) return;
   const saved = readJson(roomCacheKey(), null);
-  if (!saved?.state?.party || Date.now() - saved.at > 8 * 60 * 60 * 1000) return;
+  if (!saved?.state?.party || Date.now() - saved.at > tableAge) return;
   try { applyRoom(saved.state, { cached: true }); } catch { state = undefined; }
 }
 
@@ -4584,7 +4586,6 @@ let poll;
 // Tables this browser joined, so a player who lands on the home page can get
 // back to the DM's table instead of starting their own.
 const RECENT_KEY = "dnd-recent-tables";
-const tableAge = 8 * 60 * 60 * 1000;
 function recentTables() {
   try {
     return JSON.parse(storage.get(RECENT_KEY) ?? "[]").filter(entry => Date.now() - entry.at < tableAge);
