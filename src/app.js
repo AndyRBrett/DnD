@@ -1362,7 +1362,10 @@ function rollSkill(name, value) {
   openDice(rollableFrom(value) ?? "d20", name, null, rollModeFrom(value));
   if (!$("dice-share-wrap").hidden) {
     $("dice-share").checked = true;
-    $("dice-for").hidden = true; // the label already says what it's for
+    // Its purpose is filled in too, so a tweaked roll (+1 from a bonus)
+    // still says what it's for after the skill label drops away.
+    setRollPurpose(name);
+    $("dice-for").hidden = false;
   }
 }
 // One-tap rolls from the character's roll tiles and proficient saves, so
