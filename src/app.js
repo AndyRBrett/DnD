@@ -3026,7 +3026,7 @@ function resetAttack(keepChoice = true) {
     saveAttackOptions(attackFlow.character);
   }
   flushMiss(); // a miss left on the card is final once the player moves on
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "" });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set() });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -3229,10 +3229,38 @@ function drawAttack() {
   }
 
   const steps = $("attack-steps");
+  // A saving-throw spell (Fireball, Flame Strike) can catch several enemies:
+  // tick each one in the area instead of picking a single target, and the
+  // same damage roll goes to all of them (the DM rolls each one's save).
+  const area = Boolean(attack?.save && attack.area); // area spells only: Sacred Flame still has one target
+  select.closest("label").hidden = area;
   if (!attack) { steps.replaceChildren(); return; }
   const chosenOptions = options.filter(isOn);
   const built = buildAttack(attack, chosenOptions, { crit: attackFlow.crit, extraCritDice: attack.ranged ? 0 : sheet.critExtraDice ?? 0 }); // Brutal Critical is melee only
   const parts = [];
+  if (!attackFlow.area) attackFlow.area = new Set();
+  const standingNames = [...select.options].map(option => option.value).filter(Boolean);
+  for (const name of [...attackFlow.area]) if (!standingNames.includes(name) && !attackFlow.sent.includes(name)) attackFlow.area.delete(name);
+  if (area && !attackFlow.area.size && select.value) attackFlow.area.add(select.value);
+  if (area) {
+    const box = document.createElement("fieldset");
+    box.className = "area-targets";
+    const legend = document.createElement("legend");
+    legend.textContent = "Who's in the area? Tick every target";
+    box.append(legend);
+    if (!standingNames.length) box.append(stepText("No enemies standing.", "fineprint"));
+    for (const name of standingNames) {
+      const label = document.createElement("label");
+      const tick = document.createElement("input");
+      tick.type = "checkbox";
+      tick.checked = attackFlow.area.has(name);
+      tick.disabled = attackFlow.sent.includes(name);
+      tick.onchange = () => { if (tick.checked) attackFlow.area.add(name); else attackFlow.area.delete(name); drawAttack(); };
+      label.append(tick, " " + [...select.options].find(option => option.value === name).textContent + (attackFlow.sent.includes(name) ? " · sent" : ""));
+      box.append(label);
+    }
+    parts.push(box);
+  }
   // Spend the slot (or Channel Divinity) when the spell is cast, and a
   // superiority die when its maneuver is used on a hit.
   const spend = stage => {
@@ -3391,7 +3419,29 @@ function drawAttack() {
       : ", " + attackFlow.toHit.total + " to hit" + (attackFlow.crit ? ", critical" : ""));
     parts.push(stepText(attackFlow.damage + " " + (attack.type ?? "") + " damage" + (attackFlow.crit ? " (critical)" : ""), "is-big"));
     const target = select.value;
-    if (backend.postAction && Array.isArray(state?.actions)) {
+    if (area && backend.postAction && Array.isArray(state?.actions)) {
+      // One roll, one hit report per enemy in the area.
+      const waiting = [...attackFlow.area].filter(name => !attackFlow.sent.includes(name));
+      const send = stepButton(waiting.length ? "Send " + attackFlow.damage + " to the DM · " + waiting.join(", ")
+        : attackFlow.sent.length ? "Sent to " + attackFlow.sent.join(", ") : "Tick the targets above to send", "cta", async () => {
+        send.disabled = true;
+        try {
+          for (const name of waiting) {
+            await backend.postAction(room, me, hitReportText(name, attackFlow.damage, detail));
+            attackFlow.sent.push(name);
+          }
+          sync();
+          drawAttack();
+        } catch (error) {
+          send.disabled = false;
+          send.textContent = error.message + " — tap to retry";
+          drawAttack();
+        }
+      });
+      send.disabled = !waiting.length;
+      parts.push(send);
+      if (attackFlow.sent.length) parts.push(stepText("Sent to the DM for " + attackFlow.sent.join(", ") + ". Each makes the save; the DM rolls it. Missed someone? Tick them and send again.", "fineprint"));
+    } else if (backend.postAction && Array.isArray(state?.actions)) {
       const already = attackFlow.sent.includes(target);
       const send = stepButton(already ? "Sent to " + target : target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
         const name = $("attack-target").value;
