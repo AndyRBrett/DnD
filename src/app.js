@@ -3631,7 +3631,16 @@ function drawAttack() {
   } else if (attackFlow.step === "waiting") {
     parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + attackFlow.toHit.natural + "). Waiting for the DM to call it: hit or miss…", "is-big waiting-call"),
       stepButton("Roll damage anyway", "quiet", rollDamage),
-      stepButton("It missed", "quiet", () => { attackFlow.step = "miss"; drawAttack(); }));
+      stepButton("It missed", "quiet", () => {
+        // Answer the waiting call itself, rather than a second "missed" line:
+        // the DM's question closes and the swing counts once.
+        const ask = attackFlow.ask;
+        const line = ask && (state.actions ?? []).filter(action => Number(action.id) > ask.after && action.name === partyName(ask.character) && action.text === ask.text).at(-1);
+        attackFlow.missTold = true;
+        attackFlow.step = "miss";
+        if (line && backend.editAction) backend.editAction(room, line.id, attackVerdictText(line.text, "miss")).then(sync).catch(() => {});
+        drawAttack();
+      }));
   } else if (attackFlow.step === "rolled") {
     const natural = attackFlow.toHit.natural;
     // Players never see enemy AC, so there's no "does it hit?" to answer:
@@ -3741,13 +3750,21 @@ function drawHitInbox() {
     const versus = target && ask.toHit !== null ? (ask.toHit >= target.ac ? " · " + ask.toHit + " vs AC " + target.ac + " ✓ hits" : " · " + ask.toHit + " vs AC " + target.ac + " ✗ misses") : "";
     const text = document.createElement("span");
     text.textContent = action.name.replace(/^The /, "") + " attacks " + ask.enemy + " " + ask.detail + versus;
-    const call = verdict => {
-      storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), action.id].slice(-300)));
+    const call = async verdict => {
       const next = attackVerdictText(action.text, verdict);
+      // Shown at once; kept only once the story line is saved, so a failed
+      // call stays in the list to tap again (and the player isn't left waiting).
       state.actions = state.actions.map(entry => entry.id === action.id ? { ...entry, text: next } : entry);
-      if (backend.editAction) backend.editAction(room, action.id, next).catch(error => { $("combat-status").textContent = error.message; });
-      if (verdict === "miss") addNarration(action.name.replace(/^The /, "") + " misses " + ask.enemy + ".");
       drawCombat();
+      try {
+        if (backend.editAction) await backend.editAction(room, action.id, next);
+        storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), action.id].slice(-300)));
+        if (verdict === "miss") addNarration(action.name.replace(/^The /, "") + " misses " + ask.enemy + ".");
+      } catch (error) {
+        state.actions = state.actions.map(entry => entry.id === action.id ? { ...entry, text: action.text } : entry);
+        $("combat-status").textContent = "Couldn't send the call (" + error.message + "). Tap it again.";
+        drawCombat();
+      }
     };
     const buttons = document.createElement("div");
     buttons.className = "hit-buttons";
