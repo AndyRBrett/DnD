@@ -186,12 +186,12 @@ Roan (no concentration spells) could be marked Concentrating with no warning. Mu
 | N6 advantage from hiding | Fixed in #65 ("Hidden or unseen" option) |
 | N7 rage resistance | Fixed in #65 (hint on enemy hits) |
 | N8 Assassin's poison | Fixed in #65 (attack riders) |
-| N9 retarget a hit | Open |
+| N9 retarget a hit | Fixed in #66 ("Apply to…" picker on hits at a downed or unknown enemy) |
 | N10 maneuver saves | Fixed in #65 (one-tap save in Hits to apply) |
-| N11 presence with shared phones | Open |
+| N11 presence with shared phones | Fixed in #66 (the DM's screen remembers each character seen for 5 minutes) |
 | N12 short rest in combat | Fixed in #65 (second tap) |
 | N13 misses | Fixed in #64 |
 | N14 concentration at 0 HP | Fixed in #64 |
 | N15 "Next attack" | Fixed in #64 |
 | N16 Concentrating without a spell | Fixed in #65 (second tap) |
-| N17 smaller things | Open |
+| N17 smaller things | Fixed in #66: the used Apply / Half button keeps a ✓; an edited quick-roll drops its label (the stray "Damage: 3 (d6: 3)"). Enemy labels on the player view were re-checked and do update (Bloodied, Down); the "Healthy" sighting was the DM-account mix-up |
