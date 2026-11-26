@@ -352,6 +352,21 @@ export function parseHitReport(text) {
   };
 }
 
+// Attacks written into an enemy's notes ("Musket +6 (2d8+2 piercing, range
+// 80)", "two pincers +8 (2d8+4 slashing)") when the attack fields were left
+// empty, so the DM's turn card still has an attack to tap. Up to two.
+export function attacksFromNotes(text) {
+  const found = [];
+  const pattern = /([A-Za-z][A-Za-z' ]{1,30}?)\s*\+(\d{1,2})(?:\s*to hit)?\s*\((\d*d\d+(?:\s*[+-]\s*\d+)?)/g;
+  for (const match of String(text ?? "").matchAll(pattern)) {
+    const name = match[1].trim().replace(/^(?:and|or|with|a|an)\s+/i, "");
+    if (!name) continue;
+    found.push([name[0].toUpperCase() + name.slice(1), Number(match[2]), match[3].replace(/\s+/g, "")]);
+    if (found.length === 2) break;
+  }
+  return found;
+}
+
 // A story line as a reader at the TV board should see it: a plain sentence
 // for the attack bookkeeping ("🎯 attacks X — with Y, 18 to hit · ✓ DM: hit"),
 // or null for lines nobody needs to read (a dismissed hit). kind sorts the

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, roll, normalize, poolExpression, rollableFrom, keepD20, tableRoll, tablePrompt } from "../src/dice.js";
-import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine } from "../src/encounter.js";
+import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
 const faces = (sides, ...values) => { const queue = [...values]; return () => (queue.shift() - 1) / sides + 1e-9; };
@@ -563,4 +563,12 @@ test("the TV board reads attack lines as plain sentences", () => {
   assert.equal(chronicleLine("Dum Dum", "🎯 missed Spider with Longsword (natural 1)").text, "Dum Dum misses Spider with Longsword (rolled a 1)");
   assert.equal(chronicleLine("Logan", "⏭️ ends their turn").kind, "turn");
   assert.deepEqual(chronicleLine("Arcturus", "Keeping it G gobble gobble"), { kind: "action", who: "Arcturus", text: "Keeping it G gobble gobble" });
+});
+
+test("enemy attacks written in the notes become tappable attacks", () => {
+  assert.deepEqual(attacksFromNotes("Musket +6 (2d8+2 piercing, range 80). Puppeted by the vault: no fear, no pain."), [["Musket", 6, "2d8+2"]]);
+  assert.deepEqual(attacksFromNotes("Multiattack: two pincers +8 (2d8+4 slashing). Arcane Shock (recharge 5-6): DC 15 Dex save, 4d10 lightning."),
+    [["Two pincers", 8, "2d8+4"]]);
+  assert.deepEqual(attacksFromNotes("Claw +7 to hit (2d6 + 4) and bite +7 (1d6+4), then a tail +5 (1d8)"), [["Claw", 7, "2d6+4"], ["Bite", 7, "1d6+4"]]);
+  assert.deepEqual(attacksFromNotes("Resistant to fire. Flees at half HP."), []);
 });
