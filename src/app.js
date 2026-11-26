@@ -2103,7 +2103,10 @@ function concentrationCheck(index, damage, key = "") {
   if (key) concentrationSeen.keys.add(key);
   if (key && pendingSaves().some(save => save.key === key)) return "";
   const dc = concentrationDc(damage);
-  storage.set(pendingKey(), JSON.stringify([...pendingSaves(), { index, damage, dc, key }].slice(-20)));
+  // Its own id, so passing one save clears only that one (damage typed on
+  // this phone has no story line to name it).
+  const id = key || "local:" + Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 8);
+  storage.set(pendingKey(), JSON.stringify([...pendingSaves(), { index, damage, dc, key, id }].slice(-20)));
   const text = "🧠 " + partyName(index).replace(/^The /, "") + ": Concentration save, DC " + dc + " Constitution, or the spell ends.";
   $("notice").textContent = text;
   navigator.vibrate?.(200);
@@ -2133,7 +2136,9 @@ function drawConcentration() {
     roll.onclick = () => openDice("d20" + (con >= 0 ? "+" : "") + con, "Concentration save", total => {
       dice.onResult = null;
       const held = total >= save.dc;
-      const left = pendingSaves().filter(entry => entry.key !== save.key && (held || entry.index !== me));
+      // Held: just this save is done. Failed: the spell ends, so all of
+      // this character's waiting saves go (other characters' stay).
+      const left = pendingSaves().filter(entry => held ? (entry.id ?? entry.key) !== (save.id ?? save.key) : entry.index !== me);
       storage.set(pendingKey(), JSON.stringify(left));
       $("dice-status").textContent = held ? "✓ " + total + " vs DC " + save.dc + ": you keep concentrating." : "✗ " + total + " vs DC " + save.dc + ": the spell ends.";
       tellTable(me, held ? "🧠 keeps concentrating (Con save " + total + " vs DC " + save.dc + ")" : "🧠 loses concentration (Con save " + total + " vs DC " + save.dc + ")");
