@@ -504,7 +504,7 @@ export const sheets = {
     attacks: [
       { name: "Wrist blade", ability: "DEX", hit: 9, damage: "1d6+5", type: "slashing", note: "Finesse, 5 ft. One attack per Attack action; the second blade gives no free attack." },
       { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft, one target; Roan's own throw costs no energy and isn't magical." },
-      { name: "Shadow's copied Q", ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage. Magical." },
+      { name: "Shadow's copied Q", free: true, ability: "DEX", ranged: true, spends: "Shadow Energy", hit: 9, addMod: false, damage: "1d6", type: "piercing", note: "Needs Living Shadow up; same target, range measured from the shadow. A separate roll, not advantage. Magical." },
       { name: "Shadow Slash (E)", area: true, ability: "DEX", spends: "Shadow Energy", save: "Dex", dc: 17, addMod: false, damage: "2d6", type: "slashing", half: true, note: "Bonus action. Enemies within 5 ft of Roan or his shadow (each only once); a failed save also slows them 10 ft. No Sneak Attack. Magical." }
     ],
     attackOptions: [

@@ -3295,35 +3295,40 @@ function attacksThisTurn(index) {
 // turn boundary to clear it, so it would warn forever.
 const turnsRunning = () => Boolean(state?.combat?.turn);
 // One action and one bonus action a turn (each Action Surge adds an action).
-// The Attack action counts once, however many swings Extra Attack gives.
-const turnUses = new Map(); // index → { tag, actions, bonus, attackAction, last, lastBonus }
+// An Attack action covers its Extra Attack swings; after those, the next
+// swing is another Attack action. free: part of another attack (the shadow's
+// copied throw) and costs nothing.
+const turnUses = new Map(); // index → { tag, spells, attackActions, bonus, last, lastBonus }
 const isBonusAction = attack => /bonus action/i.test(attack.note ?? "");
 function usesThisTurn(index) {
   const entry = turnUses.get(index);
-  return entry && entry.tag === turnTag() ? entry : { tag: turnTag(), actions: 0, bonus: 0, attackAction: false, last: "", lastBonus: "" };
+  return entry && entry.tag === turnTag() ? entry : { tag: turnTag(), spells: 0, attackActions: 0, bonus: 0, last: "", lastBonus: "" };
 }
+const actionsUsed = uses => uses.spells + uses.attackActions;
 function markUsedOnce(index, attack) {
-  if (!turnsRunning()) return;
+  if (!turnsRunning() || attack.free) return;
   const uses = { ...usesThisTurn(index) };
   if (attack.perAction) {
-    if (uses.attackAction) return;
-    Object.assign(uses, { attackAction: true, actions: uses.actions + 1, last: "the Attack action" });
+    // Called after countAttack: this swing is in attacksThisTurn already.
+    const actions = Math.ceil(attacksThisTurn(index) / attack.perAction);
+    if (actions > uses.attackActions) Object.assign(uses, { attackActions: actions, last: "the Attack action" });
   } else if (isBonusAction(attack)) {
     Object.assign(uses, { bonus: uses.bonus + 1, lastBonus: attack.name });
   } else {
-    Object.assign(uses, { actions: uses.actions + 1, last: attack.name });
+    Object.assign(uses, { spells: uses.spells + 1, last: attack.name });
   }
   turnUses.set(index, uses);
 }
 // Why this attack would be one action (or bonus action) too many, or "".
 function turnBlock(index, attack) {
-  if (!turnsRunning()) return "";
+  if (!turnsRunning() || attack.free) return "";
   const uses = usesThisTurn(index);
   if (isBonusAction(attack)) {
     return uses.bonus >= 1 ? "You've already used your bonus action this turn (" + uses.lastBonus + "). Pick something else, or end your turn." : "";
   }
-  if (attack.perAction && uses.attackAction) return ""; // more swings: the swing count on the card handles those
-  return uses.actions >= 1 + surgesThisTurn(index)
+  // Swings left in an Attack action already started: the swing count on the card handles those.
+  if (attack.perAction && attacksThisTurn(index) % attack.perAction !== 0) return "";
+  return actionsUsed(uses) >= 1 + surgesThisTurn(index)
     ? "You've already used your action this turn (" + uses.last + "). Only one action a turn: pick a bonus action, or end your turn." : "";
 }
 function countAttack(index) {
