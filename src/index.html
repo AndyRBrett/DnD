@@ -179,6 +179,9 @@
           <p class="eyebrow red">COMBAT · ROUND <span id="combat-round">1</span></p>
           <h2 id="combat-turn" class="display sm">Roll initiative</h2>
           <p id="combat-next" class="fineprint"></p>
+          <ol id="turn-guide" class="turn-guide" hidden aria-label="Your turn, step by step"></ol>
+          <p id="guide-hint" class="guide-hint" hidden></p>
+          <button id="guide-go" class="cta" type="button" hidden></button>
           <p id="combat-foes" class="pill-label"></p>
           <button id="combat-ask" class="ghost" type="button" hidden>💡 What should I do this turn?</button>
           <button id="combat-end-turn" class="cta" type="button" hidden>End my turn ▶</button>
@@ -196,8 +199,17 @@
           <h3 id="hit-inbox-title" class="display xs">Hits to apply</h3>
           <ul id="hit-list" class="hit-list"></ul>
         </section>
-        <section id="hp-combat" class="card hp-card" hidden></section>
-        <section id="res-combat" class="card res-card" hidden></section>
+        <section id="dm-turn" class="card stack" hidden aria-live="polite"></section>
+        <form id="combat-init" class="card stack" hidden>
+          <h3 class="display xs" id="init-title">Your initiative</h3>
+          <p class="fineprint">Roll it here, or type the total you rolled at the table.</p>
+          <div class="init-row">
+            <button id="init-roll" class="cta" type="button">Roll</button>
+            <input id="init-value" type="number" inputmode="numeric" min="-10" max="60" placeholder="Total" aria-label="Initiative total">
+            <button class="ghost" type="submit">Set</button>
+          </div>
+          <p id="init-status" class="fineprint"></p>
+        </form>
         <section id="attack-card" class="card stack" hidden aria-labelledby="attack-title">
           <h3 id="attack-title" class="display xs">Attack</h3>
           <div id="attack-list" class="attack-list" role="group" aria-label="Your attacks"></div>
@@ -233,16 +245,11 @@
             </form>
           </details>
         </section>
-        <form id="combat-init" class="card stack" hidden>
-          <h3 class="display xs" id="init-title">Your initiative</h3>
-          <p class="fineprint">Roll it here, or type the total you rolled at the table.</p>
-          <div class="init-row">
-            <button id="init-roll" class="cta" type="button">Roll</button>
-            <input id="init-value" type="number" inputmode="numeric" min="-10" max="60" placeholder="Total" aria-label="Initiative total">
-            <button class="ghost" type="submit">Set</button>
-          </div>
-          <p id="init-status" class="fineprint"></p>
-        </form>
+        <section id="hp-combat" class="card hp-card" hidden></section>
+        <details id="res-combat-fold" class="card fold-card" hidden>
+          <summary class="card-summary">Spell slots, features &amp; healing</summary>
+          <div id="res-combat" class="res-card" hidden></div>
+        </details>
         <section class="card">
           <h3 class="display xs">Initiative order</h3>
           <ol id="combat-order" class="combat-order"></ol>

@@ -1583,6 +1583,9 @@ function combatChanged(previous) {
   }
   const mine = "pc:" + myIndex();
   if (now && !isHost && now.turn === mine && before?.turn !== mine) {
+    // A new turn starts at Attack: last turn's finished attack (sent, missed)
+    // mustn't make the guide jump straight to End turn.
+    if (attackFlow.step !== "ready") { resetAttack(); drawAttack(); }
     navigator.vibrate?.([120, 60, 120]);
     if (currentTab !== "combat") $("tab-combat").classList.add("has-news");
   }
@@ -1625,6 +1628,120 @@ function schedulePublish() {
   combatTimer = setTimeout(() => publishCombat().catch(error => { $("enc-combat-status").textContent = error.message; }), 350);
 }
 
+// ── Turn guide: the one next thing to do, at the top of the Combat tab, so a
+// first-time player falls into the loop: initiative → attack → send → end turn.
+const GUIDE_STEPS = ["Initiative", "Attack", "Send to DM", "End turn"];
+let guideAction = null;
+function drawTurnGuide() {
+  const guide = $("turn-guide");
+  const hint = $("guide-hint");
+  const go = $("guide-go");
+  const combat = state?.combat;
+  $("combat-end-turn").classList.remove("is-next");
+  if (!combat || isHost || ended || boardMode) { guide.hidden = hint.hidden = go.hidden = true; return; }
+  const me = myIndex();
+  const myTurn = combat.turn === "pc:" + me;
+  const rolled = Number.isFinite(combat.party?.[me]);
+  const down = (hpRecord(me)?.hp ?? 1) <= 0;
+  const canSend = Boolean(backend.postAction) && Array.isArray(state?.actions);
+  let step = 0;
+  let text = "";
+  let label = "";
+  guideAction = null;
+  const toAttack = () => { showTab("combat"); $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  if (!rolled) {
+    text = "Roll initiative to get your place in the turn order.";
+    label = "🎲 Roll initiative";
+    guideAction = () => $("init-roll").click();
+  } else if (!myTurn) {
+    step = 1;
+    text = combat.turn ? "Not your turn yet. Plan your move: the Moves tab has ideas." : "Waiting for the DM to start round 1.";
+    if (!combat.turn) $("combat-turn").textContent = "Initiative " + combat.party[me];
+  } else if (down) {
+    step = 1;
+    text = "You're down at 0 HP: roll a death save, then end your turn.";
+    label = "💀 Roll death save";
+    guideAction = () => { showTab("sheet"); document.querySelector("#hp-sheet .death-saves")?.scrollIntoView({ behavior: "smooth", block: "center" }); };
+  } else if (attackFlow.step === "damage" && canSend && !attackFlow.sent.length) {
+    step = 2;
+    text = "Send the damage to the DM: it lands on the enemy you picked.";
+    label = "📨 Send " + attackFlow.damage + " to the DM";
+    guideAction = () => {
+      const send = [...$("attack-steps").querySelectorAll("button")].find(button => /^Send /.test(button.textContent) && !button.disabled);
+      if (send) send.click(); else toAttack();
+    };
+  } else if ((attackFlow.step === "damage" && (attackFlow.sent.length || !canSend)) || attackFlow.step === "miss") {
+    step = 3;
+    const made = attacksThisTurn(me);
+    const per = attacksFor(me)[attackFlow.index]?.perAction ?? 0;
+    text = per && made < per
+      ? "Attack again with Next attack on the card (" + (per - made) + " more), or end your turn."
+      : "Done? End your turn so the next player goes.";
+    $("combat-end-turn").classList.add("is-next");
+  } else {
+    step = 1;
+    const middle = attackFlow.step === "rolled" ? "Tell the card if it hit (the DM knows the AC)."
+      : attackFlow.step === "hit" ? "It hit: roll damage."
+      : "Pick a weapon or spell and a target, then Roll to hit. Not attacking? Post what you do on the Scene tab, then end your turn.";
+    text = middle;
+    label = "⚔️ Go to the Attack card";
+    guideAction = toAttack;
+  }
+  guide.replaceChildren(...GUIDE_STEPS.map((name, index) => {
+    const item = document.createElement("li");
+    item.className = index < step ? "is-done" : index === step && (myTurn || !rolled) ? "is-now" : "";
+    item.textContent = name;
+    return item;
+  }));
+  guide.hidden = false;
+  hint.textContent = text;
+  hint.hidden = !text;
+  go.textContent = label;
+  go.hidden = !guideAction;
+}
+$("guide-go").onclick = () => guideAction?.();
+
+// The DM's side of the loop on the same tab: whose turn it is and, on an
+// enemy's turn, that enemy's attacks right here (no hop to the DM tab).
+let dmTurnKey = "";
+function drawDmTurn(current, order) {
+  const box = $("dm-turn");
+  if (!isHost || !state?.combat || ended) { box.hidden = true; dmTurnKey = ""; return; }
+  box.hidden = false;
+  const enemy = current?.kind === "enemy" && encounterLoaded ? enemies.find(entry => "en:" + entry.id === current.key) : null;
+  const key = !current ? "start:" + order.filter(entry => entry.kind === "pc" && entry.initiative === null).length
+    : enemy ? "en:" + enemy.id + ":" + enemy.hp + ":" + (enemy.conditions ?? []).join(",") + ":" + state.combat.round
+    : current.key + ":" + state.combat.round;
+  if (key === dmTurnKey) return; // keep rolled attacks on screen between polls
+  dmTurnKey = key;
+  const title = document.createElement("h3");
+  title.className = "display xs";
+  const note = document.createElement("p");
+  note.className = "fineprint";
+  if (!current) {
+    const waiting = order.filter(entry => entry.kind === "pc" && entry.initiative === null).map(entry => entry.name.replace(/^The /, ""));
+    title.textContent = "Start the fight";
+    note.textContent = (waiting.length ? "Still rolling initiative: " + waiting.join(", ") + ". You can type theirs in the order below. " : "Everyone has rolled. ")
+      + "Tap Next turn to start round 1.";
+    box.replaceChildren(title, note);
+  } else if (enemy) {
+    title.textContent = "🗡️ " + enemy.name + "'s turn";
+    note.textContent = "Pick who it attacks and tap an attack: the app checks AC and offers the damage. Then narrate it and tap Next turn.";
+    const card = enemyCard(enemy);
+    // Removing an enemy stays on the DM tab, not one stray tap away mid-turn.
+    for (const button of card.querySelectorAll("button")) if (button.textContent === "Remove") button.hidden = true;
+    box.replaceChildren(title, note, card);
+  } else if (current.kind === "enemy") {
+    title.textContent = current.name + "'s turn";
+    note.textContent = "Its stat card is on the DM tab.";
+    box.replaceChildren(title, note);
+  } else {
+    title.textContent = current.name.replace(/^The /, "") + "'s turn";
+    note.textContent = "Their hits arrive under Hits to apply, and misses in the story. When they tap End my turn the next turn starts by itself; or tap Next turn.";
+    box.replaceChildren(title, note);
+  }
+}
+
 function drawCombat() {
   drawHp();
   drawHitReport();
@@ -1645,7 +1762,7 @@ function drawCombat() {
     $("combat-won").hidden = !won;
     if (won) $("enc-combat-status").textContent = "Every enemy is down. Tap End combat when the fight's over.";
   }
-  if (!combat) return;
+  if (!combat) { drawTurnGuide(); drawDmTurn(null, []); return; }
 
   const order = liveOrder();
   const me = myIndex();
@@ -1669,10 +1786,12 @@ function drawCombat() {
   if (!myTurn) { $("combat-end-turn").disabled = false; $("combat-end-turn").textContent = "End my turn ▶"; }
 
   const mine = me === null ? undefined : combat.party?.[me];
-  $("combat-init").hidden = isHost;
+  $("combat-init").hidden = isHost || Number.isFinite(mine); // rolled: it's in the order below
   $("init-title").textContent = Number.isFinite(mine) ? "Your initiative: " + mine : "Your initiative";
   $("init-roll").textContent = "Roll " + initiativeExpression() + (initiativeMode() === "advantage" ? " (advantage)" : "");
   $("combat-hint").hidden = isHost;
+  drawTurnGuide();
+  drawDmTurn(current, order);
 
   const local = isHost && encounterLoaded ? Object.fromEntries(enemies.map(enemy => ["en:" + enemy.id, enemy])) : {};
   $("combat-order").replaceChildren(...order.map(entry => {
@@ -2574,7 +2693,7 @@ function drawHp() {
   const me = Number($("character").value);
   const ready = available && state?.party?.[me];
   $("hp-badge").hidden = !ready || isHost;
-  if (!ready) for (const id of ["res-sheet", "res-combat", "rage-badge"]) $(id).hidden = true;
+  if (!ready) for (const id of ["res-sheet", "res-combat", "res-combat-fold", "rage-badge"]) $(id).hidden = true;
   $("hp-sheet").hidden = !ready;
   $("hp-combat").hidden = !ready || !state?.combat || isHost;
   $("party-hp").hidden = !isHost || !state || ended || !backend.setHp;
@@ -2600,6 +2719,7 @@ function drawHp() {
     const hasResources = !isHost; // rests for everyone, plus any limited features on the sheet
     $("res-sheet").hidden = !hasResources;
     $("res-combat").hidden = !hasResources || $("hp-combat").hidden;
+    $("res-combat-fold").hidden = $("res-combat").hidden; // folded in a fight: the Attack card comes first
     if (hasResources) {
       fillResources($("res-sheet"), me);
       if (!$("res-combat").hidden) fillResources($("res-combat"), me);
@@ -3126,6 +3246,7 @@ function drawAttack() {
     parts.push(next);
   }
   steps.replaceChildren(...parts);
+  drawTurnGuide();
 }
 $("attack-target").onchange = () => drawAttack();
 
@@ -3258,7 +3379,9 @@ async function setInitiative(character, value, status) {
   }
 }
 $("init-roll").onclick = () => openDice(initiativeExpression(), "Initiative", async total => {
+  dice.onResult = null; // one initiative per tap
   await setInitiative(myIndex(), total, $("dice-status"));
+  setTimeout(closeDice, 1500); // recorded: back to the fight
 }, initiativeMode());
 $("combat-init").onsubmit = event => {
   event.preventDefault();
@@ -3712,7 +3835,14 @@ function enemyCard(enemy) {
       return new Option(name.replace(/^The /, "") + (ac ? " · AC " + ac.text : ""), String(index));
     }));
     target.value = enemyTargets.get(enemy.id) ?? "";
-    target.onchange = () => enemyTargets.set(enemy.id, target.value);
+    target.onchange = () => {
+      enemyTargets.set(enemy.id, target.value);
+      // The same enemy can be on screen twice (DM tab and the Combat tab's
+      // turn card): both show the target its attacks will use.
+      for (const other of document.querySelectorAll("select.enemy-target")) {
+        if (other !== target && other.getAttribute("aria-label") === target.getAttribute("aria-label")) other.value = target.value;
+      }
+    };
     attacks.append(target);
   }
   for (const [label, hit, damage, rider] of enemy.attacks) {
@@ -3985,7 +4115,7 @@ const WELCOME_KEY = "dnd-welcomed";
 const WELCOME_STEPS = [
   ["Pick your character", "Tap your name in the row of chips at the top. Your sheet, rolls, HP, and suggestions all follow that choice."],
   ["Watch the Scene", "The DM narrates out loud and the latest update shows on the Scene tab. Tell the table what you do in the box under it."],
-  ["When a fight starts", "The Combat tab opens by itself. Roll initiative there, use the Attack card to roll to hit and damage, and tap End my turn when you're done."],
+  ["When a fight starts", "The Combat tab opens by itself. The card at the top always shows your next step (roll initiative, attack, send the hit to the DM, end your turn) with a button that does it."],
   ["Stuck? Help is one tap away", "Moves suggests things your character can do right now. The round 🎲 Roll button rolls any dice. HP, spell slots, and rages are on the Sheet tab. Tap ? at the top to see this again."]
 ];
 let welcomeStep = 0;
