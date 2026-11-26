@@ -657,3 +657,11 @@ body.in-combat .card-link{display:block}
 .turn-tally{font-weight:700;margin:2px 0}
 .waiting-call{color:var(--gold)}
 .hit-ask{border-left:3px solid var(--gold);padding-left:8px}
+#recent-wrap{margin-top:12px}
+#recent-wrap .feed li{opacity:.8}
+.more-steps{margin-top:10px;padding-top:8px}
+.more-steps>summary{font-size:.9rem}
+.more-steps>button{display:block;width:100%;margin-top:8px}
+.action-roll{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0}
+.action-roll span{flex:1 1 180px}
+.dice-real-toggle{display:block;margin:8px auto 0;font-size:.85rem}

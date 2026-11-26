@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, roll, normalize, poolExpression, rollableFrom, keepD20, tableRoll, tablePrompt } from "../src/dice.js";
-import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText } from "../src/encounter.js";
+import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
 const faces = (sides, ...values) => { const queue = [...values]; return () => (queue.shift() - 1) / sides + 1e-9; };
@@ -536,4 +536,14 @@ test("a to-hit roll waits for the DM's call, which the card then reads", () => {
   // It is not a hit report, and a hit report is not an ask.
   assert.equal(readHit(ask), null);
   assert.equal(parseAttackAsk("🎯 hit Goblin 1 for 9 damage — with Longbow, 18 to hit"), null);
+});
+
+test("a to-hit roll typed into the story box is recognised", () => {
+  assert.equal(parseTypedToHit("Rolled a 26 to hit"), 26);
+  assert.equal(parseTypedToHit("23 to hit, does it hit?"), 23);
+  assert.equal(parseTypedToHit("i got an 18 to hit"), 18);
+  assert.equal(parseTypedToHit("rolled 15 on my attack"), 15);
+  assert.equal(parseTypedToHit("I swing my axe at the warden"), null);
+  assert.equal(parseTypedToHit("rolled 12 damage"), null);
+  assert.equal(parseTypedToHit("Logan charges and rolled 20 to hit then shouts a long battle cry at everyone in the room"), null);
 });

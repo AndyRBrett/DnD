@@ -317,6 +317,14 @@ export function parseAttackAsk(text) {
 export const attackVerdictText = (text, verdict) =>
   String(text ?? "").replace(VERDICT, "") + (verdict === "hit" ? " · ✓ DM: hit" : " · ✗ DM: miss");
 
+// A to-hit roll typed into the story box ("rolled a 25 to hit", "23 to hit,
+// does it hit?") instead of rolled on the Attack card. Returns the total so
+// the card can send it to the DM to call, or null for anything else.
+export function parseTypedToHit(text) {
+  const match = String(text ?? "").trim().match(/^(?:i\s+)?(?:rolled?\s+|got\s+)?(?:an?\s+)?(\d{1,2})\s*(?:to\s+hit|on\s+(?:the|my)\s+attack)\b[\s\S]{0,40}$/i);
+  return match ? Number(match[1]) : null;
+}
+
 // The DM's phone marks a hit it applied (or dismissed) on the story line
 // itself, so a second DM screen at the same table never applies it again.
 const HANDLED_MARK = / · ✓ DM (applied|dismissed)$/u;

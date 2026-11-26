@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -1189,7 +1189,14 @@ function drawStory() {
     ...state.scenes.slice(0, -1).map(scene => ({ kind: "scene", id: scene.id, at: scene.created, text: scene.text })),
     ...actions.filter(action => latest && action.created < latest.created && !heldOver(action)).map(action => ({ ...action, at: action.created }))
   ].sort((a, b) => b.at - a.at);
-  $("history").replaceChildren(...earlier.map(storyItem));
+  // Always show at least the last three things that happened: when the DM
+  // has just posted, "since then" is empty or short, so the posts just
+  // before it stay in view instead of hiding under Earlier updates.
+  const shown = Math.max(0, 3 - since.length);
+  $("recent-earlier").replaceChildren(...earlier.slice(0, shown).map(storyItem));
+  $("recent-wrap").hidden = !shown || !earlier.length;
+  $("history").replaceChildren(...earlier.slice(shown).map(storyItem));
+  $("history").closest("details").hidden = earlier.length <= shown;
 }
 
 // Host view: one input per character, for players without a phone out.
@@ -1239,6 +1246,28 @@ function countAction() {
   $("action-count").textContent = left > 0 ? left + " characters left" : "That's the limit: post this, then add the rest in a second post.";
 }
 $("action-text").addEventListener("input", countAction);
+// "Rolled a 25 to hit" typed in the story box: offer to send it the way the
+// Attack card does, so the DM gets a hit-or-miss question instead of a chat line.
+function drawTypedRoll() {
+  const total = parseTypedToHit($("action-text").value);
+  const show = total !== null && !isHost && Boolean(state?.combat) && Boolean(typedToHit);
+  $("action-roll").hidden = !show;
+  if (!show) return;
+  $("action-roll-text").textContent = "That's an attack roll. Send it as one and the DM will say hit or miss.";
+  $("action-roll-send").textContent = "🎯 Send " + total + " to hit";
+}
+$("action-text").addEventListener("input", drawTypedRoll);
+$("action-roll-send").onclick = () => {
+  const total = parseTypedToHit($("action-text").value);
+  if (total === null || !typedToHit) { drawTypedRoll(); return; }
+  const problem = typedToHit(total);
+  showTab("combat");
+  if (problem) { $("combat-status").textContent = problem; $("attack-target").focus(); return; }
+  $("action-text").value = "";
+  countAction();
+  drawTypedRoll();
+  $("action-status").textContent = "";
+};
 $("action-form").onsubmit = async event => {
   event.preventDefault();
   const text = $("action-text").value.trim();
@@ -1556,6 +1585,7 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   $("dice-expression").value = expression;
   $("dice-label").textContent = label ? label + " · " + expression : "";
   $("dice-result").hidden = true;
+  drawRealDice();
   $("dice-status").textContent = "";
   const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended && !onResult;
   $("dice-share-wrap").hidden = !canShare;
@@ -1678,6 +1708,16 @@ $("dice-table").onsubmit = async event => {
   $("dice-table-value").value = "";
   await landRoll(result, purpose);
 };
+// Real dice are opt-in per phone: a group that rolls its own turns the box on
+// once and it stays on; everyone else never sees it.
+const REAL_DICE_KEY = "dnd-real-dice";
+const realDice = () => storage.get(REAL_DICE_KEY) === "1";
+function drawRealDice() {
+  $("dice-table").hidden = !realDice();
+  $("dice-real-on").hidden = realDice();
+}
+$("dice-real-on").onclick = () => { storage.set(REAL_DICE_KEY, "1"); drawRealDice(); $("dice-table-value").focus(); };
+$("dice-real-off").onclick = () => { storage.set(REAL_DICE_KEY, "0"); drawRealDice(); };
 function drawTablePrompt() {
   const expression = $("dice-expression").value.trim() || "d20";
   $("dice-table-label").textContent = "Rolled real dice? " + (tablePrompt(expression, dice.mode) || "Pick the dice first.");
@@ -1818,7 +1858,7 @@ function schedulePublish() {
 
 // ── Turn guide: the one next thing to do, at the top of the Combat tab, so a
 // first-time player falls into the loop: initiative → attack → send → end turn.
-const GUIDE_STEPS = ["Initiative", "Attack", "Send to DM", "End turn"];
+const GUIDE_STEPS = ["Turn order", "Attack", "Send to DM", "End turn"];
 let guideAction = null;
 function drawTurnGuide() {
   const guide = $("turn-guide");
@@ -1838,7 +1878,7 @@ function drawTurnGuide() {
   guideAction = null;
   const toAttack = () => { showTab("combat"); $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" }); };
   if (!rolled) {
-    text = "Roll initiative to get your place in the turn order.";
+    text = "Roll initiative (a d20) to find out when your turn comes.";
     label = "🎲 Roll initiative";
     guideAction = () => $("init-roll").click();
   } else if (!myTurn) {
@@ -1864,15 +1904,15 @@ function drawTurnGuide() {
     const per = attacksFor(me)[attackFlow.index]?.perAction ?? 0;
     const cap = per ? attackCap(me, per) : 0;
     text = per && made < cap
-      ? "Attack again with Next attack on the card (" + (cap - made) + " more), or end your turn."
+      ? "You get " + (cap - made) + " more attack" + (cap - made === 1 ? "" : "s") + ": tap Next attack on the card. Or end your turn."
       : "Done? End your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
     const middle = attackFlow.step === "waiting" ? "Your roll went to the DM. Waiting for the call: hit or miss."
-      : attackFlow.step === "rolled" ? "Roll damage and send it. The DM checks the roll against the enemy's AC."
+      : attackFlow.step === "rolled" ? "Roll damage and send it. The DM checks whether it hits."
       : attackFlow.step === "hit" ? "It hit: roll damage."
-      : "Pick a weapon or spell and a target, then Roll to hit. Not attacking? Post what you do on the Scene tab, then end your turn.";
+      : "Pick a weapon or spell and who you're attacking, then tap Roll to hit. Doing something else? Write it on the Scene tab, then end your turn.";
     // Name the options on the card, so Reckless or a maneuver isn't missed.
     const sheet = sheets[partyName(me)];
     const current = attacksFor(me)[attackFlow.index];
@@ -3170,6 +3210,27 @@ const stepText = (text, className = "") => {
   line.textContent = text;
   return line;
 };
+// One obvious next button per step; the rest ("It missed", a second d20,
+// removing your own attack) fold under "Other choices", which stays open
+// across redraws until the step changes.
+let moreOpen = false, moreStep = "";
+function moreFold(items) {
+  const buttons = items.filter(Boolean);
+  if (!buttons.length) return [];
+  if (moreStep !== attackFlow.step) { moreStep = attackFlow.step; moreOpen = false; }
+  const fold = document.createElement("details");
+  fold.className = "fold more-steps";
+  fold.open = moreOpen;
+  fold.ontoggle = () => { moreOpen = fold.open; };
+  const summary = document.createElement("summary");
+  summary.textContent = "Other choices";
+  fold.append(summary, ...buttons);
+  return [fold];
+}
+const rolledText = result => result?.natural == null ? "" : " (rolled " + result.natural + ")";
+// Set while the Attack card is ready to roll to hit: sends a total the player
+// typed in the story box ("25 to hit") as if rolled on the card.
+let typedToHit = null;
 // Spells that stay up once cast (Spiritual Weapon): which ones this phone has
 // cast in the current fight, and at what level, so later attacks spend no slot.
 const lastingUp = new Map();
@@ -3309,6 +3370,7 @@ function readVerdict() {
   navigator.vibrate?.(line.verdict === "hit" ? [60, 40, 60] : 120);
 }
 function drawAttack() {
+  typedToHit = null;
   readVerdict();
   const combat = state?.combat;
   if (!combat) lastingUp.clear();
@@ -3541,7 +3603,7 @@ function drawAttack() {
   // other one here so the higher (or lower) roll, crit included, is the one
   // that counts and gets sent.
   const secondRoll = () => {
-    if (!attackFlow.toHit || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save || attackFlow.ask) return [];
+    if (!attackFlow.toHit || attackFlow.toHit.typed || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save || attackFlow.ask) return [];
     const take = mode => stepButton(mode === "advantage" ? "Advantage? Roll the second d20" : "Disadvantage? Roll the second d20", "quiet", () => {
       openDice(built.toHit, attack.name + " to hit (" + mode + ")", (total, result) => {
         dice.onResult = null; // one roll per tap
@@ -3565,9 +3627,10 @@ function drawAttack() {
     if (!secondRoll().length) flushMiss(); // nothing left to change it
   };
 
+  const extras = [];
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
   if (attackFlow.step === "ready" && baseAttack.custom) {
-    parts.push(stepButton("Remove " + baseAttack.name, "quiet", event => {
+    extras.push(stepButton("Remove " + baseAttack.name, "quiet", event => {
       if (!confirmTap(event.currentTarget, "Tap again to remove " + baseAttack.name)) return;
       storage.set(customKey(me), JSON.stringify(customAttacks(me).filter(entry => entry.name !== baseAttack.name)));
       attackFlow.index = 0;
@@ -3576,10 +3639,10 @@ function drawAttack() {
     }));
   }
   if (attackFlow.step === "ready" && up) {
-    parts.push(stepText(baseAttack.name + " is up (cast with a " + ORDINAL[attackFlow.level] + "-level slot): this attack uses no slot.", "fineprint"),
-      stepButton("Cast it again", "quiet", () => { lastingUp.delete(lastingKey); drawAttack(); }));
+    parts.push(stepText(baseAttack.name + " is up (cast with a " + ORDINAL[attackFlow.level] + "-level slot): this attack uses no slot.", "fineprint"));
+    extras.push(stepButton("Cast it again", "quiet", () => { lastingUp.delete(lastingKey); drawAttack(); }));
   } else if (attackFlow.step === "ready" && baseAttack.lasting && !attackFlow.spent) {
-    parts.push(stepButton("It's already up — attack without a slot", "quiet", () => {
+    extras.push(stepButton("It's already up — attack without a slot", "quiet", () => {
       lastingUp.set(lastingKey, attackFlow.level ?? baseAttack.slot);
       drawAttack();
     }));
@@ -3601,17 +3664,12 @@ function drawAttack() {
     parts.push(stepText(blocked, "is-miss"));
   } else if (attackFlow.step === "ready") {
     if (built.save) {
-      parts.push(stepText("Targets make a " + built.save + ". The DM rolls their saves."),
+      parts.push(stepText("Each target tries a " + built.save + " to resist. The DM rolls those for them."),
         stepButton("Roll damage · " + built.damage, "cta", rollDamage));
     } else {
       if (baseAttack.perAction) parts.push(stepText(attackCountText(me, baseAttack), "fineprint attack-count"));
-      parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
-        spend("hit");
-        if (baseAttack.perAction) countAttack(me);
-        openDice(built.toHit, attack.name + " to hit", (total, result) => {
-          // One roll per tap: a second tap on Roll before the tray closes is
-          // a plain roll, never a silent swap of the one the card showed.
-          dice.onResult = null;
+      const startToHit = () => { spend("hit"); if (baseAttack.perAction) countAttack(me); };
+      const landToHit = result => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
           attackFlow.step = result.critical ? "hit" : result.fumble ? "miss" : "rolled";
@@ -3626,13 +3684,27 @@ function drawAttack() {
             backend.postAction(room, me, text).then(sync).catch(() => { attackFlow.ask = null; attackFlow.step = "rolled"; drawAttack(); });
           }
           drawAttack();
+      };
+      parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
+        startToHit();
+        openDice(built.toHit, attack.name + " to hit", (total, result) => {
+          // One roll per tap: a second tap on Roll before the tray closes is
+          // a plain roll, never a silent swap of the one the card showed.
+          dice.onResult = null;
+          landToHit(result);
           setTimeout(closeDice, 1200);
         }, built.mode);
       }));
+      typedToHit = total => {
+        if (!$("attack-target").value) return "Pick which enemy you're attacking on the Combat tab, then send it.";
+        startToHit();
+        landToHit({ total, natural: null, critical: false, fumble: false, mode: "normal", typed: true });
+        return "";
+      };
     }
   } else if (attackFlow.step === "waiting") {
-    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + attackFlow.toHit.natural + "). Waiting for the DM to call it: hit or miss…", "is-big waiting-call"),
-      stepButton("Roll damage anyway", "quiet", rollDamage),
+    parts.push(stepText(attackFlow.toHit.total + " to hit" + rolledText(attackFlow.toHit) + ". Waiting for the DM to say hit or miss…", "is-big waiting-call"));
+    extras.push(stepButton("Roll damage anyway", "quiet", rollDamage),
       stepButton("It missed", "quiet", () => {
         // Answer the waiting call itself, rather than a second "missed" line:
         // the DM's question closes and the swing counts once.
@@ -3644,22 +3716,24 @@ function drawAttack() {
         drawAttack();
       }));
   } else if (attackFlow.step === "rolled") {
-    const natural = attackFlow.toHit.natural;
     // Players never see enemy AC, so there's no "does it hit?" to answer:
     // roll damage and send it; the DM's Hits to apply checks the roll against
     // the AC and flags a miss. "It missed" is there for when you know.
-    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Roll damage and send it: the DM checks it against the enemy's AC.", "is-big"),
-      stepButton("Roll damage · " + built.damage, "cta", rollDamage),
-      stepButton("It missed", "quiet", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
+    parts.push(stepText(attackFlow.toHit.total + " to hit" + rolledText(attackFlow.toHit) + ". Roll damage and send it: the DM checks whether it hits.", "is-big"),
+      stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+    extras.push(stepButton("It missed", "quiet", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
   } else if (attackFlow.step === "hit") {
-    parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled."
+    parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! You rolled a 20: your damage dice are doubled."
       : attackFlow.ask ? "✓ HIT! The DM says your " + attackFlow.toHit.total + " gets through. Roll damage." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
-      stepButton("Roll damage · " + built.damage, "cta", rollDamage), ...secondRoll());
+      stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+    extras.push(...secondRoll());
   } else if (attackFlow.step === "miss") {
     tellMiss();
-    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss."
+    parts.push(stepText(attackFlow.toHit?.fumble ? "You rolled a 1: that always misses."
       : attackFlow.ask ? "✗ MISS. The DM says your " + attackFlow.toHit.total + " doesn't get through." : "Miss.", "is-miss"),
-      stepText(!backend.postAction || !Array.isArray(state?.actions) ? "" : attackFlow.missTold ? "The table sees the miss." : "The miss goes to the table when you move on.", "fineprint"), next, ...secondRoll());
+      stepText(!backend.postAction || !Array.isArray(state?.actions) ? "" : attackFlow.missTold ? "The table sees the miss." : "The miss goes to the table when you move on.", "fineprint"), next);
+    next.className = "cta";
+    extras.push(...secondRoll());
   } else if (attackFlow.step === "damage") {
     const choiceNotes = chosenOptions.filter(option => option.choices).map(option => {
       const name = attackFlow.choice?.[option.name] ?? option.choices[0][0];
@@ -3721,10 +3795,13 @@ function drawAttack() {
     } else {
       parts.push(stepText("Tell the DM: " + attackFlow.damage + " damage.", "fineprint"));
     }
-    parts.push(next);
+    // Once the damage is with the DM, moving on is the next thing to do.
+    const delivered = attackFlow.sent.length > 0 || !backend.postAction || !Array.isArray(state?.actions);
+    if (delivered) { next.className = "cta"; parts.push(next); } else extras.push(next);
   }
-  steps.replaceChildren(...parts);
+  steps.replaceChildren(...parts, ...moreFold(extras));
   drawTurnGuide();
+  drawTypedRoll();
 }
 $("attack-target").onchange = () => drawAttack();
 
