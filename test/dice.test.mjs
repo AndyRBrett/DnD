@@ -552,7 +552,9 @@ test("the TV board reads attack lines as plain sentences", () => {
   assert.deepEqual(chronicleLine("Logan Ninefingers", "🎯 hit Puppet Guard 1 for 16 damage — with Greataxe, 20 to hit · ✓ DM applied"),
     { kind: "hit", who: "Logan Ninefingers", enemy: "Puppet Guard 1", text: "Logan Ninefingers hits Puppet Guard 1 with Greataxe for 16 damage" });
   assert.equal(chronicleLine("The White Wizard", "🎯 hit Puppet Guard 2 for 28 damage — with Flame Strike (5th-level), Dex save, DC 16, half on a save").text,
-    "White Wizard blasts Puppet Guard 2 with Flame Strike (5th-level) for 28 damage (Dex save for half)");
+    "White Wizard casts Flame Strike (5th-level) on Puppet Guard 2: 28 damage rolled, Dex save for half");
+  assert.equal(chronicleLine("The White Wizard", "🎯 hit Puppet Guard 1 for 12 damage — with Sacred Flame, Dex save, DC 16, nothing on a save").text,
+    "White Wizard casts Sacred Flame on Puppet Guard 1: 12 damage rolled, Dex save to avoid it");
   assert.equal(chronicleLine("Roan", "🎯 hit Spider for 12 damage — with Razor Shuriken (Q), 29 to hit, critical").text, "Roan lands a critical hit on Spider with Razor Shuriken (Q) for 12 damage");
   assert.equal(chronicleLine("Roan", "🎯 hit Spider for 12 damage — with Razor Shuriken (Q), 29 to hit · ✓ DM dismissed"), null);
   assert.equal(chronicleLine("Dum Dum", "🎯 attacks Spider — with Longsword, 10 to hit · ✗ DM: miss").text, "Dum Dum attacks Spider with Longsword and misses");

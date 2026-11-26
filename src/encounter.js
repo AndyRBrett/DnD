@@ -373,9 +373,14 @@ export function chronicleLine(name, text) {
   const hit = parseHitReport(raw);
   if (hit) {
     const weapon = hit.detail.match(/^with ([^,]+)/)?.[1] ?? "";
-    const save = hit.save && !hit.save.rider ? " (" + hit.save.ability + " save" + (hit.halfOnSave ? " for half" : "") + ")" : "";
+    // A spell with a save: the DM decides what lands (half, or none), so say
+    // what was rolled, not what was dealt.
+    if (hit.save && !hit.save.rider) {
+      return { kind: "hit", who, enemy: hit.enemy, text: who + " casts " + (weapon || "a spell") + " on " + hit.enemy + ": " + hit.amount
+        + " damage rolled, " + hit.save.ability + " save " + (hit.halfOnSave ? "for half" : "to avoid it") };
+    }
     return { kind: "hit", who, enemy: hit.enemy,
-      text: who + (hit.crit ? " lands a critical hit on " : save ? " blasts " : " hits ") + hit.enemy + (weapon ? " with " + weapon : "") + " for " + hit.amount + " damage" + save };
+      text: who + (hit.crit ? " lands a critical hit on " : " hits ") + hit.enemy + (weapon ? " with " + weapon : "") + " for " + hit.amount + " damage" };
   }
   const missed = raw.match(/^🎯 missed (.+?) with (.+?)(?: \((.+)\))?$/u);
   if (missed) return { kind: "miss", who, enemy: missed[1], text: who + " misses " + missed[1] + " with " + missed[2] + (missed[3] === "natural 1" ? " (rolled a 1)" : "") };
