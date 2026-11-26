@@ -1813,7 +1813,9 @@ function combatChanged(previous) {
   if (now && !isHost && now.turn === mine && before?.turn !== mine) {
     // A new turn starts at Attack: last turn's finished attack (sent, missed)
     // mustn't make the guide jump straight to End turn.
-    if (attackFlow.step !== "ready") { resetAttack(); drawAttack(); }
+    // An attack still in flight (rolled, waiting for the DM's call, a hit
+    // not yet rolled for damage) carries over: it belongs to this turn.
+    if (attackFinished()) { resetAttack(); drawAttack(); }
     navigator.vibrate?.([120, 60, 120]);
     if (currentTab !== "combat") $("tab-combat").classList.add("has-news");
   }
@@ -3153,6 +3155,38 @@ function flushMiss() {
   attackFlow.missTold = true;
   backend.postAction(room, attackFlow.character, attackFlow.missText).then(sync).catch(() => {});
 }
+// Done with: missed, or the damage went to the DM (or there's no one to send it to).
+function attackFinished() {
+  if (attackFlow.step === "miss") return true;
+  if (attackFlow.step !== "damage") return false;
+  return attackFlow.sent.length > 0 || !backend.postAction || !Array.isArray(state?.actions);
+}
+// Each character's unfinished attack, kept while this phone plays someone else.
+const parkedAttacks = new Map();
+// After a reload (or anything that cleared the card), pick an unanswered or
+// answered-but-unrolled to-hit back up from the story: the character's latest
+// attack line is "🎯 attacks X" with no hit or miss sent after it.
+const RESUMED_KEY = () => "dnd-resumed-asks:" + room;
+function resumeAsk(me) {
+  if (attackFlow.step !== "ready" || !state?.combat || !Array.isArray(state?.actions)) return;
+  const name = partyName(me);
+  const mine = state.actions.filter(action => action.name === name && /^🎯 /u.test(String(action.text)));
+  const line = mine.at(-1);
+  const ask = line && parseAttackAsk(line.text);
+  if (!ask || ask.verdict === "miss" || Date.now() - Number(line.created) > 30 * 60 * 1000) return;
+  const resumed = readJson(RESUMED_KEY(), []);
+  if (resumed.includes(line.id)) return;
+  const attackName = ask.detail.match(/^with (.+?), \d+ to hit/)?.[1];
+  const index = attacksFor(me).findIndex(entry => entry.name === attackName);
+  if (index < 0 || ask.toHit === null) return;
+  storage.set(RESUMED_KEY(), JSON.stringify([...resumed, line.id].slice(-100)));
+  attackFlow.index = index;
+  attackFlow.spent = true; // the slot or use was spent when it was rolled
+  attackFlow.toHit = { total: ask.toHit, natural: null, critical: false, fumble: false, mode: "normal", typed: true };
+  attackFlow.ask = { text: String(line.text).replace(/ · (✓ DM: hit|✗ DM: miss)$/u, ""), after: Number(line.id) - 1, character: me };
+  attackFlow.step = ask.verdict === "hit" ? "hit" : "waiting";
+  attackFlow.resumeTarget = ask.enemy;
+}
 function resetAttack(keepChoice = true) {
   // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
   if (attackFlow.step !== "ready" && attackFlow.character !== null) {
@@ -3162,6 +3196,12 @@ function resetAttack(keepChoice = true) {
     saveAttackOptions(attackFlow.character);
   }
   flushMiss(); // a miss left on the card is final once the player moves on
+  // An attack the player moved on from is never picked back up from the story.
+  if (attackFlow.ask && Array.isArray(state?.actions)) {
+    const { text, after } = attackFlow.ask;
+    const line = state.actions.find(action => Number(action.id) > after && String(action.text).startsWith(text));
+    if (line) storage.set(RESUMED_KEY(), JSON.stringify([...readJson(RESUMED_KEY(), []), line.id].slice(-100)));
+  }
   Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false, ask: null });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
@@ -3380,7 +3420,21 @@ function drawAttack() {
   const me = Number($("character").value);
   const sheet = sheets[partyName(me)] ?? {};
   $("attack-custom").open ||= !attacksFor(me).length;
-  if (attackFlow.character !== me) { flushMiss(); attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
+  if (attackFlow.character !== me) {
+    const leaving = attackFlow.character;
+    if (leaving !== null && attackFlow.step !== "ready" && !attackFinished()) {
+      parkedAttacks.set(leaving, { ...attackFlow, sent: [...attackFlow.sent], area: new Set(attackFlow.area ?? []) });
+      attackFlow.ask = null; // parked, not abandoned: the reset below mustn't retire it
+    } else {
+      flushMiss();
+    }
+    attackFlow.character = null;
+    resetAttack(false);
+    attackFlow.character = me;
+    const parked = parkedAttacks.get(me);
+    if (parked) { parkedAttacks.delete(me); Object.assign(attackFlow, parked, { character: me }); }
+  }
+  resumeAsk(me);
   const optionState = attackOptionsState(me, sheet, combat);
   attackFlow.options = new Set(optionState.names);
   const attacks = attacksFor(me);
@@ -3498,7 +3552,8 @@ function drawAttack() {
 
   const select = $("attack-target");
   if (document.activeElement !== select) {
-    const chosen = select.value;
+    const chosen = attackFlow.resumeTarget ?? select.value;
+    attackFlow.resumeTarget = null;
     const targets = (combat.enemies ?? []).filter(enemy => enemy.status !== "down");
     select.replaceChildren(new Option(targets.length ? "Which enemy?" : "No enemies standing", ""),
       ...targets.map(enemy => new Option(enemy.name + " · " + (STATUS_TEXT[enemy.status] ?? ""), enemy.name)));
