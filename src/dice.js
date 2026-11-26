@@ -95,8 +95,10 @@ export function rollableFrom(value) {
   return /\d*d\d+/.test(text) && parse(text) ? text : null;
 }
 
-// "+2 adv." or "+2 with advantage" (Feral Instinct): the roll has advantage.
-export const rollModeFrom = value => /\badv(antage|\.|\b)/i.test(String(value)) ? "advantage" : "normal";
+// "+2 adv." or "+2 with advantage" (Feral Instinct): the roll has advantage;
+// "+1 (disadvantage in scale mail)": disadvantage.
+export const rollModeFrom = value => /\bdisadv/i.test(String(value)) ? "disadvantage"
+  : /\badv(antage|\.|\b)/i.test(String(value)) ? "advantage" : "normal";
 
 // Critical-hit damage: every damage die is rolled twice (modifiers once),
 // plus `extra` more of the first die (Brutal Critical). "1d12+7" → "3d12+7"

@@ -296,6 +296,15 @@ function drawFullSheet(character) {
     const row = element("li", status === "proficient" ? "is-proficient" : "");
     row.append(element("span", "", name + " "), element("small", "", ability), element("strong", "", value));
     if (status) row.append(element("em", "", status));
+    // Tap a skill to roll it (and share it): "roll Deception" is one tap.
+    if (rollableFrom(value)) {
+      row.classList.add("is-rollable");
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
+      row.title = "Roll " + name;
+      row.onclick = () => rollSkill(name, value);
+      row.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rollSkill(name, value); } };
+    }
     table.append(row);
   }
   skills.append(table);
@@ -1347,11 +1356,21 @@ function syncDiceExpression() {
   $("mod-value").textContent = (dice.modifier >= 0 ? "+" : "−") + Math.abs(dice.modifier);
   previewDice();
 }
+// A skill check ("roll Deception"): the right dice, named, and shared with
+// the table so the DM sees "🎲 Deception: 14".
+function rollSkill(name, value) {
+  openDice(rollableFrom(value) ?? "d20", name, null, rollModeFrom(value));
+  if (!$("dice-share-wrap").hidden) {
+    $("dice-share").checked = true;
+    $("dice-for").hidden = true; // the label already says what it's for
+  }
+}
 // One-tap rolls from the character's roll tiles and proficient saves, so
 // nobody has to type "d20+9".
 function drawDicePresets() {
   // A roll the app is waiting on (death save, initiative, an attack) keeps its
   // own dice: no presets to swap in an unrelated roll.
+  drawSkillPicker();
   if (dice.onResult) { $("dice-presets").hidden = true; return; }
   const character = isHost ? null : selectedCharacter();
   const sheet = sheets[character?.name];
@@ -1389,6 +1408,20 @@ function drawDicePresets() {
     };
     return chip;
   }));
+}
+// Every skill on the sheet, one pick away in the dice tray.
+function drawSkillPicker() {
+  const picker = $("dice-skill");
+  const skills = isHost || dice.onResult ? [] : sheets[selectedCharacter()?.name]?.skills ?? [];
+  picker.hidden = !skills.length;
+  if (!skills.length) return;
+  picker.replaceChildren(new Option("Skill check…", ""), ...skills.filter(([, , value]) => rollableFrom(value))
+    .map(([name, ability, value]) => new Option(name + " (" + ability + ") " + value, name)));
+  picker.value = "";
+  picker.onchange = () => {
+    const skill = skills.find(([name]) => name === picker.value);
+    if (skill) rollSkill(skill[0], skill[2]);
+  };
 }
 // Every roll starts at Normal unless the caller says otherwise: advantage from
 // one roll (Reckless, a sheet's "adv.") must never carry into the next.
