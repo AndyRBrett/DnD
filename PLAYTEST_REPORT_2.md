@@ -171,3 +171,27 @@ Roan (no concentration spells) could be marked Concentrating with no warning. Mu
 5. **N3** + **N2** tell a host they're in DM mode, and keep applied hits on the server.
 6. **N7**, **N8**, **N6** rule hints (rage resistance, poison on the attack, advantage from hiding).
 7. The rest as polish.
+
+---
+
+## 6. Fix status
+
+| Issue | Status |
+|---|---|
+| N1 advantage re-roll | Fixed in #64 (second d20 on the Attack card) |
+| N2 double-applied hits | Fixed in #65 (applied hits are marked on the story line) |
+| N3 DM account sees no player tools | Explained in #64 (note on the Sheet and Combat tabs) |
+| N4 one death save per round | Fixed in #64 |
+| N5 native confirms | Fixed in #64 (second tap instead) |
+| N6 advantage from hiding | Fixed in #65 ("Hidden or unseen" option) |
+| N7 rage resistance | Fixed in #65 (hint on enemy hits) |
+| N8 Assassin's poison | Fixed in #65 (attack riders) |
+| N9 retarget a hit | Open |
+| N10 maneuver saves | Fixed in #65 (one-tap save in Hits to apply) |
+| N11 presence with shared phones | Open |
+| N12 short rest in combat | Fixed in #65 (second tap) |
+| N13 misses | Fixed in #64 |
+| N14 concentration at 0 HP | Fixed in #64 |
+| N15 "Next attack" | Fixed in #64 |
+| N16 Concentrating without a spell | Fixed in #65 (second tap) |
+| N17 smaller things | Open |

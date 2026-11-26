@@ -7,8 +7,15 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20 } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
+// Everyone can attack from hiding: advantage for that one attack (and while
+// Invisible it's on by itself).
+const HIDDEN_OPTION = { name: "Hidden or unseen", mode: "advantage", lasts: "attack", hidden: true,
+  note: "Attacking from hiding, unseen, or Invisible: advantage. The attack gives your position away." };
+for (const sheet of Object.values(sheets)) {
+  if (sheet?.attacks?.length && !(sheet.attackOptions ?? []).some(option => option.hidden)) sheet.attackOptions = [...(sheet.attackOptions ?? []), HIDDEN_OPTION];
+}
 
 const $ = id => document.getElementById(id);
 // Longest player action (migration 0016: was 300).
@@ -1244,7 +1251,13 @@ function drawConditions() {
     button.className = "condition-toggle" + (active[name] ? " is-active" : "");
     button.setAttribute("aria-pressed", String(Boolean(active[name])));
     button.textContent = icon + " " + name;
-    button.onclick = () => setCondition(name, active[name] ? 0 : 1);
+    button.onclick = () => {
+      // Concentrating on someone with no concentration spell is usually a
+      // stray tap (it happened in a playtest): ask once more.
+      if (name === "Concentrating" && !active[name] && !canConcentrate(selectedCharacter())
+        && !confirmTap(button, "🧠 No concentration spell on this sheet. Tap again to mark it anyway")) return;
+      setCondition(name, active[name] ? 0 : 1);
+    };
     return button;
   }));
   $("condition-badges").hidden = !names.length;
@@ -1256,6 +1269,12 @@ function drawConditions() {
     badge.onclick = () => { showTab("scene"); $("conditions").scrollIntoView({ behavior: "smooth", block: "center" }); };
     return badge;
   }));
+}
+// Does this character have anything that needs concentration (a spell on
+// the roster or sheet that says so, not "no concentration")?
+function canConcentrate(character) {
+  if (!character) return true;
+  return /(?<!no )concentration/i.test(JSON.stringify(character) + JSON.stringify(sheets[character.name] ?? {}));
 }
 function conditionRollNotes() {
   if (isHost) return [];
@@ -1802,13 +1821,15 @@ function checkRemoteDamage(previous, fresh) {
   const after = fresh.hp?.[name];
   if (before && after) concentrationCheck(me, (before.hp + (before.temp ?? 0)) - (after.hp + (after.temp ?? 0)));
 }
-async function adjustHp(index, change, status) {
+// sameHit: more damage from a hit already applied (an attack's poison rider):
+// not a fresh hit, so no extra death-save failure or concentration save.
+async function adjustHp(index, change, status, { sameHit = false } = {}) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
   state.hp = { ...state.hp, [partyName(index)]: changePartyHp(record, change) };
   // Hurt while already down: a death save failure, whoever entered the damage
   // (the DM's Apply too). Stable and hurt again: death saves start over.
-  if (change < 0 && record.hp <= 0) {
+  if (change < 0 && record.hp <= 0 && !sameHit) {
     const saves = readDeath(index);
     if (saves.failures < 3) {
       const stable = saves.successes >= 3;
@@ -1820,11 +1841,11 @@ async function adjustHp(index, change, status) {
   if (change > 0 && record.hp <= 0) clearDeath(index); // any healing brings them back
   drawCombat();
   const own = !isHost && index === Number($("character").value);
-  const reminder = change < 0 && own ? concentrationCheck(index, -change) : "";
+  const reminder = change < 0 && own && !sameHit ? concentrationCheck(index, -change) : "";
   // Someone else's HP: a story line, so their phone can ask for a concentration
   // save for this hit (and the table hears about it).
   // (Already down: the death-save line above says it; concentration is over.)
-  if (change < 0 && !own && record.hp > 0) tellTable(index, "🩸 takes " + -change + " damage");
+  if (change < 0 && !own && record.hp > 0) tellTable(index, sameHit ? "🩸 takes " + -change + " more damage from the same hit" : "🩸 takes " + -change + " damage");
   try {
     await backend.adjustHp(room, index, change);
     if (reminder) status.textContent = reminder;
@@ -2393,6 +2414,8 @@ function resourcesWidget(index) {
   shortRest.className = "ghost";
   shortRest.textContent = "Short rest";
   shortRest.onclick = () => {
+    // A short rest is an hour: mid-fight it's almost always a mistap.
+    if (state?.combat && !confirmTap(shortRest, "In a fight! Tap again to rest anyway")) return;
     writeRes(index, restResources(sheet, readRes(index), "short"));
     tellTable(index, "🏕️ takes a short rest");
     if (hitDice(sheet) && hpRecord(index) && hpRecord(index).hp < hpRecord(index).max) {
@@ -2599,8 +2622,15 @@ $("hp-badge").onclick = () => {
 let lastDamageRoll = null;
 const HANDLED_KEY = () => "dnd-hits-handled:" + room;
 const handledHits = () => new Set(readJson(HANDLED_KEY(), []));
-function markHit(id) {
-  storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), id].slice(-300)));
+// Handled on this phone, and marked on the story line itself ("· ✓ DM
+// applied"), so another DM screen at the table (a second device on the same
+// account) never applies it twice.
+function markHit(action, how = "applied") {
+  storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), action.id].slice(-300)));
+  if (!backend.editAction || !Array.isArray(state?.actions)) return;
+  const text = hitHandledText(action.text, how);
+  state.actions = state.actions.map(entry => entry.id === action.id ? { ...entry, text } : entry);
+  backend.editAction(room, action.id, text).catch(() => {}); // this phone remembers it either way
 }
 function drawHitReport() {
   const combat = state?.combat;
@@ -2790,7 +2820,7 @@ function drawAttack() {
     }
   }
   const attack = baseAttack?.slot && attackFlow.level ? upcastAttack(baseAttack, attackFlow.level) : baseAttack;
-  const isOn = option => attackFlow.options.has(option.name) || Boolean(option.rage && res.raging);
+  const isOn = option => attackFlow.options.has(option.name) || Boolean(option.rage && res.raging) || Boolean(option.hidden && activeConditions().Invisible);
   $("attack-title").textContent = "Attack · " + partyName(me).replace(/^The /, "");
 
   $("attack-list").replaceChildren(...attacks.map((entry, index) => {
@@ -3088,7 +3118,7 @@ function drawHitInbox() {
   const handled = handledHits();
   const pending = (state.actions ?? [])
     .map(action => ({ action, report: parseHitReport(action.text) }))
-    .filter(({ action, report }) => report && !handled.has(action.id) && Number(action.id) > since);
+    .filter(({ action, report }) => report && !report.handled && !handled.has(action.id) && Number(action.id) > since);
   box.hidden = !pending.length;
   $("hit-list").replaceChildren(...pending.map(({ action, report }) => {
     const item = document.createElement("li");
@@ -3108,7 +3138,7 @@ function drawHitInbox() {
     const who = action.name.replace(/^The /, "");
     const how = report.detail.match(/^with ([^,]+)/)?.[1] ?? "";
     const hitEnemy = (amount, note = "") => {
-      markHit(action.id);
+      markHit(action, "applied");
       const before = enemies.find(enemy => enemy.id === target.id);
       enemies = enemies.map(enemy => enemy.id === target.id ? applyHp(enemy, -amount) : enemy); // just that one
       const after = enemies.find(enemy => enemy.id === target.id);
@@ -3122,7 +3152,7 @@ function drawHitInbox() {
     dismiss.type = "button";
     dismiss.className = "quiet";
     dismiss.textContent = "Dismiss";
-    dismiss.onclick = () => { markHit(action.id); drawCombat(); };
+    dismiss.onclick = () => { markHit(action, "dismissed"); drawCombat(); };
     const buttons = document.createElement("div");
     buttons.className = "hit-buttons";
     buttons.append(apply);
@@ -3143,6 +3173,16 @@ function drawHitInbox() {
       saveButton.className = "cta";
       saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")";
       saveButton.onclick = () => {
+        if (report.save.rider) {
+          // A maneuver: the damage lands either way; the save decides the effect.
+          const outcome = enemySave(target, { ...report.save, amount: report.amount, half: false });
+          const effect = report.save.effect || "the effect";
+          hitEnemy(report.amount, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
+            + (outcome.saved ? "saved, no " + effect : "failed, " + effect) + ")");
+          $("combat-status").textContent = report.enemy + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
+            + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + report.amount + " damage applied.";
+          return;
+        }
         const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
         hitEnemy(outcome.damage, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + ")");
         $("combat-status").textContent = report.enemy + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
@@ -3317,6 +3357,52 @@ async function toggleCombat() {
   }
 }
 
+// What else an enemy's hit does (the Assassin's poison, a wolf's trip): roll
+// the extra damage (doubled on a crit) and offer it whole or halved for a
+// save the player makes; an effect-only rider just says what to ask for.
+function riderRow(rider, critical, index, who, source, landed = { done: false }) {
+  const box = document.createElement("div");
+  box.className = "apply-row rider-row";
+  const text = document.createElement("span");
+  text.className = "fineprint";
+  const saveText = rider.save ? "DC " + rider.dc + " " + rider.save + " save" : "";
+  if (!rider.damage) {
+    text.textContent = "Plus: " + who + " makes a " + saveText + " or " + (rider.effect ?? "suffers the effect") + ". Ask them to roll it.";
+    box.append(text);
+    return box;
+  }
+  const extra = roll(critical ? critExpression(rider.damage) : rider.damage);
+  const type = rider.type ? " " + rider.type : "";
+  text.textContent = "Plus " + extra.total + type + " [" + extra.breakdown + "]" + (saveText ? ": " + who + " makes a " + saveText + (rider.half ? ", half on a success." : ", none on a success.") : ".");
+  const status = document.createElement("span");
+  status.className = "fineprint";
+  const give = (amount, note) => {
+    for (const button of box.querySelectorAll("button")) button.disabled = true;
+    status.textContent = "Applied " + amount + type + " to " + who + ".";
+    addNarration(source + " deals " + who + " " + amount + type + " damage" + note + ".");
+    const sameHit = landed.done; // the weapon damage of this hit went in first
+    landed.done = true;
+    adjustHp(index, -amount, status, { sameHit });
+  };
+  const full = document.createElement("button");
+  full.type = "button";
+  full.className = "danger-soft";
+  full.textContent = (saveText ? "Failed: " : "Apply ") + extra.total + type;
+  full.onclick = () => give(extra.total, saveText ? " (failed the save)" : "");
+  box.append(text, full);
+  if (saveText) {
+    const saved = document.createElement("button");
+    saved.type = "button";
+    saved.className = "ghost";
+    const amount = rider.half ? Math.floor(extra.total / 2) : 0;
+    saved.textContent = "Saved: " + amount;
+    saved.onclick = () => amount ? give(amount, " (saved for half)") : (status.textContent = who + " saved: no" + type + " damage.", saved.disabled = full.disabled = true);
+    box.append(saved);
+  }
+  box.append(status);
+  return box;
+}
+
 // ── To narrate (DM only): what the app resolved, one tap from the update box. ──
 const narrateKey = () => "dnd-narrate:" + room;
 function addNarration(line) {
@@ -3425,8 +3511,12 @@ function drawTemplateOptions() {
     ...enemyTemplates.map((template, index) => new Option(template.name + " · AC " + template.ac + " · HP " + template.hp, "srd:" + index))
   );
 }
+// A template attack's rider (the Assassin's poison) has no form field: it
+// rides along with the attack's name while the form is filled from it.
+let formRiders = {};
 function fillEnemyForm(template) {
   const attacks = template?.attacks ?? [];
+  formRiders = Object.fromEntries(attacks.filter(attack => attack[3]).map(attack => [attack[0], attack[3]]));
   $("enemy-name").value = template?.name ?? "";
   $("enemy-ac").value = template?.ac ?? 12;
   $("enemy-hp").value = template?.hp ?? "2d8+2";
@@ -3448,7 +3538,8 @@ function enemyFormStats() {
     hp: $("enemy-hp").value.trim() || "1",
     init: Number($("enemy-init").value) || 0,
     speed: Number($("enemy-speed").value) || 30,
-    attacks: [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name),
+    attacks: [1, 2].map(n => [$("atk" + n + "-name").value.trim(), Number($("atk" + n + "-hit").value) || 0, $("atk" + n + "-dmg").value.trim()]).filter(([name]) => name)
+      .map(attack => formRiders[attack[0]] ? [...attack, formRiders[attack[0]]] : attack),
     abilities: $("enemy-abilities").value.trim(),
     saves: parseSaves($("enemy-saves").value)
   };
@@ -3579,14 +3670,14 @@ function enemyCard(enemy) {
     target.onchange = () => enemyTargets.set(enemy.id, target.value);
     attacks.append(target);
   }
-  for (const [label, hit, damage] of enemy.attacks) {
+  for (const [label, hit, damage, rider] of enemy.attacks) {
     // "Longsword (×2)" is a multiattack: one tap rolls every swing.
     const times = Number(label.match(/\(×(\d)\)/)?.[1] ?? 1);
     const name = label.replace(/\s*\(×\d\)/, "");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ghost";
-    button.textContent = (times > 1 ? times + " × " + name : label) + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "");
+    button.textContent = (times > 1 ? times + " × " + name : label) + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "") + (rider?.damage ? " +" + rider.damage + " " + (rider.type ?? "") : "");
     if (times > 1) button.setAttribute("aria-label", "Roll all " + times + " " + name + " attacks");
     const rollOne = swing => {
       const label = times > 1 ? name + " " + swing + " of " + times : name;
@@ -3617,17 +3708,28 @@ function enemyCard(enemy) {
           row.className = "apply-row";
           const status = document.createElement("span");
           status.className = "fineprint";
+          const landed = { done: false }; // weapon damage and its rider are one hit
           const apply = amount => {
             for (const button of row.querySelectorAll("button")) button.disabled = true;
             status.textContent = "Applied " + amount + " to " + who + ".";
             addNarration(enemy.name + "'s " + name + " hits " + who + " for " + amount + " damage" + (outcome === "crit" ? " (a critical hit)" : "") + ".");
-            adjustHp(index, -amount, status);
+            const sameHit = landed.done; // the rider of this hit went in first
+            landed.done = true;
+            adjustHp(index, -amount, status, { sameHit });
           };
           const full = document.createElement("button");
           full.type = "button";
           full.className = "danger-soft";
           full.textContent = "Apply " + shown.total + " to " + who;
           full.onclick = () => apply(shown.total);
+          // Raging: resistance to bludgeoning, piercing and slashing. The
+          // app doesn't know the damage type, so it says so and lets the DM pick.
+          if (readRes(index).raging) {
+            const rage = document.createElement("p");
+            rage.className = "fineprint rage-hint";
+            rage.textContent = "😤 " + who + " is raging: weapon damage (bludgeoning, piercing, slashing) is halved. Use Half unless it's another type.";
+            parts.push(rage);
+          }
           const half = document.createElement("button");
           half.type = "button";
           half.className = "quiet";
@@ -3636,12 +3738,19 @@ function enemyCard(enemy) {
           half.onclick = () => apply(Math.floor(shown.total / 2));
           row.append(full, half, status);
           parts.push(row);
+          if (rider) parts.push(riderRow(rider, toHit.critical, index, who, enemy.name + "'s " + name, landed));
         }
       }
       return parts;
     };
     button.onclick = () => {
       const parts = [];
+      if (rider && enemyTargets.get(enemy.id) == null || rider && enemyTargets.get(enemy.id) === "") {
+        const note = document.createElement("p");
+        note.className = "fineprint";
+        note.textContent = "Each hit also: " + riderText(rider) + ". Pick a target to roll it with the hit.";
+        parts.push(note);
+      }
       for (let swing = 1; swing <= times; swing++) {
         const one = document.createElement("div");
         one.className = "enemy-swing";

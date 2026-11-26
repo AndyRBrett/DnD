@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, roll, normalize, poolExpression, rollableFrom, keepD20 } from "../src/dice.js";
-import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints } from "../src/encounter.js";
+import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
 const faces = (sides, ...values) => { const queue = [...values]; return () => (queue.shift() - 1) / sides + 1e-9; };
@@ -212,9 +212,9 @@ test("character attacks: options, crits, Brutal Critical, and the report line", 
   }
 
   const line = hitReportText("Bandit 2", 14, "with Greataxe, 19 to hit");
-  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14, detail: "with Greataxe, 19 to hit", toHit: 19, crit: false, halfOnSave: false, save: null });
+  assert.deepEqual(parseHitReport(line), { enemy: "Bandit 2", amount: 14, detail: "with Greataxe, 19 to hit", toHit: 19, crit: false, halfOnSave: false, save: null, handled: false });
   assert.equal(parseHitReport(hitReportText("Guard 1", 30, "with Fireball, Dex save, DC 17, half on a save")).halfOnSave, true);
-  assert.deepEqual(parseHitReport(hitReportText("Bandit 2", 7)), { enemy: "Bandit 2", amount: 7, detail: "", toHit: null, crit: false, halfOnSave: false, save: null });
+  assert.deepEqual(parseHitReport(hitReportText("Bandit 2", 7)), { enemy: "Bandit 2", amount: 7, detail: "", toHit: null, crit: false, halfOnSave: false, save: null, handled: false });
 });
 
 test("attacks show their ability modifier, and the math adds up", async () => {
@@ -441,4 +441,39 @@ test("a second d20 for advantage or disadvantage keeps the right roll", () => {
   assert.equal(keepD20(first, low, "advantage").natural, 6);
   assert.equal(keepD20(first, low, "disadvantage").natural, 2);
   assert.equal(keepD20(crit, first, "disadvantage").critical, false);
+});
+
+test("a hit the DM applied is marked on the story line, once", () => {
+  const line = "🎯 hit Goblin 1 for 9 damage — with Longbow, 18 to hit";
+  assert.equal(readHit(line).handled, false);
+  const applied = hitHandledText(line);
+  assert.equal(applied, line + " · ✓ DM applied");
+  assert.equal(readHit(applied).handled, true);
+  assert.equal(readHit(applied).amount, 9);
+  assert.equal(readHit(applied).toHit, 18);
+  // Marking again replaces the mark instead of stacking it.
+  assert.equal(hitHandledText(applied, "dismissed"), line + " · ✓ DM dismissed");
+});
+
+test("a maneuver's save is read as a rider: damage lands, the save decides the effect", () => {
+  const trip = readHit("🎯 hit Vault Sentry 1 for 17 damage — with Longsword + Trip Attack (DC 16 Strength save or knocked prone (Large or smaller)), 22 to hit");
+  assert.deepEqual(trip.save, { ability: "Str", dc: 16, rider: true, effect: "knocked prone" });
+  assert.equal(trip.halfOnSave, false);
+  // A spell's save is still the plain kind.
+  const fireball = readHit("🎯 hit Ogre for 35 damage — with Fireball (4th-level), Dex save, DC 16, half on a save");
+  assert.deepEqual(fireball.save, { ability: "Dex", dc: 16 });
+});
+
+test("the Assassin's poison rides on its attacks and survives building the enemy", () => {
+  const assassin = templates.find(template => template.name === "Assassin");
+  const [shortsword] = assassin.attacks;
+  assert.deepEqual(shortsword[3], { damage: "7d6", type: "poison", save: "Con", dc: 15, half: true });
+  assert.equal(riderText(shortsword[3]), "+7d6 poison (DC 15 Con save for half)");
+  const [enemy] = createEnemies(assassin, 1);
+  assert.deepEqual(enemy.attacks[0][3], shortsword[3]);
+  assert.equal(enemy.attacks[0].length, 4);
+  // Attacks without a rider stay three long.
+  const [guard] = createEnemies(templates.find(template => template.name === "Guard"), 1);
+  assert.equal(guard.attacks[0].length, 3);
+  assert.equal(riderText({ save: "Str", dc: 11, effect: "knocked prone" }), "DC 11 Str save or knocked prone");
 });
