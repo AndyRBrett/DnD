@@ -3174,13 +3174,15 @@ function resumeAsk(me) {
   const line = mine.at(-1);
   const ask = line && parseAttackAsk(line.text);
   if (!ask || ask.verdict === "miss" || Date.now() - Number(line.created) > 30 * 60 * 1000) return;
-  const resumed = readJson(RESUMED_KEY(), []);
-  if (resumed.includes(line.id)) return;
-  const attackName = ask.detail.match(/^with (.+?), \d+ to hit/)?.[1];
+  // Retired only once the player moves on (resetAttack), so a second reload
+  // still finds an attack that isn't finished.
+  if (readJson(RESUMED_KEY(), []).includes(line.id)) return;
+  const [, attackName, castLevel] = ask.detail.match(/^with (.+?)(?: \((\d)(?:st|nd|rd|th)-level\))?, \d+ to hit/) ?? [];
   const index = attacksFor(me).findIndex(entry => entry.name === attackName);
   if (index < 0 || ask.toHit === null) return;
-  storage.set(RESUMED_KEY(), JSON.stringify([...resumed, line.id].slice(-100)));
   attackFlow.index = index;
+  // The slot was paid for at that level: the damage is rolled at it too.
+  attackFlow.level = castLevel ? Number(castLevel) : attacksFor(me)[index].slot ?? null;
   attackFlow.spent = true; // the slot or use was spent when it was rolled
   attackFlow.toHit = { total: ask.toHit, natural: null, critical: false, fumble: false, mode: "normal", typed: true };
   attackFlow.ask = { text: String(line.text).replace(/ · (✓ DM: hit|✗ DM: miss)$/u, ""), after: Number(line.id) - 1, character: me };
@@ -3423,7 +3425,7 @@ function drawAttack() {
   if (attackFlow.character !== me) {
     const leaving = attackFlow.character;
     if (leaving !== null && attackFlow.step !== "ready" && !attackFinished()) {
-      parkedAttacks.set(leaving, { ...attackFlow, sent: [...attackFlow.sent], area: new Set(attackFlow.area ?? []) });
+      parkedAttacks.set(leaving, { ...attackFlow, sent: [...attackFlow.sent], area: new Set(attackFlow.area ?? []), resumeTarget: $("attack-target").value || null });
       attackFlow.ask = null; // parked, not abandoned: the reset below mustn't retire it
     } else {
       flushMiss();
@@ -3732,7 +3734,8 @@ function drawAttack() {
           // A natural 20 or 1 needs no call.
           const target = $("attack-target").value;
           if (attackFlow.step === "rolled" && target && backend.postAction && Array.isArray(state?.actions)) {
-            const text = attackAskText(target, "with " + attack.name + ", " + result.total + " to hit");
+            const cast = baseAttack.slot && attackFlow.level ? " (" + ORDINAL[attackFlow.level] + "-level)" : "";
+            const text = attackAskText(target, "with " + attack.name + cast + ", " + result.total + " to hit");
             const after = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
             attackFlow.ask = { text, after, character: me };
             attackFlow.step = "waiting";
