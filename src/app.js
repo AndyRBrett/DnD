@@ -3291,6 +3291,11 @@ function attacksThisTurn(index) {
   const entry = attacksMade.get(index);
   return entry && entry.turn === turnTag() ? entry.count : 0;
 }
+// Spells and other one-use attacks (no Extra Attack) take the turn's action
+// or bonus action: once per turn, unless the player says otherwise.
+const usedOnce = new Map(); // "index:attack name" → turn tag it was used on
+const usedOnceThisTurn = (index, attack) => !attack.perAction && usedOnce.get(index + ":" + attack.name) === turnTag();
+const markUsedOnce = (index, attack) => { if (!attack.perAction) usedOnce.set(index + ":" + attack.name, turnTag()); };
 function countAttack(index) {
   attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
 }
@@ -3638,6 +3643,9 @@ function drawAttack() {
   } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
   }
+  const once = usedOnceThisTurn(me, baseAttack);
+  const onceText = baseAttack.name + " already used this turn: it takes your " + (/bonus action/i.test(baseAttack.note ?? "") ? "bonus action" : "action")
+    + ". Pick something else, or end your turn.";
   const rollDamage = () => { spend("damage"); openDice(built.damage, attack.name + " damage", total => {
     dice.onResult = null; // one roll per tap: a second tap doesn't replace the damage
     attackFlow.damage = total;
@@ -3721,11 +3729,16 @@ function drawAttack() {
     parts.push(stepText(blocked, "is-miss"));
   } else if (attackFlow.step === "ready") {
     if (built.save) {
+      if (once) parts.push(stepText(onceText, "is-miss"));
       parts.push(stepText("Each target tries a " + built.save + " to resist. The DM rolls those for them."),
-        stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+        stepButton("Roll damage · " + built.damage, once ? "quiet" : "cta", event => {
+          if (once && !confirmTap(event.currentTarget, "Tap again: use it a second time this turn")) return;
+          markUsedOnce(me, baseAttack);
+          rollDamage();
+        }));
     } else {
       if (baseAttack.perAction) parts.push(stepText(attackCountText(me, baseAttack), "fineprint attack-count"));
-      const startToHit = () => { spend("hit"); if (baseAttack.perAction) countAttack(me); };
+      const startToHit = () => { spend("hit"); if (baseAttack.perAction) countAttack(me); markUsedOnce(me, baseAttack); };
       const landToHit = result => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
@@ -3743,7 +3756,9 @@ function drawAttack() {
           }
           drawAttack();
       };
-      parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), "cta", () => {
+      if (once) parts.push(stepText(onceText, "is-miss"));
+      parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), once ? "quiet" : "cta", event => {
+        if (once && !confirmTap(event.currentTarget, "Tap again: use it a second time this turn")) return;
         startToHit();
         openDice(built.toHit, attack.name + " to hit", (total, result) => {
           // One roll per tap: a second tap on Roll before the tray closes is
