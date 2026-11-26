@@ -1456,7 +1456,18 @@ function stepModifier(change) {
 }
 $("mod-minus").onclick = () => stepModifier(-1);
 $("mod-plus").onclick = () => stepModifier(1);
-$("dice-expression").oninput = () => { dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0"; previewDice(); };
+$("dice-expression").oninput = () => {
+  dice.pool = {}; dice.modifier = 0; $("mod-value").textContent = "+0";
+  // An edited roll is no longer the quick-roll it started from ("Damage"):
+  // drop its label so the log doesn't call "d6: 3" Damage. A roll the app
+  // is waiting on (an attack, a death save) keeps its label.
+  if (!dice.onResult && dice.label) {
+    dice.label = "";
+    $("dice-label").textContent = "";
+    for (const chip of $("dice-presets").children) chip.classList.remove("is-active");
+  }
+  previewDice();
+};
 for (const button of $("dice-mode").children) {
   button.onclick = () => {
     dice.mode = button.dataset.mode;
@@ -1744,11 +1755,19 @@ function sayHere() {
   Object.assign(here, { at: Date.now(), character: me });
   backend.here(room, me).catch(error => { if (/could not find the function/i.test(error.message)) here.off = true; });
 }
+// The table keeps one presence row per account, so a phone that plays two
+// characters only reports the one picked last. The DM's phone remembers each
+// character it has seen for a few minutes, so the list doesn't flicker as
+// that phone switches between them.
+const hereSeen = new Map(); // character index → when it was last seen (ms)
+const HERE_MEMORY = 5 * 60 * 1000;
 function drawHere() {
   const line = $("here-line");
   line.hidden = !isHost || !Array.isArray(state?.here);
   if (line.hidden) return;
-  const present = new Set(state.here.map(entry => entry.character));
+  const now = Date.now();
+  for (const entry of state.here) hereSeen.set(entry.character, Math.max(hereSeen.get(entry.character) ?? 0, now - (Number(entry.seconds) || 0) * 1000));
+  const present = new Set([...hereSeen].filter(([, at]) => now - at < HERE_MEMORY).map(([character]) => character));
   const names = index => partyName(index).replace(/^The /, "");
   const inRoom = state.party.map((_, index) => index).filter(index => present.has(index));
   const away = state.party.map((_, index) => index).filter(index => !present.has(index));
@@ -3110,6 +3129,7 @@ function drawAttack() {
 }
 $("attack-target").onchange = () => drawAttack();
 
+const hitRetargets = new Map(); // hit action id → enemy id the DM pointed it at
 function drawHitInbox() {
   const box = $("hit-inbox");
   const combat = state?.combat;
@@ -3122,14 +3142,32 @@ function drawHitInbox() {
   box.hidden = !pending.length;
   $("hit-list").replaceChildren(...pending.map(({ action, report }) => {
     const item = document.createElement("li");
-    const target = enemies.find(enemy => enemy.name === report.enemy);
+    // Sent at an enemy that's already down or isn't in this encounter (a
+    // stale view, a typo): the DM can point it at one that's still standing.
+    const named = enemies.find(enemy => enemy.name === report.enemy);
+    const picked = enemies.find(enemy => enemy.id === hitRetargets.get(action.id));
+    const target = picked ?? named;
+    let retarget = null;
+    if (!named || named.hp <= 0) {
+      retarget = document.createElement("select");
+      retarget.className = "hit-retarget";
+      retarget.setAttribute("aria-label", "Apply this hit to");
+      retarget.append(new Option(named ? "Apply to… (" + named.name + " is down)" : "Apply to…", ""),
+        ...enemies.filter(enemy => enemy.hp > 0).map(enemy => new Option(enemy.name, enemy.id)));
+      retarget.value = picked?.id ?? "";
+      retarget.onchange = () => {
+        if (retarget.value) hitRetargets.set(action.id, retarget.value); else hitRetargets.delete(action.id);
+        drawHitInbox();
+      };
+    }
     const text = document.createElement("span");
     const versus = target && report.toHit !== null
       ? (report.crit ? " · critical" : report.toHit >= target.ac ? " · " + report.toHit + " vs AC " + target.ac + " ✓" : " · ⚠ " + report.toHit + " vs AC " + target.ac + " — a miss?")
       : "";
     text.textContent = action.name.replace(/^The /, "") + " hit " + report.enemy + " for " + report.amount
       + (report.detail ? " " + report.detail.replace(/, \d+ to hit|, critical/g, "") : "") + versus
-      + (target ? " (HP " + target.hp + "/" + target.maxHp + ")" : " — not in your encounter");
+      + (picked ? " → " + picked.name + " (HP " + picked.hp + "/" + picked.maxHp + ")"
+        : target ? " (HP " + target.hp + "/" + target.maxHp + ")" : " — not in your encounter");
     const apply = document.createElement("button");
     apply.type = "button";
     apply.className = "danger-soft";
@@ -3142,7 +3180,7 @@ function drawHitInbox() {
       const before = enemies.find(enemy => enemy.id === target.id);
       enemies = enemies.map(enemy => enemy.id === target.id ? applyHp(enemy, -amount) : enemy); // just that one
       const after = enemies.find(enemy => enemy.id === target.id);
-      addNarration(report.enemy + (amount ? " takes " + amount + " damage" : " takes no damage") + ", dealt by " + who + (how ? " with " + how : "") + note
+      addNarration(target.name + (amount ? " takes " + amount + " damage" : " takes no damage") + ", dealt by " + who + (how ? " with " + how : "") + note
         + (after?.hp === 0 && before?.hp > 0 ? " and goes down." : after && after.hp <= after.maxHp / 2 && before && before.hp > before.maxHp / 2 ? " and is bloodied." : "."));
       saveEncounter();
       drawEncounter();
@@ -3179,19 +3217,19 @@ function drawHitInbox() {
           const effect = report.save.effect || "the effect";
           hitEnemy(report.amount, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
             + (outcome.saved ? "saved, no " + effect : "failed, " + effect) + ")");
-          $("combat-status").textContent = report.enemy + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
+          $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
             + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + report.amount + " damage applied.";
           return;
         }
         const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
         hitEnemy(outcome.damage, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + ")");
-        $("combat-status").textContent = report.enemy + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
+        $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
           + (outcome.saved ? "saved, " : "failed, ") + outcome.damage + " damage applied.";
       };
       buttons.prepend(saveButton);
     }
     buttons.append(dismiss);
-    item.append(text, buttons);
+    item.append(text, ...(retarget ? [retarget] : []), buttons);
     return item;
   }));
   if (pending.length && currentTab !== "combat") $("tab-combat").classList.add("has-news");
@@ -3376,8 +3414,9 @@ function riderRow(rider, critical, index, who, source, landed = { done: false })
   text.textContent = "Plus " + extra.total + type + " [" + extra.breakdown + "]" + (saveText ? ": " + who + " makes a " + saveText + (rider.half ? ", half on a success." : ", none on a success.") : ".");
   const status = document.createElement("span");
   status.className = "fineprint";
-  const give = (amount, note) => {
+  const give = (amount, note, chosen) => {
     for (const button of box.querySelectorAll("button")) button.disabled = true;
+    chosen?.classList.add("is-chosen");
     status.textContent = "Applied " + amount + type + " to " + who + ".";
     addNarration(source + " deals " + who + " " + amount + type + " damage" + note + ".");
     const sameHit = landed.done; // the weapon damage of this hit went in first
@@ -3388,7 +3427,7 @@ function riderRow(rider, critical, index, who, source, landed = { done: false })
   full.type = "button";
   full.className = "danger-soft";
   full.textContent = (saveText ? "Failed: " : "Apply ") + extra.total + type;
-  full.onclick = () => give(extra.total, saveText ? " (failed the save)" : "");
+  full.onclick = () => give(extra.total, saveText ? " (failed the save)" : "", full);
   box.append(text, full);
   if (saveText) {
     const saved = document.createElement("button");
@@ -3396,7 +3435,7 @@ function riderRow(rider, critical, index, who, source, landed = { done: false })
     saved.className = "ghost";
     const amount = rider.half ? Math.floor(extra.total / 2) : 0;
     saved.textContent = "Saved: " + amount;
-    saved.onclick = () => amount ? give(amount, " (saved for half)") : (status.textContent = who + " saved: no" + type + " damage.", saved.disabled = full.disabled = true);
+    saved.onclick = () => amount ? give(amount, " (saved for half)", saved) : (status.textContent = who + " saved: no" + type + " damage.", saved.disabled = full.disabled = true, saved.classList.add("is-chosen"));
     box.append(saved);
   }
   box.append(status);
@@ -3709,8 +3748,9 @@ function enemyCard(enemy) {
           const status = document.createElement("span");
           status.className = "fineprint";
           const landed = { done: false }; // weapon damage and its rider are one hit
-          const apply = amount => {
+          const apply = (amount, chosen) => {
             for (const button of row.querySelectorAll("button")) button.disabled = true;
+            chosen?.classList.add("is-chosen"); // which one was used stays visible
             status.textContent = "Applied " + amount + " to " + who + ".";
             addNarration(enemy.name + "'s " + name + " hits " + who + " for " + amount + " damage" + (outcome === "crit" ? " (a critical hit)" : "") + ".");
             const sameHit = landed.done; // the rider of this hit went in first
@@ -3721,7 +3761,7 @@ function enemyCard(enemy) {
           full.type = "button";
           full.className = "danger-soft";
           full.textContent = "Apply " + shown.total + " to " + who;
-          full.onclick = () => apply(shown.total);
+          full.onclick = () => apply(shown.total, full);
           // Raging: resistance to bludgeoning, piercing and slashing. The
           // app doesn't know the damage type, so it says so and lets the DM pick.
           if (readRes(index).raging) {
@@ -3735,7 +3775,7 @@ function enemyCard(enemy) {
           half.className = "quiet";
           half.textContent = "Half (" + Math.floor(shown.total / 2) + ")";
           half.title = "Resistance";
-          half.onclick = () => apply(Math.floor(shown.total / 2));
+          half.onclick = () => apply(Math.floor(shown.total / 2), half);
           row.append(full, half, status);
           parts.push(row);
           if (rider) parts.push(riderRow(rider, toHit.critical, index, who, enemy.name + "'s " + name, landed));
