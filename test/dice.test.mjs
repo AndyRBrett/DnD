@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, roll, normalize, poolExpression, rollableFrom, keepD20 } from "../src/dice.js";
+import { parse, roll, normalize, poolExpression, rollableFrom, keepD20, tableRoll, tablePrompt } from "../src/dice.js";
 import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
@@ -486,4 +486,38 @@ test("the Assassin's poison rides on its attacks and survives building the enemy
   const [guard] = createEnemies(templates.find(template => template.name === "Guard"), 1);
   assert.equal(guard.attacks[0].length, 3);
   assert.equal(riderText({ save: "Str", dc: 11, effect: "knocked prone" }), "DC 11 Str save or knocked prone");
+});
+
+test("real dice at the table: the d20's face plus the modifier, crits included", () => {
+  const hit = tableRoll("d20+9", 14);
+  assert.equal(hit.total, 23);
+  assert.equal(hit.natural, 14);
+  assert.equal(hit.critical, false);
+  assert.equal(hit.table, true);
+  assert.equal(hit.breakdown, "table dice: 14 + 9");
+  assert.equal(tableRoll("d20+9", 20).critical, true);
+  assert.equal(tableRoll("d20+9", 1).fumble, true);
+  assert.equal(tableRoll("d20+9", 20, "advantage").mode, "advantage");
+  // A death save is a plain d20: the total is the face.
+  assert.equal(tableRoll("d20", 12).total, 12);
+  // Damage: the dice total, then the modifier.
+  const damage = tableRoll("1d12+4", 9);
+  assert.equal(damage.total, 13);
+  assert.equal(damage.natural, null);
+  assert.equal(tableRoll("1d6+5+5d6", 20).total, 25);
+  // Numbers the dice can't show are refused.
+  assert.equal(tableRoll("d20+9", 0), null);
+  assert.equal(tableRoll("d20+9", 21), null);
+  assert.equal(tableRoll("1d12+4", 13), null);
+  assert.equal(tableRoll("2d6", 1), null);
+  assert.equal(tableRoll("d20", ""), null);
+  assert.equal(tableRoll("5", 3), null);
+});
+
+test("the real-dice prompt asks for the right number", () => {
+  assert.equal(tablePrompt("d20+9"), "What does your d20 show? (the app adds +9)");
+  assert.equal(tablePrompt("d20+9", "advantage"), "Roll two d20s, enter the higher (the app adds +9)");
+  assert.equal(tablePrompt("1d12+4"), "Add up your dice (1d12) (the app adds +4)");
+  assert.equal(tablePrompt("d20"), "What does your d20 show?");
+  assert.equal(tablePrompt("1d6+5+5d6"), "Add up your dice (1d6 + 5d6) (the app adds +5)");
 });

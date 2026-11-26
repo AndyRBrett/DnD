@@ -473,6 +473,13 @@
         </div>
       </div>
       <button id="dice-roll" class="cta" type="button">Roll</button>
+      <form id="dice-table" class="dice-table">
+        <label for="dice-table-value" id="dice-table-label">Rolled real dice? What does your d20 show?</label>
+        <div class="dice-table-row">
+          <input id="dice-table-value" type="number" inputmode="numeric" placeholder="Die" aria-describedby="dice-table-label">
+          <button class="ghost" type="submit">Use my roll</button>
+        </div>
+      </form>
       <button id="dice-clear" class="quiet" type="button">Clear</button>
       <p id="dice-status" class="fineprint"></p>
       <ul id="dice-log" class="feed"></ul>
