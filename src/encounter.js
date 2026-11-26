@@ -299,6 +299,24 @@ export function attackOutcome(toHit, ac) {
 // Fireball, DC 17 Dex save, half on a save").
 export const hitReportText = (enemy, amount, detail = "") =>
   ("🎯 hit " + enemy + " for " + amount + " damage" + (detail ? " — " + detail : "")).slice(0, 300);
+// A to-hit roll waiting for the DM's call, as at the table: "🎯 attacks
+// Vault Warden — with Longsword, 23 to hit". The DM's tap appends the call
+// ("· ✓ DM: hit" or "· ✗ DM: miss"), which the player's card reads to go on
+// to damage or stop.
+const VERDICT = / · (✓ DM: hit|✗ DM: miss)$/u;
+export const attackAskText = (enemy, detail) => ("🎯 attacks " + enemy + " — " + detail).slice(0, 300);
+export function parseAttackAsk(text) {
+  const raw = String(text ?? "");
+  const verdict = raw.match(VERDICT)?.[1];
+  const match = raw.replace(VERDICT, "").match(/^🎯 attacks (.+?) — (.+)$/u);
+  if (!match) return null;
+  const toHit = match[2].match(/(\d+) to hit/);
+  return { enemy: match[1], detail: match[2], toHit: toHit ? Number(toHit[1]) : null,
+    verdict: verdict ? (verdict.startsWith("✓") ? "hit" : "miss") : null };
+}
+export const attackVerdictText = (text, verdict) =>
+  String(text ?? "").replace(VERDICT, "") + (verdict === "hit" ? " · ✓ DM: hit" : " · ✗ DM: miss");
+
 // The DM's phone marks a hit it applied (or dismissed) on the story line
 // itself, so a second DM screen at the same table never applies it again.
 const HANDLED_MARK = / · ✓ DM (applied|dismissed)$/u;

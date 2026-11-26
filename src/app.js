@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -622,6 +622,7 @@ function applyRoom(fresh, { cached = false } = {}) {
   if ($("party-actions").hidden === (isHost && Boolean(backend.postAction) && Array.isArray(state.actions))) drawPartyActions();
   if (rosterChanged || scenesChanged) showOptions();
   if (scenesChanged && !rosterChanged) drawHitInbox();
+  if (scenesChanged && attackFlow.step === "waiting") drawAttack(); // the DM's call on a to-hit roll
   if (!cached) handleTurnEnds(); // also retries one whose publish failed
   if (isPractice()) {
     $("practice-banner").hidden = false;
@@ -1866,7 +1867,8 @@ function drawTurnGuide() {
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
-    const middle = attackFlow.step === "rolled" ? "Roll damage and send it. The DM checks the roll against the enemy's AC."
+    const middle = attackFlow.step === "waiting" ? "Your roll went to the DM. Waiting for the call: hit or miss."
+      : attackFlow.step === "rolled" ? "Roll damage and send it. The DM checks the roll against the enemy's AC."
       : attackFlow.step === "hit" ? "It hit: roll damage."
       : "Pick a weapon or spell and a target, then Roll to hit. Not attacking? Post what you do on the Scene tab, then end your turn.";
     // Name the options on the card, so Reckless or a maneuver isn't missed.
@@ -1897,6 +1899,7 @@ $("guide-go").onclick = () => guideAction?.();
 // The DM's side of the loop on the same tab: whose turn it is and, on an
 // enemy's turn, that enemy's attacks right here (no hop to the DM tab).
 let dmTurnKey = "";
+let dmTurnStart = 0;
 function drawDmTurn(current, order) {
   const box = $("dm-turn");
   if (!isHost || !state?.combat || ended) { box.hidden = true; dmTurnKey = ""; return; }
@@ -1905,7 +1908,10 @@ function drawDmTurn(current, order) {
   const key = !current ? "start:" + order.filter(entry => entry.kind === "pc" && entry.initiative === null).length
     : enemy ? "en:" + enemy.id + ":" + enemy.hp + ":" + (enemy.conditions ?? []).join(",") + ":" + state.combat.round
     : current.key + ":" + state.combat.round;
-  if (key === dmTurnKey) return; // keep rolled attacks on screen between polls
+  const newest = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
+  if (key !== dmTurnKey) dmTurnStart = newest; // story lines after this are this turn's
+  const playerTurn = current && current.kind === "pc";
+  if (key === dmTurnKey && !playerTurn) return; // keep rolled attacks on screen between polls
   dmTurnKey = key;
   const title = document.createElement("h3");
   title.className = "display xs";
@@ -1930,8 +1936,16 @@ function drawDmTurn(current, order) {
     box.replaceChildren(title, note);
   } else {
     title.textContent = current.name.replace(/^The /, "") + "'s turn";
-    note.textContent = "Their hits arrive under Hits to apply, and misses in the story. When they tap End my turn the next turn starts by itself; or tap Next turn.";
-    box.replaceChildren(title, note);
+    // What they've done this turn, from their story lines: attacks rolled
+    // and turn features used, so the DM doesn't lose count.
+    const lines = (state.actions ?? []).filter(action => Number(action.id) > dmTurnStart && action.name === current.name).map(action => String(action.text));
+    const attacks = lines.filter(text => /^🎯 attacks |^🎯 missed |^🎯 hit .*critical/u.test(text)).length;
+    const features = lines.filter(text => /^(⚡|✨|😤 starts)/u.test(text)).map(text => text.replace(/^\S+ (uses |starts )?/u, "").replace(/[:(].*$/, "").trim());
+    const tally = document.createElement("p");
+    tally.className = "turn-tally";
+    tally.textContent = (attacks ? attacks + " attack" + (attacks === 1 ? "" : "s") + " so far" : "No attacks yet") + (features.length ? " · " + features.join(", ") : "");
+    note.textContent = "Their to-hit rolls come to you to call hit or miss, then their damage to apply. When they tap End my turn the next turn starts by itself; or tap Next turn.";
+    box.replaceChildren(title, tally, note);
   }
 }
 
@@ -3106,7 +3120,7 @@ function resetAttack(keepChoice = true) {
     saveAttackOptions(attackFlow.character);
   }
   flushMiss(); // a miss left on the card is final once the player moves on
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false, ask: null });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -3280,7 +3294,20 @@ function drawTurnFeatures(me, sheet, res) {
   label.textContent = "This turn";
   box.replaceChildren(label, ...items);
 }
+// The DM's call on a waiting to-hit roll, read back from the story line.
+function readVerdict() {
+  const ask = attackFlow.ask;
+  if (attackFlow.step !== "waiting" || !ask || !Array.isArray(state?.actions)) return;
+  const name = partyName(ask.character);
+  const line = state.actions.filter(action => Number(action.id) > ask.after && action.name === name && String(action.text).startsWith(ask.text))
+    .map(action => parseAttackAsk(action.text)).find(parsed => parsed?.verdict);
+  if (!line) return;
+  attackFlow.step = line.verdict;
+  if (line.verdict === "miss") attackFlow.missTold = true; // the DM's call already says so
+  navigator.vibrate?.(line.verdict === "hit" ? [60, 40, 60] : 120);
+}
 function drawAttack() {
+  readVerdict();
   const combat = state?.combat;
   if (!combat) lastingUp.clear();
   const card = $("attack-card");
@@ -3512,7 +3539,7 @@ function drawAttack() {
   // other one here so the higher (or lower) roll, crit included, is the one
   // that counts and gets sent.
   const secondRoll = () => {
-    if (!attackFlow.toHit || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save) return [];
+    if (!attackFlow.toHit || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save || attackFlow.ask) return [];
     const take = mode => stepButton(mode === "advantage" ? "Advantage? Roll the second d20" : "Disadvantage? Roll the second d20", "quiet", () => {
       openDice(built.toHit, attack.name + " to hit (" + mode + ")", (total, result) => {
         dice.onResult = null; // one roll per tap
@@ -3586,11 +3613,34 @@ function drawAttack() {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
           attackFlow.step = result.critical ? "hit" : result.fumble ? "miss" : "rolled";
+          // As at the table: the roll goes to the DM, who calls hit or miss.
+          // A natural 20 or 1 needs no call.
+          const target = $("attack-target").value;
+          if (attackFlow.step === "rolled" && target && backend.postAction && Array.isArray(state?.actions)) {
+            const text = attackAskText(target, "with " + attack.name + ", " + result.total + " to hit");
+            const after = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
+            attackFlow.ask = { text, after, character: me };
+            attackFlow.step = "waiting";
+            backend.postAction(room, me, text).then(sync).catch(() => { attackFlow.ask = null; attackFlow.step = "rolled"; drawAttack(); });
+          }
           drawAttack();
           setTimeout(closeDice, 1200);
         }, built.mode);
       }));
     }
+  } else if (attackFlow.step === "waiting") {
+    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + attackFlow.toHit.natural + "). Waiting for the DM to call it: hit or miss…", "is-big waiting-call"),
+      stepButton("Roll damage anyway", "quiet", rollDamage),
+      stepButton("It missed", "quiet", () => {
+        // Answer the waiting call itself, rather than a second "missed" line:
+        // the DM's question closes and the swing counts once.
+        const ask = attackFlow.ask;
+        const line = ask && (state.actions ?? []).filter(action => Number(action.id) > ask.after && action.name === partyName(ask.character) && action.text === ask.text).at(-1);
+        attackFlow.missTold = true;
+        attackFlow.step = "miss";
+        if (line && backend.editAction) backend.editAction(room, line.id, attackVerdictText(line.text, "miss")).then(sync).catch(() => {});
+        drawAttack();
+      }));
   } else if (attackFlow.step === "rolled") {
     const natural = attackFlow.toHit.natural;
     // Players never see enemy AC, so there's no "does it hit?" to answer:
@@ -3600,11 +3650,13 @@ function drawAttack() {
       stepButton("Roll damage · " + built.damage, "cta", rollDamage),
       stepButton("It missed", "quiet", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
   } else if (attackFlow.step === "hit") {
-    parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
+    parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled."
+      : attackFlow.ask ? "✓ HIT! The DM says your " + attackFlow.toHit.total + " gets through. Roll damage." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
       stepButton("Roll damage · " + built.damage, "cta", rollDamage), ...secondRoll());
   } else if (attackFlow.step === "miss") {
     tellMiss();
-    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"),
+    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss."
+      : attackFlow.ask ? "✗ MISS. The DM says your " + attackFlow.toHit.total + " doesn't get through." : "Miss.", "is-miss"),
       stepText(!backend.postAction || !Array.isArray(state?.actions) ? "" : attackFlow.missTold ? "The table sees the miss." : "The miss goes to the table when you move on.", "fineprint"), next, ...secondRoll());
   } else if (attackFlow.step === "damage") {
     const choiceNotes = chosenOptions.filter(option => option.choices).map(option => {
@@ -3643,11 +3695,13 @@ function drawAttack() {
       parts.push(send);
       if (attackFlow.sent.length) parts.push(stepText("Sent to the DM for " + attackFlow.sent.join(", ") + ". Each makes the save; the DM rolls it. Missed someone? Tick them and send again.", "fineprint"));
     } else if (backend.postAction && Array.isArray(state?.actions)) {
-      const already = attackFlow.sent.includes(target);
-      const send = stepButton(already ? "Sent to " + target : target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
+      // One attack, one target: once sent, the same roll can't go to another
+      // enemy (only an area spell's roll goes to several).
+      const already = built.save ? attackFlow.sent.includes(target) : attackFlow.sent.length > 0;
+      const send = stepButton(already ? "Sent to " + attackFlow.sent.join(", ") : target ? "Send " + attackFlow.damage + " to the DM · " + target : "Pick the target above to send", "cta", async () => {
         const name = $("attack-target").value;
         if (!name) { $("attack-target").focus(); return; }
-        if (attackFlow.sent.includes(name)) return; // once per target
+        if (attackFlow.sent.includes(name) || (!built.save && attackFlow.sent.length)) return; // once
         send.disabled = true;
         try {
           await backend.postAction(room, me, hitReportText(name, attackFlow.damage, detail));
@@ -3682,8 +3736,53 @@ function drawHitInbox() {
   const pending = (state.actions ?? [])
     .map(action => ({ action, report: parseHitReport(action.text) }))
     .filter(({ action, report }) => report && !report.handled && !handled.has(action.id) && Number(action.id) > since);
-  box.hidden = !pending.length;
-  $("hit-list").replaceChildren(...pending.map(({ action, report }) => {
+  // To-hit rolls waiting for the DM's call: Hit or Miss, one tap, with the
+  // armor check done. The player's card goes on to damage (or stops).
+  const asks = (state.actions ?? [])
+    .map(action => ({ action, ask: parseAttackAsk(action.text) }))
+    .filter(({ action, ask }) => ask && !ask.verdict && !handled.has(action.id) && Number(action.id) > since);
+  box.hidden = !pending.length && !asks.length;
+  $("hit-inbox-title").textContent = asks.length ? "Call it: hit or miss?" + (pending.length ? " · Hits to apply" : "") : "Hits to apply";
+  const askItems = asks.map(({ action, ask }) => {
+    const item = document.createElement("li");
+    item.className = "hit-ask";
+    const target = enemies.find(enemy => enemy.name === ask.enemy);
+    const versus = target && ask.toHit !== null ? (ask.toHit >= target.ac ? " · " + ask.toHit + " vs AC " + target.ac + " ✓ hits" : " · " + ask.toHit + " vs AC " + target.ac + " ✗ misses") : "";
+    const text = document.createElement("span");
+    text.textContent = action.name.replace(/^The /, "") + " attacks " + ask.enemy + " " + ask.detail + versus;
+    const call = async verdict => {
+      const next = attackVerdictText(action.text, verdict);
+      // Shown at once; kept only once the story line is saved, so a failed
+      // call stays in the list to tap again (and the player isn't left waiting).
+      state.actions = state.actions.map(entry => entry.id === action.id ? { ...entry, text: next } : entry);
+      drawCombat();
+      try {
+        if (backend.editAction) await backend.editAction(room, action.id, next);
+        storage.set(HANDLED_KEY(), JSON.stringify([...handledHits(), action.id].slice(-300)));
+        if (verdict === "miss") addNarration(action.name.replace(/^The /, "") + " misses " + ask.enemy + ".");
+      } catch (error) {
+        state.actions = state.actions.map(entry => entry.id === action.id ? { ...entry, text: action.text } : entry);
+        $("combat-status").textContent = "Couldn't send the call (" + error.message + "). Tap it again.";
+        drawCombat();
+      }
+    };
+    const buttons = document.createElement("div");
+    buttons.className = "hit-buttons";
+    const hit = document.createElement("button");
+    hit.type = "button";
+    hit.className = target && ask.toHit !== null && ask.toHit < target.ac ? "ghost" : "cta";
+    hit.textContent = "Hit";
+    hit.onclick = () => call("hit");
+    const miss = document.createElement("button");
+    miss.type = "button";
+    miss.className = target && ask.toHit !== null && ask.toHit < target.ac ? "cta" : "ghost";
+    miss.textContent = "Miss";
+    miss.onclick = () => call("miss");
+    buttons.append(hit, miss);
+    item.append(text, buttons);
+    return item;
+  });
+  $("hit-list").replaceChildren(...askItems, ...pending.map(({ action, report }) => {
     const item = document.createElement("li");
     // Sent at an enemy that's already down or isn't in this encounter (a
     // stale view, a typo): the DM can point it at one that's still standing.
@@ -3781,7 +3880,7 @@ function drawHitInbox() {
     item.append(text, ...(retarget ? [retarget] : []), buttons);
     return item;
   }));
-  if (pending.length && currentTab !== "combat") $("tab-combat").classList.add("has-news");
+  if ((pending.length || asks.length) && currentTab !== "combat") $("tab-combat").classList.add("has-news");
 }
 
 async function setInitiative(character, value, status) {

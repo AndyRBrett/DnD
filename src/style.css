@@ -654,3 +654,6 @@ body.in-combat .card-link{display:block}
 .turn-feature{font-size:.85rem;padding:6px 10px;border-radius:999px;border:1px solid var(--gold-border);background:var(--inset);color:var(--text)}
 .turn-feature.is-on{background:var(--gold-dim);color:var(--gold);font-weight:700}
 .turn-feature.is-suggested{outline:3px solid var(--gold);outline-offset:2px;animation:my-turn 1.2s ease-in-out 3}
+.turn-tally{font-weight:700;margin:2px 0}
+.waiting-call{color:var(--gold)}
+.hit-ask{border-left:3px solid var(--gold);padding-left:8px}
