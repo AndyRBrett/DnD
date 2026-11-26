@@ -1839,8 +1839,9 @@ function drawTurnGuide() {
     step = 3;
     const made = attacksThisTurn(me);
     const per = attacksFor(me)[attackFlow.index]?.perAction ?? 0;
-    text = per && made < per
-      ? "Attack again with Next attack on the card (" + (per - made) + " more), or end your turn."
+    const cap = per ? attackCap(me, per) : 0;
+    text = per && made < cap
+      ? "Attack again with Next attack on the card (" + (cap - made) + " more), or end your turn."
       : "Done? End your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
   } else {
@@ -3140,6 +3141,10 @@ const lastingUp = new Map();
 // attack in this Attack action" (Extra Attack is easy to forget).
 const attacksMade = new Map();
 const turnTag = () => state?.combat ? state.combat.round + ":" + state.combat.turn : "";
+// Action Surge this turn: each one adds a whole Attack action.
+const surges = new Map(); // character index → { turn, count }
+const surgesThisTurn = index => { const entry = surges.get(index); return entry && entry.turn === turnTag() ? entry.count : 0; };
+const attackCap = (index, per) => per * (1 + surgesThisTurn(index));
 function attacksThisTurn(index) {
   const entry = attacksMade.get(index);
   return entry && entry.turn === turnTag() ? entry.count : 0;
@@ -3150,9 +3155,75 @@ function countAttack(index) {
 function attackCountText(index, attack) {
   const made = attacksThisTurn(index);
   const per = attack.perAction;
-  if (!made) return "Your Attack action is " + per + " attacks (Extra Attack).";
-  if (made < per) return "Attack " + (made + 1) + " of " + per + " in this Attack action.";
+  const cap = attackCap(index, per);
+  if (!made) return "Your Attack action is " + per + " attacks (Extra Attack)." + (cap > per ? " Action Surge: " + cap + " this turn." : "");
+  if (made < cap) return "Attack " + (made + 1) + " of " + cap + (cap > per ? " this turn (Action Surge)." : " in this Attack action.");
   return "That's " + made + " attacks this turn. Action Surge (or a first-turn Dread Ambusher shot) gives more.";
+}
+// ── This turn: the features a character uses on their turn (Rage, Action
+// Surge, Second Wind), one tap each on the Attack card, showing what's
+// active and what's left, so using one is never a hunt through the Sheet. ──
+function drawTurnFeatures(me, sheet, res) {
+  const box = $("turn-features");
+  const items = [];
+  const chip = (text, className = "is-on") => { const item = document.createElement("span"); item.className = "turn-feature " + className; item.textContent = text; return item; };
+  const button = (text, onclick, disabled = false) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "turn-feature";
+    item.textContent = text;
+    item.disabled = disabled;
+    item.onclick = onclick;
+    return item;
+  };
+  for (const resource of sheet.resources ?? []) {
+    const left = resource.max ? resourceLeft(sheet, res, resource.name) : 0;
+    if (resource.rage) {
+      if (res.raging) items.push(chip("😤 Raging (+damage, half from weapons)"));
+      else items.push(button(left ? "😤 Start rage · bonus action (" + left + " left)" : "😤 No rages left", () => {
+        const next = { ...spendResource(sheet, readRes(me), resource.name), raging: true };
+        writeRes(me, next);
+        tellTable(me, "😤 starts raging (" + resourceLeft(sheet, next, resource.name) + " of " + resource.max + " rages left)");
+        drawAttack();
+      }, !left));
+    } else if (resource.surge) {
+      const used = surgesThisTurn(me);
+      if (used) items.push(chip("⚡ Action Surge: " + attackCap(me, attacksFor(me).find(attack => attack.perAction)?.perAction ?? 1) + " attacks this turn"));
+      if (!used || left) items.push(button(left ? "⚡ Action Surge · another action (" + left + " left)" : "⚡ Action Surge: none left (short rest)", () => {
+        saveRes(me, spendResource(sheet, readRes(me), resource.name));
+        surges.set(me, { turn: turnTag(), count: surgesThisTurn(me) + 1 });
+        tellTable(me, "⚡ uses Action Surge: one more action this turn");
+        drawHp();
+        drawAttack();
+      }, !left));
+    }
+  }
+  // A spell that stays up (Hunter's Mark): show it's on, so it isn't cast twice.
+  for (const name of readJson(attackOptionsKey(me), {}).cast ?? []) {
+    const option = (sheet.attackOptions ?? []).find(entry => entry.name === name);
+    if (option && (!option.concentration || activeConditions().Concentrating)) items.push(chip("🎯 " + name + " · up" + (option.concentration ? " (concentrating)" : "")));
+  }
+  // Heals a character uses on themselves (Second Wind).
+  for (const entry of sheet.heals ?? []) {
+    if (!entry.self || !entry.spends) continue;
+    const left = resourceLeft(sheet, res, entry.spends);
+    items.push(button(left ? "💚 " + entry.name + " · " + entry.heal + " (" + left + " left)" : "💚 " + entry.name + ": none left", () => openDice(entry.heal, entry.name, total => {
+      dice.onResult = null;
+      if (resourceLeft(sheet, readRes(me), entry.spends) < 1) return;
+      saveRes(me, spendResource(sheet, readRes(me), entry.spends));
+      adjustHp(me, total, $("dice-status"));
+      tellTable(me, "💚 regains " + total + " HP (" + entry.name + ")");
+      $("dice-status").textContent = "💚 +" + total + " HP (" + entry.name + ").";
+      drawHp();
+      setTimeout(closeDice, 1200);
+    }), !left));
+  }
+  box.hidden = !items.length || isHost;
+  if (!items.length) { box.replaceChildren(); return; }
+  const label = document.createElement("span");
+  label.className = "turn-features-label";
+  label.textContent = "This turn";
+  box.replaceChildren(label, ...items);
 }
 function drawAttack() {
   const combat = state?.combat;
@@ -3186,6 +3257,7 @@ function drawAttack() {
   const attack = baseAttack?.slot && attackFlow.level ? upcastAttack(baseAttack, attackFlow.level) : baseAttack;
   const isOn = option => attackFlow.options.has(option.name) || Boolean(option.rage && res.raging) || Boolean(option.hidden && activeConditions().Invisible);
   $("attack-title").textContent = "Attack · " + partyName(me).replace(/^The /, "");
+  drawTurnFeatures(me, sheet, res);
 
   $("attack-list").replaceChildren(...attacks.map((entry, index) => {
     const label = entry.save ? entry.name + " · DC " + entry.dc + " " + entry.save : entry.name + " +" + entry.hit + " · " + entry.damage;
@@ -3372,9 +3444,10 @@ function drawAttack() {
   const made = attacksThisTurn(me);
   // Past the Attack action's swings, another attack needs something else
   // (Action Surge, a bonus-action attack): a second tap says so.
-  const actionDone = Boolean(baseAttack.perAction) && made >= baseAttack.perAction;
-  const next = stepButton(baseAttack.perAction && made && made < baseAttack.perAction
-    ? "Next attack (" + (baseAttack.perAction - made) + " more in this Attack action)"
+  const cap = baseAttack.perAction ? attackCap(me, baseAttack.perAction) : 0;
+  const actionDone = Boolean(baseAttack.perAction) && made >= cap;
+  const next = stepButton(baseAttack.perAction && made && made < cap
+    ? "Next attack (" + (cap - made) + " more this turn" + (cap > baseAttack.perAction ? ", Action Surge" : "") + ")"
     : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
       if (actionDone && !confirmTap(event.currentTarget, "Tap again: an extra attack (Action Surge or a bonus action)")) return;
       resetAttack(); drawAttack();

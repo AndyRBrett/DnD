@@ -352,7 +352,7 @@ export const sheets = {
     ],
     resources: [
       { name: "Superiority dice", max: 5, per: "short", covers: ["Combat Superiority", "Trip Attack", "Goading Attack", "Menacing Attack", "Precision Attack", "Disarming Attack", "Pushing Attack", "Riposte"], note: "d10 each; maneuver DC 16." },
-      { name: "Action Surge", max: 1, per: "short", note: "One extra action on your turn (four attacks)." },
+      { name: "Action Surge", max: 1, per: "short", surge: true, note: "One extra action on your turn (four attacks)." },
       { name: "Second Wind", max: 1, per: "short", note: "Bonus action: regain 1d10+10 HP." },
       { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." },
       { name: "Third-eye amulet", max: 1, per: "long", note: "Bring down a force field or draw in a burst of energy. Using it again before a long rest risks a backlash." }
