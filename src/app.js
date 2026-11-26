@@ -59,6 +59,71 @@ function selectedCharacter() {
   return state?.party[Number($("character").value)];
 }
 
+// ── Suggestions → the Attack card. A suggestion that names something on the
+// card (Reckless Attack, Hunter's Mark, Trip Attack, Greataxe) gets a button
+// that opens the Attack card with that attack picked and that option ticked,
+// so "use Reckless" isn't a hunt for the right checkbox. ──
+// Curly and straight apostrophes match: the roster says Hunter’s Mark, the
+// Attack card Hunter's Mark.
+const matchable = text => String(text).toLowerCase().replace(/[‘’ʼ]/g, "'");
+const baseName = name => matchable(name.replace(/\s*\(.*\)\s*$/, "").replace(/\s+(shot|attack)$/i, "").trim());
+function cardLink(text, index) {
+  const sheet = sheets[partyName(index)];
+  if (!sheet || isHost) return null;
+  // Only what the suggestion is about (its name, before "—"), never its
+  // description: "no Rage damage, Reckless" must not link Reckless.
+  const titled = String(text).match(/^(?:From your sheet, if available|Also on your sheet):\s*(.+?)\s+—/);
+  const words = matchable(titled ? titled[1] : String(text));
+  let option = null;
+  let choice = null;
+  for (const entry of sheet.attackOptions ?? []) {
+    if (entry.rage || entry.hidden) continue; // Raging follows the rage itself
+    const picked = (entry.choices ?? []).find(([name]) => words.includes(matchable(name)));
+    if (picked) { option = entry; choice = picked[0]; break; }
+    const base = baseName(entry.name);
+    if (!option && base.length > 3 && new RegExp("\\b" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(words)) option = entry;
+  }
+  const attacks = attacksFor(index);
+  let attackIndex = attacks.findIndex(attack => words.includes(matchable(attack.name)));
+  if (!option && attackIndex < 0) return null;
+  const label = [attackIndex >= 0 ? attacks[attackIndex].name : "", option ? (choice ?? option.name.replace(/\s*\(.*\)\s*$/, "")) : ""].filter(Boolean).join(" + ");
+  return { option, choice, attackIndex, label };
+}
+function cardLinkButton(link, index) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "quiet card-link";
+  button.textContent = "⚔️ Set up on the Attack card: " + link.label;
+  button.onclick = () => useOnCard(link, index);
+  return button;
+}
+function useOnCard(link, index) {
+  if (Number($("character").value) !== index || !state?.combat) return;
+  showTab("combat");
+  // Which attack, decided now: a melee-only option (Reckless) needs a melee
+  // weapon picked, whatever was selected when the suggestion was drawn.
+  const attacks = attacksFor(index);
+  let attackIndex = link.attackIndex;
+  if (attackIndex < 0 && link.option?.melee && (attacks[attackFlow.index]?.ranged || attacks[attackFlow.index]?.save)) {
+    attackIndex = attacks.findIndex(attack => !attack.ranged && !attack.save);
+  }
+  if (attackIndex >= 0 && attackIndex !== attackFlow.index) $("attack-list").children[attackIndex]?.click();
+  if (link.option) {
+    // Tick the card's own checkbox, so whatever it does (spend a slot for
+    // Hunter's Mark, start concentrating) happens the usual way.
+    const box = $("attack-options").querySelector('label[data-option="' + CSS.escape(link.option.name) + '"] input');
+    if (box && !box.checked && !box.disabled) box.click();
+    if (link.choice) {
+      const pick = $("attack-options").parentElement.querySelector('select[data-option="' + CSS.escape(link.option.name) + '"]');
+      queueMicrotask(() => {
+        const live = $("attack-options").parentElement.querySelector('select[data-option="' + CSS.escape(link.option.name) + '"]') ?? pick;
+        if (live && [...live.options].some(entry => entry.value === link.choice)) { live.value = link.choice; live.dispatchEvent(new Event("change")); }
+      });
+    }
+  }
+  $("attack-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function showOptions() {
   const character = selectedCharacter();
   if (!character) return;
@@ -105,7 +170,16 @@ function rollTiles(rolls) {
 }
 
 function showAdvice(advice, character) {
-  list("options", advice.options);
+  const index = Number($("character").value);
+  $("options").replaceChildren(...advice.options.map(text => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    // Only a suggestion named after something on the sheet ("From your
+    // sheet: Hunter's Mark — …") gets a card link; general advice doesn't.
+    const link = /^(?:From your sheet, if available|Also on your sheet):/.test(text) ? cardLink(text, index) : null;
+    if (link) item.append(cardLinkButton(link, index));
+    return item;
+  }));
   $("ask-dm").textContent = advice.question;
   drawSheet(character);
   resetClaude();
@@ -173,6 +247,8 @@ function claudeOption(option, characterIndex) {
     explain.append(label, option.explain);
     item.append(explain);
   }
+  const link = cardLink(option.action ?? "", characterIndex); // the action itself, not its explanation
+  if (link) item.append(cardLinkButton(link, characterIndex));
   if (option.declare && backend.postAction && Array.isArray(state?.actions)) {
     const form = document.createElement("form");
     form.className = "declare";
@@ -1716,10 +1792,17 @@ function drawTurnGuide() {
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
-    const middle = attackFlow.step === "rolled" ? "Tell the card if it hit (the DM knows the AC)."
+    const middle = attackFlow.step === "rolled" ? "You don't see enemy AC: if you're not sure, tap Hit and roll damage. The DM checks it and drops misses."
       : attackFlow.step === "hit" ? "It hit: roll damage."
       : "Pick a weapon or spell and a target, then Roll to hit. Not attacking? Post what you do on the Scene tab, then end your turn.";
-    text = middle;
+    // Name the options on the card, so Reckless or a maneuver isn't missed.
+    const sheet = sheets[partyName(me)];
+    const current = attacksFor(me)[attackFlow.index];
+    const offered = attackFlow.step === "ready" && current && !current.save
+      ? (sheet?.attackOptions ?? []).filter(option => !(option.melee && current.ranged) && !option.rage) : [];
+    const on = offered.filter(option => attackFlow.options.has(option.name)).map(option => baseName(option.name));
+    const off = offered.filter(option => !attackFlow.options.has(option.name)).map(option => option.name);
+    text = middle + (off.length ? " Options on the card: " + off.join(", ") + "." : "") + (on.length ? " On: " + on.join(", ") + "." : "");
     label = "⚔️ Go to the Attack card";
     guideAction = toAttack;
   }
@@ -1784,6 +1867,7 @@ function drawCombat() {
   drawHitInbox();
   const combat = state?.combat;
   const available = Boolean(backend.combatSet) && !ended;
+  document.body.classList.toggle("in-combat", Boolean(combat)); // shows the Attack-card links in Moves
   $("tab-combat").hidden = !combat;
   if (!combat && currentTab === "combat") showTab("scene");
   if (isHost) {
@@ -3036,6 +3120,7 @@ function drawAttack() {
   $("attack-options").replaceChildren(...options.map(option => {
     const label = document.createElement("label");
     label.className = "attack-option";
+    label.dataset.option = option.name; // a Moves suggestion can find it
     label.title = option.note ?? "";
     const box = document.createElement("input");
     box.type = "checkbox";
@@ -3076,6 +3161,7 @@ function drawAttack() {
       pick.disabled = attackFlow.step === "damage" || attackFlow.step === "miss";
       pick.onchange = () => { attackFlow.choice = { ...attackFlow.choice, [option.name]: pick.value }; };
       pick.onclick = event => event.stopPropagation();
+      pick.dataset.option = option.name;
       queueMicrotask(() => label.after(pick));
     }
     const text = document.createElement("span");
@@ -3236,7 +3322,7 @@ function drawAttack() {
     }
   } else if (attackFlow.step === "rolled") {
     const natural = attackFlow.toHit.natural;
-    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Tell the DM — does it hit?", "is-big"),
+    parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Not sure of the AC? Tap Hit: the DM checks it.", "is-big"),
       stepButton("Hit", "cta", () => { attackFlow.step = "hit"; drawAttack(); }),
       stepButton("Miss", "ghost", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
   } else if (attackFlow.step === "hit") {

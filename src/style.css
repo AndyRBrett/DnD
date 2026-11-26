@@ -630,3 +630,5 @@ body.board-mode .hdr .role-pill{display:none}
 .skill-list li.is-rollable:hover,.skill-list li.is-rollable:focus-visible{background:var(--inset);outline:1px solid var(--gold-border)}
 .skill-list li.is-rollable strong::after{content:" 🎲";font-size:.8em}
 .dice-skill{width:100%;margin:6px 0}
+.card-link{display:none;margin-top:6px;text-align:left}
+body.in-combat .card-link{display:block}
