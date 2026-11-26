@@ -1583,6 +1583,9 @@ function combatChanged(previous) {
   }
   const mine = "pc:" + myIndex();
   if (now && !isHost && now.turn === mine && before?.turn !== mine) {
+    // A new turn starts at Attack: last turn's finished attack (sent, missed)
+    // mustn't make the guide jump straight to End turn.
+    if (attackFlow.step !== "ready") { resetAttack(); drawAttack(); }
     navigator.vibrate?.([120, 60, 120]);
     if (currentTab !== "combat") $("tab-combat").classList.add("has-news");
   }
@@ -3832,7 +3835,14 @@ function enemyCard(enemy) {
       return new Option(name.replace(/^The /, "") + (ac ? " · AC " + ac.text : ""), String(index));
     }));
     target.value = enemyTargets.get(enemy.id) ?? "";
-    target.onchange = () => enemyTargets.set(enemy.id, target.value);
+    target.onchange = () => {
+      enemyTargets.set(enemy.id, target.value);
+      // The same enemy can be on screen twice (DM tab and the Combat tab's
+      // turn card): both show the target its attacks will use.
+      for (const other of document.querySelectorAll("select.enemy-target")) {
+        if (other !== target && other.getAttribute("aria-label") === target.getAttribute("aria-label")) other.value = target.value;
+      }
+    };
     attacks.append(target);
   }
   for (const [label, hit, damage, rider] of enemy.attacks) {
