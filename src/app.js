@@ -1821,13 +1821,15 @@ function checkRemoteDamage(previous, fresh) {
   const after = fresh.hp?.[name];
   if (before && after) concentrationCheck(me, (before.hp + (before.temp ?? 0)) - (after.hp + (after.temp ?? 0)));
 }
-async function adjustHp(index, change, status) {
+// sameHit: more damage from a hit already applied (an attack's poison rider):
+// not a fresh hit, so no extra death-save failure or concentration save.
+async function adjustHp(index, change, status, { sameHit = false } = {}) {
   const record = hpRecord(index);
   if (!record) { status.textContent = "Set max HP first."; return; }
   state.hp = { ...state.hp, [partyName(index)]: changePartyHp(record, change) };
   // Hurt while already down: a death save failure, whoever entered the damage
   // (the DM's Apply too). Stable and hurt again: death saves start over.
-  if (change < 0 && record.hp <= 0) {
+  if (change < 0 && record.hp <= 0 && !sameHit) {
     const saves = readDeath(index);
     if (saves.failures < 3) {
       const stable = saves.successes >= 3;
@@ -1839,11 +1841,11 @@ async function adjustHp(index, change, status) {
   if (change > 0 && record.hp <= 0) clearDeath(index); // any healing brings them back
   drawCombat();
   const own = !isHost && index === Number($("character").value);
-  const reminder = change < 0 && own ? concentrationCheck(index, -change) : "";
+  const reminder = change < 0 && own && !sameHit ? concentrationCheck(index, -change) : "";
   // Someone else's HP: a story line, so their phone can ask for a concentration
   // save for this hit (and the table hears about it).
   // (Already down: the death-save line above says it; concentration is over.)
-  if (change < 0 && !own && record.hp > 0) tellTable(index, "🩸 takes " + -change + " damage");
+  if (change < 0 && !own && record.hp > 0) tellTable(index, sameHit ? "🩸 takes " + -change + " more damage from the same hit" : "🩸 takes " + -change + " damage");
   try {
     await backend.adjustHp(room, index, change);
     if (reminder) status.textContent = reminder;
@@ -3358,7 +3360,7 @@ async function toggleCombat() {
 // What else an enemy's hit does (the Assassin's poison, a wolf's trip): roll
 // the extra damage (doubled on a crit) and offer it whole or halved for a
 // save the player makes; an effect-only rider just says what to ask for.
-function riderRow(rider, critical, index, who, source) {
+function riderRow(rider, critical, index, who, source, landed = { done: false }) {
   const box = document.createElement("div");
   box.className = "apply-row rider-row";
   const text = document.createElement("span");
@@ -3378,7 +3380,9 @@ function riderRow(rider, critical, index, who, source) {
     for (const button of box.querySelectorAll("button")) button.disabled = true;
     status.textContent = "Applied " + amount + type + " to " + who + ".";
     addNarration(source + " deals " + who + " " + amount + type + " damage" + note + ".");
-    adjustHp(index, -amount, status);
+    const sameHit = landed.done; // the weapon damage of this hit went in first
+    landed.done = true;
+    adjustHp(index, -amount, status, { sameHit });
   };
   const full = document.createElement("button");
   full.type = "button";
@@ -3704,11 +3708,14 @@ function enemyCard(enemy) {
           row.className = "apply-row";
           const status = document.createElement("span");
           status.className = "fineprint";
+          const landed = { done: false }; // weapon damage and its rider are one hit
           const apply = amount => {
             for (const button of row.querySelectorAll("button")) button.disabled = true;
             status.textContent = "Applied " + amount + " to " + who + ".";
             addNarration(enemy.name + "'s " + name + " hits " + who + " for " + amount + " damage" + (outcome === "crit" ? " (a critical hit)" : "") + ".");
-            adjustHp(index, -amount, status);
+            const sameHit = landed.done; // the rider of this hit went in first
+            landed.done = true;
+            adjustHp(index, -amount, status, { sameHit });
           };
           const full = document.createElement("button");
           full.type = "button";
@@ -3731,7 +3738,7 @@ function enemyCard(enemy) {
           half.onclick = () => apply(Math.floor(shown.total / 2));
           row.append(full, half, status);
           parts.push(row);
-          if (rider) parts.push(riderRow(rider, toHit.critical, index, who, enemy.name + "'s " + name));
+          if (rider) parts.push(riderRow(rider, toHit.critical, index, who, enemy.name + "'s " + name, landed));
         }
       }
       return parts;
