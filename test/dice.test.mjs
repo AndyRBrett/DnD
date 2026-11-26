@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, roll, normalize, poolExpression, rollableFrom, keepD20, tableRoll, tablePrompt } from "../src/dice.js";
-import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText } from "../src/encounter.js";
+import { templates, createEnemies, applyHp, status, standing, rollInitiative, hitPoints, parseHitReport as readHit, hitHandledText, riderText, attackAskText, parseAttackAsk, attackVerdictText } from "../src/encounter.js";
 
 // A fixed random source: returns the given faces (1-based) for the next rolls.
 const faces = (sides, ...values) => { const queue = [...values]; return () => (queue.shift() - 1) / sides + 1e-9; };
@@ -520,4 +520,20 @@ test("the real-dice prompt asks for the right number", () => {
   assert.equal(tablePrompt("1d12+4"), "Add up your dice (1d12) (the app adds +4)");
   assert.equal(tablePrompt("d20"), "What does your d20 show?");
   assert.equal(tablePrompt("1d6+5+5d6"), "Add up your dice (1d6 + 5d6) (the app adds +5)");
+});
+
+test("a to-hit roll waits for the DM's call, which the card then reads", () => {
+  const ask = attackAskText("Vault Warden", "with Longsword, 23 to hit");
+  assert.equal(ask, "🎯 attacks Vault Warden — with Longsword, 23 to hit");
+  assert.deepEqual(parseAttackAsk(ask), { enemy: "Vault Warden", detail: "with Longsword, 23 to hit", toHit: 23, verdict: null });
+  const hit = attackVerdictText(ask, "hit");
+  assert.equal(hit, ask + " · ✓ DM: hit");
+  assert.equal(parseAttackAsk(hit).verdict, "hit");
+  assert.equal(parseAttackAsk(hit).toHit, 23);
+  // Changing the call replaces it instead of stacking.
+  assert.equal(attackVerdictText(hit, "miss"), ask + " · ✗ DM: miss");
+  assert.equal(parseAttackAsk(attackVerdictText(hit, "miss")).verdict, "miss");
+  // It is not a hit report, and a hit report is not an ask.
+  assert.equal(readHit(ask), null);
+  assert.equal(parseAttackAsk("🎯 hit Goblin 1 for 9 damage — with Longbow, 18 to hit"), null);
 });
