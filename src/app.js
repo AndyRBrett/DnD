@@ -1541,6 +1541,8 @@ function drawSkillPicker() {
 // Every roll starts at Normal unless the caller says otherwise: advantage from
 // one roll (Reckless, a sheet's "adv.") must never carry into the next.
 function openDice(expression = "", label = "", onResult = null, mode = "normal") {
+  dice.locked = false;
+  $("dice-roll").disabled = false;
   setDiceMode(mode);
   dice.rollId = (dice.rollId ?? 0) + 1; // a roll still tumbling from before won't land here
   dice.onResult = onResult;
@@ -1567,6 +1569,7 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   document.body.classList.add("no-scroll");
 }
 function closeDice() {
+  if (dice.locked) { dice.locked = false; $("dice-roll").disabled = false; }
   $("dice-tray").hidden = true;
   document.body.classList.remove("no-scroll");
 }
@@ -1703,6 +1706,11 @@ async function landRoll(result, purpose) {
   dice.log = dice.log.slice(0, 8);
   list("dice-log", dice.log);
   if (onResult) {
+    // The card (attack, death save, initiative…) has its roll: Roll is
+    // locked until the tray is opened again, so a second tap can't show a
+    // different number than the one that counted.
+    $("dice-roll").disabled = true;
+    dice.locked = true;
     await onResult(result.total, result);
     return;
   }
@@ -3481,6 +3489,7 @@ function drawAttack() {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
   }
   const rollDamage = () => { spend("damage"); openDice(built.damage, attack.name + " damage", total => {
+    dice.onResult = null; // one roll per tap: a second tap doesn't replace the damage
     attackFlow.damage = total;
     attackFlow.step = "damage";
     drawAttack();
@@ -3504,6 +3513,7 @@ function drawAttack() {
     if (!attackFlow.toHit || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save) return [];
     const take = mode => stepButton(mode === "advantage" ? "Advantage? Roll the second d20" : "Disadvantage? Roll the second d20", "quiet", () => {
       openDice(built.toHit, attack.name + " to hit (" + mode + ")", (total, result) => {
+        dice.onResult = null; // one roll per tap
         const first = attackFlow.toHit;
         const kept = keepD20(first, result, mode);
         attackFlow.second = true;
@@ -3568,6 +3578,9 @@ function drawAttack() {
         spend("hit");
         if (baseAttack.perAction) countAttack(me);
         openDice(built.toHit, attack.name + " to hit", (total, result) => {
+          // One roll per tap: a second tap on Roll before the tray closes is
+          // a plain roll, never a silent swap of the one the card showed.
+          dice.onResult = null;
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
           attackFlow.step = result.critical ? "hit" : result.fumble ? "miss" : "rolled";
