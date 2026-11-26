@@ -5,7 +5,7 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
-import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression } from "./dice.js";
+import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20 } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, parseHitReport, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
@@ -485,6 +485,7 @@ function applyRoom(fresh, { cached = false } = {}) {
   // Hurt by someone else while concentrating (the DM applied an enemy's hit).
   // Not against a cached snapshot: that damage may be hours old.
   if (previous && !previousCached && !isHost) checkRemoteDamage(previous, fresh);
+  if (!cached) concentrationEndsAtZero();
   if (boardMode) queueMicrotask(drawBoard);
   if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
   else if (JSON.stringify(previous?.hp) !== JSON.stringify(fresh.hp) || previous?.hpUnavailable !== fresh.hpUnavailable) drawCombat();
@@ -1024,7 +1025,7 @@ function openStoryEditor(container, entry) {
     }
   };
   remove.onclick = async () => {
-    if (!window.confirm(entry.kind === "scene" ? "Delete this update for everyone?" : "Delete " + entry.name + "'s action for everyone?")) return;
+    if (!confirmTap(remove, entry.kind === "scene" ? "Tap again to delete for everyone" : "Tap again to delete " + entry.name + "'s action")) return;
     busy(true);
     status.textContent = "Deleting…";
     try {
@@ -1135,6 +1136,31 @@ $("action-form").onsubmit = async event => {
 
 // ── Conditions (kept on this device for each character; changes are posted
 // to the table so the DM sees them) ──
+// Risky buttons ask for a second tap instead of a native confirm() popup:
+// some browsers (automated ones, some in-app views) dismiss those silently,
+// so the button looked tapped and nothing happened. The first tap shows the
+// question on the button itself; a second tap within 4 seconds does it.
+const armedButtons = new WeakMap();
+function confirmTap(button, question) {
+  const armed = armedButtons.get(button);
+  if (armed) {
+    clearTimeout(armed.timer);
+    armedButtons.delete(button);
+    button.textContent = armed.label;
+    button.classList.remove("is-armed");
+    return true;
+  }
+  const label = button.textContent;
+  button.textContent = question;
+  button.classList.add("is-armed");
+  armedButtons.set(button, { label, timer: setTimeout(() => {
+    if (!armedButtons.has(button)) return;
+    armedButtons.delete(button);
+    button.textContent = label;
+    button.classList.remove("is-armed");
+  }, 4000) });
+  return false;
+}
 const conditionKey = () => "dnd-conditions:" + room + ":" + $("character").value;
 const conditionByName = Object.fromEntries(conditions.map(condition => [condition.name, condition]));
 function activeConditions() {
@@ -1509,6 +1535,9 @@ const initiativeMode = () => rollModeFrom(initiativeEntry()?.[1] ?? "");
 function combatChanged(previous) {
   const before = previous?.combat;
   const now = state.combat;
+  // A new fight (or one that ended), or a round lower than a saved one: the
+  // death-save round lock belongs to the old fight.
+  if (!before !== !now || (before && now && now.round < before.round)) forgetDeathRounds();
   drawCombat();
   if (!before && now) {
     // Don't pull a player away from an action they're still typing.
@@ -1576,8 +1605,10 @@ function drawCombat() {
   if (!combat && currentTab === "combat") showTab("scene");
   if (isHost) {
     $("enc-combat").hidden = !available || (!combat && !enemies.length);
-    $("enc-combat").textContent = combat ? "End combat" : "Start combat";
-    $("enc-combat").className = combat ? "danger-soft" : "cta";
+    if (!armedButtons.has($("enc-combat"))) { // a pending "Tap again" keeps its question
+      $("enc-combat").textContent = combat ? "End combat" : "Start combat";
+      $("enc-combat").className = combat ? "danger-soft" : "cta";
+    }
     if (combat) $("enc-combat-status").textContent = "Combat is live. Players see names, initiative, and Healthy / Bloodied / Down — never HP or AC.";
     // The last enemy fell: offer to end the fight instead of leaving a turn open.
     const won = Boolean(combat) && available && encounterLoaded && enemies.length > 0 && standing(enemies) === 0;
@@ -1728,6 +1759,7 @@ function hpText(record) {
 // DM sees it too.
 function concentrationCheck(index, damage, key = "") {
   if (isHost || damage <= 0 || index !== Number($("character").value) || !activeConditions().Concentrating) return "";
+  if ((hpRecord(index)?.hp ?? 1) <= 0) return ""; // knocked out: concentration simply ends
   // Each hit once: a story line is processed once by its id.
   if (key && concentrationSeen.keys.has(key)) return "";
   if (key) concentrationSeen.keys.add(key);
@@ -1739,6 +1771,15 @@ function concentrationCheck(index, damage, key = "") {
   return text;
 }
 const concentrationSeen = { keys: new Set(), lastAction: null };
+// Knocked to 0 HP: concentration ends (5e), wherever the damage came from.
+function concentrationEndsAtZero() {
+  if (isHost || !state?.party?.length) return;
+  const me = Number($("character").value);
+  const record = hpRecord(me);
+  if (!record || record.hp > 0 || !activeConditions().Concentrating) return;
+  $("notice").textContent = "🧠 Down at 0 HP: your concentration ends.";
+  setCondition("Concentrating", 0);
+}
 // Damage from another phone. Where the story is shared (hosted), the phone
 // that entered it posts "🩸 takes 12 damage" for that character, so each hit
 // gets its own save (two hits between polls are two saves, and healing in
@@ -1791,6 +1832,7 @@ async function adjustHp(index, change, status) {
     status.textContent = error.message;
   }
   await sync();
+  concentrationEndsAtZero();
   if (reminder) {
     for (const id of ["hp-sheet", "hp-combat"]) {
       const note = $(id).querySelector(".hp-status");
@@ -2021,15 +2063,27 @@ const DEATH_OK = "Death successes";
 const DEATH_FAIL = "Death failures";
 function readDeath(index) {
   const used = readRes(index).used ?? {};
-  return { successes: Number(used[DEATH_OK]) || 0, failures: Number(used[DEATH_FAIL]) || 0, last: readJson(deathKey(index), {}).last ?? "" };
+  const local = readJson(deathKey(index), {});
+  return { successes: Number(used[DEATH_OK]) || 0, failures: Number(used[DEATH_FAIL]) || 0, last: local.last ?? "", round: local.round ?? null };
 }
-function writeDeath(index, { successes, failures, last }) {
+// The round of the last death save rolled in a fight, so a second roll on
+// the same turn doesn't count. Outside a fight there's no limit.
+const deathRolledThisRound = index => Boolean(state?.combat?.round) && readDeath(index).round === state.combat.round;
+// A fight started or ended: a save from the last fight doesn't lock this one
+// (the counts stay; only the round is forgotten).
+function forgetDeathRounds() {
+  (state?.party ?? []).forEach((_, index) => {
+    const local = readJson(deathKey(index), null);
+    if (local?.round != null) storage.set(deathKey(index), JSON.stringify({ ...local, round: null }));
+  });
+}
+function writeDeath(index, { successes, failures, last, round }) {
   const res = readRes(index);
   const used = { ...(res.used ?? {}) };
   if (successes) used[DEATH_OK] = successes; else delete used[DEATH_OK];
   if (failures) used[DEATH_FAIL] = failures; else delete used[DEATH_FAIL];
   saveRes(index, { ...res, used });
-  if (last !== undefined) storage.set(deathKey(index), JSON.stringify({ last }));
+  if (last !== undefined) storage.set(deathKey(index), JSON.stringify({ last, round: round === undefined ? readJson(deathKey(index), {}).round ?? null : round }));
 }
 function clearDeath(index) {
   const used = readRes(index).used ?? {};
@@ -2067,7 +2121,9 @@ function deathSaveBox(index) {
   const rollButton = document.createElement("button");
   rollButton.type = "button";
   rollButton.className = "cta";
-  rollButton.textContent = "Roll death save";
+  const rolled = !outcome && deathRolledThisRound(index);
+  rollButton.textContent = rolled ? "Rolled this round: next save on your next turn" : "Roll death save";
+  rollButton.disabled = rolled;
   rollButton.hidden = Boolean(outcome);
   rollButton.onclick = () => openDice("d20", "Death save", async natural => {
     // The tray stays open: once there's an outcome (or they're back up),
@@ -2078,12 +2134,18 @@ function deathSaveBox(index) {
       $("dice-status").textContent = "No death save needed now.";
       return;
     }
+    if (deathRolledThisRound(index)) {
+      dice.onResult = null;
+      $("dice-status").textContent = "Already rolled this round: one death save per turn.";
+      return;
+    }
     const result = deathSave(before, natural);
     const { outcome: what, ...counts } = result;
     const summary = what === "revived" ? "natural 20 — back up with 1 HP!"
       : what === "dead" ? "fails — dead" : what === "stable" ? "succeeds — stable"
       : (natural >= 10 ? "success" : natural === 1 ? "natural 1, two failures" : "failure") + " (" + counts.successes + " ✓ / " + counts.failures + " ✗)";
-    writeDeath(index, what === "revived" ? { successes: 0, failures: 0, last: "Rolled 20: back up with 1 HP!" } : { ...counts, last: "Rolled " + natural + ": " + summary });
+    const round = state?.combat?.round ?? null;
+    writeDeath(index, what === "revived" ? { successes: 0, failures: 0, last: "Rolled 20: back up with 1 HP!", round } : { ...counts, last: "Rolled " + natural + ": " + summary, round });
     // One death save per turn: say it's recorded, then close the tray.
     $("dice-status").textContent = "✓ Recorded. Death save " + natural + ": " + summary;
     dice.onResult = null;
@@ -2342,7 +2404,7 @@ function resourcesWidget(index) {
   longRest.className = "ghost";
   longRest.textContent = "Long rest";
   longRest.onclick = () => {
-    if (!window.confirm("Long rest: refill all slots and features, and restore full HP?")) return;
+    if (!confirmTap(longRest, "Tap again: refill everything and full HP")) return;
     writeRes(index, restResources(sheet, readRes(index), "long"));
     const record = hpRecord(index);
     if (record) saveHp(index, { hp: record.max, max: record.max, temp: 0, ac: record.ac }, document.createElement("p"));
@@ -2519,7 +2581,7 @@ $("party-full").onclick = async () => {
   const ready = (state?.party ?? []).map((_, index) => [index, hpRecord(index)?.max ?? sheetMaxHp(index)]).filter(([, max]) => max);
   const missing = (state?.party ?? []).filter((_, index) => !(hpRecord(index)?.max ?? sheetMaxHp(index))).map(character => character.name);
   if (!ready.length) { $("party-full-status").textContent = "Nobody has a max HP yet: set one on each card."; return; }
-  if (!window.confirm("Set " + ready.length + " characters to full HP (temp HP cleared)?")) return;
+  if (!confirmTap($("party-full"), "Tap again: " + ready.length + " characters to full HP")) return;
   $("party-full").disabled = true;
   const status = $("party-full-status");
   status.textContent = "";
@@ -2610,6 +2672,16 @@ $("attack-custom-form").onsubmit = event => {
   drawAttack();
 };
 const attackFlow = { character: null, index: 0, options: new Set(), step: "ready", toHit: null, crit: false, damage: null, sent: [], level: null, spent: false, spentManeuver: false, notes: [] };
+// A miss goes in the story too, so the DM can tell it from a skipped turn.
+// It's posted once it's final: straight away when no second d20 can change
+// it, otherwise when the player moves on (next attack, another attack or
+// character, End my turn).
+function flushMiss() {
+  if (attackFlow.step !== "miss" || attackFlow.missTold || !attackFlow.missText || attackFlow.character === null) return;
+  if (!backend.postAction || !Array.isArray(state?.actions)) return;
+  attackFlow.missTold = true;
+  backend.postAction(room, attackFlow.character, attackFlow.missText).then(sync).catch(() => {});
+}
 function resetAttack(keepChoice = true) {
   // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
   if (attackFlow.step !== "ready" && attackFlow.character !== null) {
@@ -2618,7 +2690,8 @@ function resetAttack(keepChoice = true) {
     }
     saveAttackOptions(attackFlow.character);
   }
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {} });
+  flushMiss(); // a miss left on the card is final once the player moves on
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "" });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -2696,7 +2769,7 @@ function drawAttack() {
   const me = Number($("character").value);
   const sheet = sheets[partyName(me)] ?? {};
   $("attack-custom").open ||= !attacksFor(me).length;
-  if (attackFlow.character !== me) { attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
+  if (attackFlow.character !== me) { flushMiss(); attackFlow.character = null; resetAttack(false); attackFlow.character = me; }
   const optionState = attackOptionsState(me, sheet, combat);
   attackFlow.options = new Set(optionState.names);
   const attacks = attacksFor(me);
@@ -2868,13 +2941,46 @@ function drawAttack() {
     setTimeout(closeDice, 1200);
   }); };
   const made = attacksThisTurn(me);
+  // Past the Attack action's swings, another attack needs something else
+  // (Action Surge, a bonus-action attack): a second tap says so.
+  const actionDone = Boolean(baseAttack.perAction) && made >= baseAttack.perAction;
   const next = stepButton(baseAttack.perAction && made && made < baseAttack.perAction
-    ? "Next attack (" + (baseAttack.perAction - made) + " more in this Attack action)" : "Next attack", "quiet", () => { resetAttack(); drawAttack(); });
+    ? "Next attack (" + (baseAttack.perAction - made) + " more in this Attack action)"
+    : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
+      if (actionDone && !confirmTap(event.currentTarget, "Tap again: an extra attack (Action Surge or a bonus action)")) return;
+      resetAttack(); drawAttack();
+    });
+  // Rolled with advantage or disadvantage but only one d20 went in: roll the
+  // other one here so the higher (or lower) roll, crit included, is the one
+  // that counts and gets sent.
+  const secondRoll = () => {
+    if (!attackFlow.toHit || attackFlow.second || attackFlow.toHit.mode !== "normal" || built.save) return [];
+    const take = mode => stepButton(mode === "advantage" ? "Advantage? Roll the second d20" : "Disadvantage? Roll the second d20", "quiet", () => {
+      openDice(built.toHit, attack.name + " to hit (" + mode + ")", (total, result) => {
+        const first = attackFlow.toHit;
+        const kept = keepD20(first, result, mode);
+        attackFlow.second = true;
+        attackFlow.toHit = kept;
+        attackFlow.crit = kept.critical;
+        attackFlow.step = kept.critical ? "hit" : kept.fumble ? "miss" : "rolled";
+        attackFlow.notes = [...(attackFlow.notes ?? []), "Rolled " + first.natural + " and " + result.natural + " with " + mode + ": " + kept.natural + " counts."];
+        drawAttack();
+        setTimeout(closeDice, 1200);
+      });
+    });
+    return [take("advantage"), take("disadvantage")];
+  };
+  const tellMiss = () => {
+    const target = $("attack-target").value;
+    const rolled = attackFlow.toHit ? " (" + (attackFlow.toHit.fumble ? "natural 1" : attackFlow.toHit.total + " to hit") + ")" : "";
+    attackFlow.missText = "🎯 missed " + (target || "the target") + " with " + attack.name + rolled;
+    if (!secondRoll().length) flushMiss(); // nothing left to change it
+  };
 
   for (const note of attackFlow.notes ?? []) parts.push(stepText("✨ " + note, "fineprint"));
   if (attackFlow.step === "ready" && baseAttack.custom) {
-    parts.push(stepButton("Remove " + baseAttack.name, "quiet", () => {
-      if (!window.confirm("Remove " + baseAttack.name + " from your attacks?")) return;
+    parts.push(stepButton("Remove " + baseAttack.name, "quiet", event => {
+      if (!confirmTap(event.currentTarget, "Tap again to remove " + baseAttack.name)) return;
       storage.set(customKey(me), JSON.stringify(customAttacks(me).filter(entry => entry.name !== baseAttack.name)));
       attackFlow.index = 0;
       resetAttack();
@@ -2927,12 +3033,14 @@ function drawAttack() {
     const natural = attackFlow.toHit.natural;
     parts.push(stepText(attackFlow.toHit.total + " to hit (rolled " + natural + "). Tell the DM — does it hit?", "is-big"),
       stepButton("Hit", "cta", () => { attackFlow.step = "hit"; drawAttack(); }),
-      stepButton("Miss", "ghost", () => { attackFlow.step = "miss"; drawAttack(); }));
+      stepButton("Miss", "ghost", () => { attackFlow.step = "miss"; drawAttack(); }), ...secondRoll());
   } else if (attackFlow.step === "hit") {
     parts.push(stepText(attackFlow.crit ? "CRITICAL HIT! Natural 20 — damage dice are doubled." : "Hit with " + attackFlow.toHit.total + "!", attackFlow.crit ? "is-crit" : "is-hit"),
-      stepButton("Roll damage · " + built.damage, "cta", rollDamage));
+      stepButton("Roll damage · " + built.damage, "cta", rollDamage), ...secondRoll());
   } else if (attackFlow.step === "miss") {
-    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"), next);
+    tellMiss();
+    parts.push(stepText(attackFlow.toHit?.fumble ? "Natural 1 — a miss." : "Miss.", "is-miss"),
+      stepText(!backend.postAction || !Array.isArray(state?.actions) ? "" : attackFlow.missTold ? "The table sees the miss." : "The miss goes to the table when you move on.", "fineprint"), next, ...secondRoll());
   } else if (attackFlow.step === "damage") {
     const choiceNotes = chosenOptions.filter(option => option.choices).map(option => {
       const name = attackFlow.choice?.[option.name] ?? option.choices[0][0];
@@ -3086,6 +3194,7 @@ $("combat-ask").onclick = () => {
   askClaude("It's my turn in this fight. What are my best options this turn?");
 };
 $("combat-end-turn").onclick = async () => {
+  flushMiss();
   const button = $("combat-end-turn");
   const me = Number($("character").value);
   button.disabled = true;
@@ -3168,9 +3277,15 @@ async function stepTurn(direction) {
   }
 }
 $("combat-advance").onclick = () => stepTurn(1);
-$("combat-finish").onclick = () => $("enc-combat").click();
+$("combat-finish").onclick = () => {
+  if (state?.combat && confirmTap($("combat-finish"), "Tap again to end combat for everyone")) toggleCombat();
+};
 $("combat-prev").onclick = () => stepTurn(-1);
-$("enc-combat").onclick = async () => {
+$("enc-combat").onclick = () => {
+  if (state?.combat && !state?.combatUnavailable && !confirmTap($("enc-combat"), "Tap again to end combat for everyone")) return;
+  toggleCombat();
+};
+async function toggleCombat() {
   if (state?.combatUnavailable) {
     $("enc-combat-status").textContent = "Combat needs a one-time database update: run supabase/migrations/0004_dnd_combat.sql in the Supabase SQL editor.";
     return;
@@ -3178,7 +3293,6 @@ $("enc-combat").onclick = async () => {
   $("enc-combat").disabled = true;
   try {
     if (state.combat) {
-      if (!window.confirm("End combat for everyone? Your encounter stays here.")) return;
       clearTimeout(combatTimer); // a pending enemy update mustn't reopen the fight
       await backend.combatEnd(room);
       state.combat = null;
@@ -3201,7 +3315,7 @@ $("enc-combat").onclick = async () => {
   } finally {
     $("enc-combat").disabled = false;
   }
-};
+}
 
 // ── To narrate (DM only): what the app resolved, one tap from the update box. ──
 const narrateKey = () => "dnd-narrate:" + room;
@@ -3369,7 +3483,7 @@ $("enc-init").onclick = () => {
   drawEncounter();
 };
 $("enc-clear").onclick = () => {
-  if (!window.confirm("Remove every enemy from this encounter?")) return;
+  if (!confirmTap($("enc-clear"), "Tap again to remove every enemy")) return;
   enemies = [];
   saveEncounter();
   drawEncounter();
@@ -3644,6 +3758,12 @@ function setHost(value) {
   $("history-editor").hidden = !isHost || !backend.saveHistory;
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;
+  // A DM account that opens a character's view gets no player tools: say why.
+  for (const note of document.querySelectorAll(".host-player-note")) {
+    note.hidden = !isHost;
+    note.textContent = "You're the DM on this device, so the player tools (attack cards, Send to the DM, death saves) are hidden here. "
+      + (backend.hosted ? "To play a character, sign in on this device with an email that isn't on the DM list." : "Players open the table link on their own phones.");
+  }
   $("board-link").href = "?room=" + room + "&board=1";
   drawDmList();
   if (isHost) drawEncounter();
