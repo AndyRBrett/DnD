@@ -3291,14 +3291,46 @@ function attacksThisTurn(index) {
   const entry = attacksMade.get(index);
   return entry && entry.turn === turnTag() ? entry.count : 0;
 }
-// Spells and other one-use attacks (no Extra Attack) take the turn's action
-// or bonus action: once per turn, unless the player says otherwise.
-const usedOnce = new Map(); // "index:attack name" → turn tag it was used on
 // Only while turns are running: before round 1 (or with no fight) there's no
 // turn boundary to clear it, so it would warn forever.
 const turnsRunning = () => Boolean(state?.combat?.turn);
-const usedOnceThisTurn = (index, attack) => turnsRunning() && !attack.perAction && usedOnce.get(index + ":" + attack.name) === turnTag();
-const markUsedOnce = (index, attack) => { if (turnsRunning() && !attack.perAction) usedOnce.set(index + ":" + attack.name, turnTag()); };
+// One action and one bonus action a turn (each Action Surge adds an action).
+// An Attack action covers its Extra Attack swings; after those, the next
+// swing is another Attack action. free: part of another attack (the shadow's
+// copied throw) and costs nothing.
+const turnUses = new Map(); // index → { tag, spells, attackActions, bonus, last, lastBonus }
+const isBonusAction = attack => /bonus action/i.test(attack.note ?? "");
+function usesThisTurn(index) {
+  const entry = turnUses.get(index);
+  return entry && entry.tag === turnTag() ? entry : { tag: turnTag(), spells: 0, attackActions: 0, bonus: 0, last: "", lastBonus: "" };
+}
+const actionsUsed = uses => uses.spells + uses.attackActions;
+function markUsedOnce(index, attack) {
+  if (!turnsRunning() || attack.free) return;
+  const uses = { ...usesThisTurn(index) };
+  if (attack.perAction) {
+    // Called after countAttack: this swing is in attacksThisTurn already.
+    const actions = Math.ceil(attacksThisTurn(index) / attack.perAction);
+    if (actions > uses.attackActions) Object.assign(uses, { attackActions: actions, last: "the Attack action" });
+  } else if (isBonusAction(attack)) {
+    Object.assign(uses, { bonus: uses.bonus + 1, lastBonus: attack.name });
+  } else {
+    Object.assign(uses, { spells: uses.spells + 1, last: attack.name });
+  }
+  turnUses.set(index, uses);
+}
+// Why this attack would be one action (or bonus action) too many, or "".
+function turnBlock(index, attack) {
+  if (!turnsRunning() || attack.free) return "";
+  const uses = usesThisTurn(index);
+  if (isBonusAction(attack)) {
+    return uses.bonus >= 1 ? "You've already used your bonus action this turn (" + uses.lastBonus + "). Pick something else, or end your turn." : "";
+  }
+  // Swings left in an Attack action already started: the swing count on the card handles those.
+  if (attack.perAction && attacksThisTurn(index) % attack.perAction !== 0) return "";
+  return actionsUsed(uses) >= 1 + surgesThisTurn(index)
+    ? "You've already used your action this turn (" + uses.last + "). Only one action a turn: pick a bonus action, or end your turn." : "";
+}
 function countAttack(index) {
   attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
 }
@@ -3646,9 +3678,8 @@ function drawAttack() {
   } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
   }
-  const once = usedOnceThisTurn(me, baseAttack);
-  const onceText = baseAttack.name + " already used this turn: it takes your " + (/bonus action/i.test(baseAttack.note ?? "") ? "bonus action" : "action")
-    + ". Pick something else, or end your turn.";
+  const onceText = turnBlock(me, baseAttack);
+  const once = Boolean(onceText);
   const rollDamage = () => { spend("damage"); openDice(built.damage, attack.name + " damage", total => {
     dice.onResult = null; // one roll per tap: a second tap doesn't replace the damage
     attackFlow.damage = total;
@@ -3735,7 +3766,7 @@ function drawAttack() {
       if (once) parts.push(stepText(onceText, "is-miss"));
       parts.push(stepText("Each target tries a " + built.save + " to resist. The DM rolls those for them."),
         stepButton("Roll damage · " + built.damage, once ? "quiet" : "cta", event => {
-          if (once && !confirmTap(event.currentTarget, "Tap again: use it a second time this turn")) return;
+          if (once && !confirmTap(event.currentTarget, "Tap again: use it anyway")) return;
           markUsedOnce(me, baseAttack);
           rollDamage();
         }));
@@ -3761,7 +3792,7 @@ function drawAttack() {
       };
       if (once) parts.push(stepText(onceText, "is-miss"));
       parts.push(stepButton("Roll to hit · " + built.toHit + (built.mode === "advantage" ? " (advantage)" : ""), once ? "quiet" : "cta", event => {
-        if (once && !confirmTap(event.currentTarget, "Tap again: use it a second time this turn")) return;
+        if (once && !confirmTap(event.currentTarget, "Tap again: use it anyway")) return;
         startToHit();
         openDice(built.toHit, attack.name + " to hit", (total, result) => {
           // One roll per tap: a second tap on Roll before the tray closes is
