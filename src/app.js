@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -178,12 +178,13 @@ function showOptions() {
   $("action-label").textContent = "What is " + character.name + " doing?";
   // On a shared phone, say whose post this is right on the button.
   $("action-submit").textContent = "Post as " + character.name.replace(/^The /, "");
-  const recent = state.scenes;
+  // A split party: only the updates this character heard (the DM sees all).
+  const recent = isHost ? state.scenes : state.scenes.filter(scene => sceneIsFor(scene, character.name));
   const advice = recommend(withoutSpent(character, spentFor(Number($("character").value))), recent);
   const latest = recent.at(-1);
   $("situation").textContent = advice.situation + (latest ? " · Updated " +
     new Date(latest.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "");
-  const line = latest?.text ?? "";
+  const line = latest ? sceneText(latest) : "";
   $("responding-to").textContent = line ? "Responding to: “" + (line.length > 140 ? line.slice(0, 140) + "…" : line) + "”" : "";
   showAdvice(advice, character);
 }
@@ -642,7 +643,7 @@ function applyRoom(fresh, { cached = false } = {}) {
   if (!previous) rememberTable(room);
   if (rosterChanged || hostChanged) drawRoster();
   if (scenesChanged) {
-    if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id) flashScene();
+    if (previous && previous.scenes.at(-1)?.id !== state.scenes.at(-1)?.id && myScene()?.id === state.scenes.at(-1)?.id) flashScene();
     renderStory();
   }
   $("action-form").hidden = !backend.postAction || !Array.isArray(state.actions) || ended;
@@ -744,12 +745,19 @@ async function publish(automatic = false) {
   }
   clearPublishTimers();
   const id = editId;
+  // A new update goes to the group picked under To (an edit keeps its own line).
+  const to = id ? null : sceneTo();
+  const posted = to ? addressScene(text, to) : text;
+  if (posted.length > 1500) {
+    $("notice").textContent = "Too long with the To line: trim " + (posted.length - 1500) + " characters.";
+    return;
+  }
   const mark = draftActionMark ?? maxActionId();
   const previousScene = state?.scenes?.at(-1)?.id ?? null; // before a poll can bring in the new one
   writing = true;
   $("publish").disabled = true;
   try {
-    await backend.postScene(room, text, id);
+    await backend.postScene(room, posted, id);
     // Only the update published here counts: the one right after this scene.
     if (!id) storage.set(writtenOverKey(), JSON.stringify({ after: mark, previous: previousScene }));
     draftActionMark = null;
@@ -899,7 +907,7 @@ $("cancel").onclick = () => {
   $("cancel").hidden = true;
   $("publish").textContent = "Publish update";
 };
-$("character").onchange = () => { showOptions(); sayHere(); };
+$("character").onchange = () => { showOptions(); sayHere(); if (state && !isHost) renderStory(); }; // a split party: each character has its own scene
 $("ask-claude").onclick = () => askClaude();
 $("copy-coach").onclick = async () => {
   const character = selectedCharacter();
@@ -1072,14 +1080,26 @@ $("history-save").onclick = async () => {
 // ── The story: current scene, "since then", and earlier updates. The DM can
 // edit or delete any of it in place; players can edit their own actions. ──
 let storyEditing = null;
+// The update this phone shows as its scene: the newest one meant for its
+// character (a split party gets "🔒 To: …" updates); the DM sees the newest.
+function myScene() {
+  if (!state?.scenes?.length) return null;
+  if (isHost || boardMode) return state.scenes.at(-1);
+  return sceneFor(state.scenes, partyName(Number($("character").value)) ?? "") ?? null;
+}
+const sceneText = scene => {
+  const audience = sceneAudience(scene?.text);
+  return audience ? "🔒 To " + audience.names.map(name => name.replace(/^The /, "")).join(", ") + ": " + audience.body : scene?.text ?? "";
+};
 function renderStory(force = false) {
+  drawSceneTo();
   drawRollAsks();
   drawRollAskTool();
   if (storyEditing && !force) return;
   for (const form of $("scene-current").querySelectorAll(".story-editor")) form.remove();
   $("scene-current").classList.remove("is-editing");
   $("scene").hidden = false;
-  $("scene").textContent = state.scenes.at(-1)?.text || "Waiting for an update.";
+  $("scene").textContent = sceneText(myScene()) || "Waiting for an update.";
   $("edit").hidden = !isHost || ended || !state.scenes.length;
   drawStory();
 }
@@ -1220,11 +1240,11 @@ function openStoryEditor(container, entry) {
 }
 
 function drawStory() {
-  const latest = state.scenes.at(-1);
+  const latest = myScene();
   const actions = (state.actions ?? []).map(action => ({ ...action, kind: "action" }));
   // DM only: posts that came in while the latest update was being written.
   const over = isHost ? readJson(writtenOverKey(), null) : null;
-  const previous = state.scenes.at(-2);
+  const previous = state.scenes[state.scenes.indexOf(latest) - 1];
   const heldOver = action => Boolean(over) && (previous?.id ?? null) === over.previous && latest
     && action.created < latest.created && (!previous || action.created >= previous.created)
     && Number(action.id) > Number(over.after);
@@ -1242,7 +1262,7 @@ function drawStory() {
   }));
   $("since-wrap").hidden = !since.length;
   const earlier = [
-    ...state.scenes.slice(0, -1).map(scene => ({ kind: "scene", id: scene.id, at: scene.created, text: scene.text })),
+    ...state.scenes.filter(scene => scene !== latest).map(scene => ({ kind: "scene", id: scene.id, at: scene.created, text: scene.text })),
     ...actions.filter(action => latest && action.created < latest.created && !heldOver(action)).map(action => ({ ...action, at: action.created }))
   ].sort((a, b) => b.at - a.at);
   // Always show at least the last three things that happened: when the DM
@@ -5629,12 +5649,14 @@ function drawBoard() {
   const sceneKey = ended ? "ended" : latest ? latest.id + ":" + latest.text : "none";
   if (sceneKey !== board.sceneId) {
     board.sceneId = sceneKey;
-    board.passages = ended ? ["The session has ended."] : scenePassages(latest?.text || "Waiting for the DM.");
+    // A split-party update opens with who it's for ("To White Wizard: …").
+    board.passages = ended ? ["The session has ended."] : scenePassages(sceneText(latest) || "Waiting for the DM.");
     boardPage(0);
   }
   const before = state.scenes.at(-2);
   $("board-previously").hidden = !before;
-  $("board-previously").textContent = before ? "Before this — " + (before.text.length > 170 ? before.text.slice(0, 170).replace(/\s+\S*$/, "") + "…" : before.text) : "";
+  const beforeText = before ? sceneText(before) : "";
+  $("board-previously").textContent = before ? "Before this — " + (beforeText.length > 170 ? beforeText.slice(0, 170).replace(/\s+\S*$/, "") + "…" : beforeText) : "";
 
   // Moments since the DM's latest post: an attack's call is folded into its
   // hit, an answered roll request into its roll.
@@ -6179,3 +6201,38 @@ $("dm-ask-form").onsubmit = async event => {
     button.disabled = false;
   }
 };
+
+
+// ── Who an update is for: everyone, or part of a split party. The choice
+// stays until the DM changes it, so a run of updates to the vault all go
+// there, and a note above the draft says so. ──
+const SCENE_TO = () => "dnd-scene-to:" + room;
+function sceneTo() {
+  const picked = readJson(SCENE_TO(), []);
+  const names = (state?.party ?? []).map(member => member.name).filter(name => picked.includes(name));
+  return names.length && names.length < (state?.party?.length ?? 0) ? names : null;
+}
+function drawSceneTo() {
+  const box = $("scene-to");
+  if (!isHost || !state?.party) { box.hidden = true; $("scene-to-note").hidden = true; return; }
+  box.hidden = false;
+  const to = sceneTo();
+  const chip = (label, on, onclick, aria) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip" + (on ? " is-on" : "");
+    button.textContent = label;
+    button.setAttribute("aria-pressed", String(on));
+    if (aria) button.setAttribute("aria-label", aria);
+    button.onclick = onclick;
+    return button;
+  };
+  const set = names => { storage.set(SCENE_TO(), JSON.stringify(names)); drawSceneTo(); };
+  box.replaceChildren(element("span", "fineprint", "To:"), chip("Everyone", !to, () => set([])),
+    ...state.party.map(({ name }) => {
+      const on = Boolean(to?.includes(name));
+      return chip(name.replace(/^The /, ""), on, () => set(on ? to.filter(other => other !== name) : [...(to ?? []), name]), (on ? "Stop sending to " : "Send only to ") + name);
+    }));
+  $("scene-to-note").hidden = !to;
+  if (to) $("scene-to-note").textContent = "🔒 Updates go only to " + to.map(name => name.replace(/^The /, "")).join(", ") + " until you tap Everyone.";
+}
