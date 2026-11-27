@@ -264,6 +264,7 @@ export const sheets = {
   "Logan Ninefingers": {
     attacks: [
       { name: "Greataxe", ability: "STR", perAction: 2, hit: 8, damage: "1d12+4", type: "slashing", note: "Two swings per Attack action; Frenzy adds a bonus-action swing while raging. Savage Attacker: once a turn, reroll the damage dice and keep either." },
+      { name: "Greataxe (Frenzy)", ability: "STR", whileRaging: true, hit: 8, damage: "1d12+4", type: "slashing", note: "Bonus action: one more greataxe swing each turn while raging with Frenzy (from the turn after the rage starts). A level of exhaustion when the rage ends." },
       { name: "Handaxe (thrown)", ability: "STR", perAction: 2, ranged: true, hit: 8, damage: "1d6+4", type: "slashing", note: "Thrown 20/60 ft (2 carried). A ranged attack: no Rage damage, Reckless, or Brutal Critical." },
       { name: "Javelin (thrown)", ability: "STR", perAction: 2, ranged: true, hit: 8, damage: "1d6+4", type: "piercing", note: "Thrown 30/120 ft; 4 carried (tracked under Resources). A ranged attack: no Rage damage, Reckless, or Brutal Critical." }
     ],

@@ -3382,7 +3382,8 @@ function bonusAttacksLeft(index) {
   const res = readRes(index);
   return attacksFor(index).filter(attack => isBonusAction(attack)
     && (!attack.slot || (attack.lasting && lastingUp.has(index + ":" + attack.name)) || castableLevels(attack, sheet, res).length)
-    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)).map(attack => attack.name);
+    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)
+    && (!attack.whileRaging || res.raging)).map(attack => attack.name);
 }
 const attacksSpent = index => actionSpent(index) && !bonusAttacksLeft(index).length;
 // Why this attack would be one action (or bonus action) too many, or "".
@@ -3745,6 +3746,8 @@ function drawAttack() {
   let blocked = "";
   if (baseAttack.slot && !attackFlow.spent && !levels.length && !up) {
     blocked = "No spell slots left for " + baseAttack.name + " (it needs a " + ORDINAL[baseAttack.slot] + "-level slot or higher). Take a long rest, or fix the dots under Resources.";
+  } else if (baseAttack.whileRaging && !res.raging) {
+    blocked = baseAttack.name + " is only while you're raging. Start a rage first (This turn, above).";
   } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
   }
