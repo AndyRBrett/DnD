@@ -112,8 +112,9 @@ export function sessionWindow(scenes) {
 export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "", table = "") {
   const session = sessionWindow(scenes);
   // A split party: the latest update is the newest one this character heard
-  // (one starting "🔒 To:" went only to the characters it names).
-  const latest = [...session].reverse().find(scene => sceneHeardBy(scene.text, character.name)) ?? session.at(-1);
+  // (one starting "🔒 To:" went only to the characters it names), found in
+  // the whole session, and none at all if they haven't heard one yet.
+  const latest = [...scenes].reverse().find(scene => sceneHeardBy(scene.text, character.name)) ?? null;
   const earlier = session.filter(scene => scene !== latest);
   const latestAt = Number(latest?.created ?? Infinity);
   const firstAt = Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity);
