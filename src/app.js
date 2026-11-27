@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -167,6 +167,7 @@ function showOptions() {
   $("character-role").textContent = character.role;
   drawConditions();
   drawConcentration(); // a save waiting for this character shows up now
+  if (state) drawRollAsks(); // and a roll the DM asked of them
   const rolls = sheets[character.name]?.rolls ?? [];
   $("quick-rolls").hidden = !rolls.length;
   $("quick-roll-chips").replaceChildren(...rollTiles(rolls));
@@ -1072,6 +1073,8 @@ $("history-save").onclick = async () => {
 // edit or delete any of it in place; players can edit their own actions. ──
 let storyEditing = null;
 function renderStory(force = false) {
+  drawRollAsks();
+  drawRollAskTool();
   if (storyEditing && !force) return;
   for (const form of $("scene-current").querySelectorAll(".story-editor")) form.remove();
   $("scene-current").classList.remove("is-editing");
@@ -1270,6 +1273,121 @@ function drawStory() {
 }
 
 // Host view: one input per character, for players without a phone out.
+// ── Roll requests: the DM asks, the player's phone answers in one tap ──
+const ASKS_DISMISSED = () => "dnd-roll-asks-dismissed:" + room;
+function pendingRollAsks(index) {
+  const name = state?.party?.[index]?.name;
+  const actions = (state?.actions ?? []).filter(action => action.name === name);
+  const dismissed = new Set(readJson(ASKS_DISMISSED(), []));
+  // An attack ask can take several rolls (Roan's Q, then the shadow's copy):
+  // it stays until the player taps Done. A check or save is one roll.
+  // Each answer closes one request: the oldest open one with that label, so
+  // two Perception asks at DC 12 need two rolls.
+  const asks = actions.map(action => ({ action, ask: parseRollAsk(action.text), answered: 0 })).filter(({ ask }) => ask);
+  const ordered = [...actions].sort((a, b) => Number(a.id) - Number(b.id));
+  for (const answer of ordered) {
+    if (parseRollAsk(answer.text) || !String(answer.text).startsWith("🎲 ")) continue;
+    const open = asks.find(entry => Number(entry.action.id) < Number(answer.id) && String(answer.text).startsWith("🎲 " + rollAskLabel(entry.ask))
+      && (entry.ask.kind === "attack" || !entry.answered));
+    if (open) open.answered += 1;
+  }
+  return asks.filter(({ ask, action, answered }) => !dismissed.has(action.id) && (ask.kind === "attack" || !answered)).slice(-3);
+}
+function drawRollAsks() {
+  const box = $("roll-asks");
+  const me = Number($("character").value);
+  const pending = isHost || ended || !state ? [] : pendingRollAsks(me);
+  box.hidden = !pending.length;
+  if (!pending.length) { box.replaceChildren(); box.renderedHtml = ""; return; }
+  const sheet = sheets[partyName(me)];
+  const cards = pending.map(({ action, ask, answered }) => {
+    const item = document.createElement("div");
+    item.className = "roll-ask";
+    item.dataset.ask = String(action.id); // a repeated ask is a new card, with its own buttons
+    item.append(element("p", "eyebrow gold", "THE DM ASKS FOR A ROLL"),
+      element("p", "roll-ask-what", rollAskLabel(ask) + (ask.note ? " — " + ask.note : "")));
+    const buttons = document.createElement("div");
+    buttons.className = "roll-ask-buttons";
+    const go = (label, expression, mode = "normal") => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "cta";
+      button.textContent = "🎲 " + label + " · " + expression + (mode !== "normal" ? " (" + mode + ")" : "");
+      button.onclick = () => {
+        openDice(expression, rollAskLabel(ask) + (ask.kind === "attack" ? " · " + label : ""), null, mode);
+        dice.ask = ask;
+        if (!$("dice-share-wrap").hidden) { $("dice-share").checked = true; $("dice-for").hidden = true; }
+      };
+      return button;
+    };
+    if (ask.kind === "attack") {
+      const attacks = attacksFor(me).filter(attack => !attack.save && !attack.area && Number.isFinite(Number(attack.hit)));
+      for (const attack of attacks.slice(0, 4)) buttons.append(go(attack.name, "d20" + (attack.hit >= 0 ? "+" : "-") + Math.abs(attack.hit)));
+      if (!attacks.length) buttons.append(go("Attack roll", "d20"));
+    } else {
+      const bonus = rollAskBonus(ask, sheet);
+      const skill = ask.kind === "skill" ? (sheet?.skills ?? []).find(([name]) => name.toLowerCase() === ask.roll.toLowerCase()) : null;
+      buttons.append(go(ask.roll, bonus === null ? "d20" : "d20" + (bonus >= 0 ? "+" : "-") + Math.abs(bonus), skill ? rollModeFrom(skill[2]) : "normal"));
+    }
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.className = "quiet";
+    skip.textContent = answered ? "Done (" + answered + " rolled)" : "Not now";
+    skip.onclick = () => {
+      storage.set(ASKS_DISMISSED(), JSON.stringify([...readJson(ASKS_DISMISSED(), []), action.id].slice(-50)));
+      drawRollAsks();
+    };
+    item.append(buttons, skip);
+    return item;
+  });
+  renderInto(box, cards);
+}
+function drawRollAskTool() {
+  const tool = $("roll-ask-tool");
+  tool.hidden = !isHost || ended || !backend.postAction || !Array.isArray(state?.actions);
+  if (tool.hidden || tool.dataset.ready === String(state.party.length)) return;
+  tool.dataset.ready = String(state.party.length);
+  $("roll-ask-who").replaceChildren(...state.party.map(({ name }, index) => {
+    const label = document.createElement("label");
+    label.className = "check chip";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = String(index);
+    label.append(box, " " + name.replace(/^The /, ""));
+    return label;
+  }));
+  const group = (title, names) => {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = title;
+    optgroup.append(...names.map(name => new Option(name, name)));
+    return optgroup;
+  };
+  const abilities = Object.values(ABILITY_FULL);
+  $("roll-ask-roll").replaceChildren(group("Skills", SKILLS.map(([name]) => name)), group("Ability checks", abilities.map(full => full + " check")),
+    group("Saving throws", abilities.map(full => full + " save")), group("Attack", ["Attack roll"]));
+  $("roll-ask-roll").value = "Perception";
+}
+$("roll-ask-form").onsubmit = async event => {
+  event.preventDefault();
+  const who = [...$("roll-ask-who").querySelectorAll("input:checked")].map(box => Number(box.value));
+  const roll = $("roll-ask-roll").value;
+  const value = Number($("roll-ask-target").value);
+  if (!who.length) { $("roll-ask-status").textContent = "Pick who rolls."; return; }
+  const text = rollAskText(roll, value ? { kind: roll === "Attack roll" ? "AC" : "DC", value } : null, $("roll-ask-note").value);
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    for (const index of who) await backend.postAction(room, index, text);
+    $("roll-ask-status").textContent = "Asked " + who.map(index => partyName(index).replace(/^The /, "")).join(", ") + ": " + roll + (value ? " (" + (roll === "Attack roll" ? "AC " : "DC ") + value + ")" : "") + ".";
+    for (const box of $("roll-ask-who").querySelectorAll("input")) box.checked = false;
+    $("roll-ask-note").value = "";
+    await sync();
+  } catch (error) {
+    $("roll-ask-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
 function drawPartyActions() {
   $("party-actions").hidden = !isHost || !backend.postAction || !Array.isArray(state?.actions);
   if ($("party-actions").hidden) return;
@@ -1653,6 +1771,7 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   dice.modifier = 0;
   dice.label = label;
   dice.labelFromPurpose = null;
+  dice.ask = null;
   $("mod-value").textContent = "+0";
   $("dice-expression").value = expression;
   $("dice-label").textContent = label ? label + " · " + expression : "";
@@ -1744,7 +1863,7 @@ function setRollPurpose(text) {
     $("dice-label").textContent = "";
   }
   for (const chip of $("dice-for").querySelectorAll(":scope > .chip")) chip.classList.toggle("is-active", chip.textContent === text);
-  if (!/^(Saving throw|Check)$/.test(text)) $("dice-ability").hidden = true;
+  if (!/^(Saving throw|Check|Attack|Damage)$/.test(text)) $("dice-ability").hidden = true;
 }
 // Put a roll in the tray with the character's own bonus, as a preset does.
 function setDiceRoll(label, expression, mode = "normal") {
@@ -1780,6 +1899,28 @@ function pickRollPurpose(text) {
       chip.onclick = () => {
         const label = ABILITY_NAMES[entry.ability] + (save ? " save" : " check");
         setDiceRoll(label, withBonus(bonus));
+        setRollPurpose(label);
+        box.hidden = true;
+      };
+      return chip;
+    }));
+    box.hidden = false;
+    box.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    return;
+  }
+  // Attack and Damage list the character's own attacks, with their numbers.
+  const attacks = /^(Attack|Damage)$/.test(text) && !isHost ? attacksFor(Number($("character").value)).filter(attack => !attack.heal && (text === "Damage" ? attack.damage : !attack.save && !attack.area && Number.isFinite(Number(attack.hit)))) : [];
+  if (attacks.length) {
+    const damage = text === "Damage";
+    box.replaceChildren(element("span", "fineprint", damage ? "Which damage?" : "Which attack?"), ...attacks.map(attack => {
+      const expression = damage ? attack.damage : withBonus(Number(attack.hit));
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = attack.name + " " + expression;
+      chip.onclick = () => {
+        const label = attack.name + (damage ? " damage" : " to hit");
+        setDiceRoll(label, expression);
         setRollPurpose(label);
         box.hidden = true;
       };
@@ -1864,7 +2005,7 @@ async function landRoll(result, purpose) {
   // What this roll is for, taken now: the tray can be cleared or reopened
   // for another roll while the dice are still tumbling.
   const rollId = dice.rollId = (dice.rollId ?? 0) + 1;
-  const { label, onResult } = dice;
+  const { label, onResult, ask } = dice;
   const share = !$("dice-share-wrap").hidden && $("dice-share").checked;
   try {
     if (!result.table) await spinDice(result); // real dice already landed
@@ -1895,7 +2036,7 @@ async function landRoll(result, purpose) {
     return;
   }
   if (share) {
-    const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")").slice(0, ACTION_MAX);
+    const text = ("🎲 " + name + ": " + result.total + " (" + result.breakdown + (result.mode !== "normal" ? ", " + result.mode : "") + ")" + rollAskVerdict(ask, result.total)).slice(0, ACTION_MAX);
     try {
       await backend.postAction(room, Number($("character").value), text);
       $("dice-status").textContent = "Shared with the table.";

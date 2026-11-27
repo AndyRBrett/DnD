@@ -572,3 +572,21 @@ test("enemy attacks written in the notes become tappable attacks", () => {
   assert.deepEqual(attacksFromNotes("Claw +7 to hit (2d6 + 4) and bite +7 (1d6+4), then a tail +5 (1d8)"), [["Claw", 7, "2d6+4"], ["Bite", 7, "1d6+4"]]);
   assert.deepEqual(attacksFromNotes("Resistant to fire. Flees at half HP."), []);
 });
+
+test("roll requests: the DM's ask, the bonus from the sheet, and the answer line", async () => {
+  const { rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } = await import("../src/encounter.js");
+  const { sheets } = await import("../src/campaign.js");
+  const dex = parseRollAsk(rollAskText("Dexterity check", { kind: "DC", value: 12 }, "slip through"));
+  assert.deepEqual([dex.kind, dex.ability, dex.target.value, dex.note], ["check", "DEX", 12, "slip through"]);
+  assert.equal(rollAskLabel(dex), "Dexterity check (DC 12)");
+  assert.equal(rollAskBonus(dex, sheets["Roan the Last Shadow"]), 5);
+  assert.equal(rollAskBonus(parseRollAsk(rollAskText("Charisma save", { kind: "DC", value: 15 })), sheets["Dum Dum"]), -1);
+  assert.equal(rollAskBonus(parseRollAsk(rollAskText("Sleight of Hand")), sheets["Roan the Last Shadow"]), 9);
+  assert.equal(rollAskVerdict(dex, 12), " · ✓ meets DC 12");
+  assert.equal(rollAskVerdict(dex, 11), " · ✗ under DC 12");
+  const attack = parseRollAsk(rollAskText("Attack roll", { kind: "AC", value: 12 }));
+  assert.equal(attack.kind, "attack");
+  assert.equal(rollAskLabel(attack), "Attack roll (AC 12)");
+  assert.equal(parseRollAsk("🎲 Stealth (d20+9): 17"), null); // an answer is not an ask
+  assert.equal(parseRollAsk(rollAskText("Perception")).target, null);
+});

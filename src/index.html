@@ -146,6 +146,7 @@
       <!-- Scene -->
       <section class="tab-panel" data-panel="scene">
         <section class="card conc-save" hidden aria-live="polite"></section>
+        <section id="roll-asks" class="card roll-asks" hidden aria-live="polite"></section>
         <section class="card scene-panel" aria-labelledby="scene-title">
           <p class="eyebrow red">SHARED BY THE DM</p>
           <div class="title-row">
@@ -359,6 +360,20 @@
             <p class="fineprint">What the app resolved for you (hits applied, saves rolled). Tap a line to add it to your update.</p>
             <ul id="narrate-list" class="narrate-list"></ul>
             <button id="narrate-clear" class="quiet" type="button">Clear the list</button>
+          </details>
+          <details id="roll-ask-tool" class="fold" hidden>
+            <summary>Ask for a roll</summary>
+            <p class="fineprint">The roll shows on each chosen player's phone with their bonus filled in; one tap rolls it and posts the result.</p>
+            <form id="roll-ask-form" class="stack">
+              <div id="roll-ask-who" class="chips" role="group" aria-label="Who rolls"></div>
+              <label>Roll<select id="roll-ask-roll"></select></label>
+              <div class="action-row">
+                <label>DC / AC<input id="roll-ask-target" type="number" min="1" max="40" inputmode="numeric" placeholder="optional"></label>
+                <label>Note<input id="roll-ask-note" maxlength="60" autocomplete="off" placeholder="cut the straps"></label>
+              </div>
+              <button type="submit" class="secondary">Ask</button>
+              <p id="roll-ask-status" class="fineprint"></p>
+            </form>
           </details>
           <details id="party-actions" class="fold" hidden>
             <summary>Actions for each character</summary>

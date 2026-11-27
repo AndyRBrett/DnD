@@ -603,3 +603,59 @@ export function riderText(rider) {
   if (rider.damage) return "+" + rider.damage + " " + (rider.type ?? "") + (save ? " (" + save + (rider.half ? " for half" : " or none") + ")" : "");
   return save + (rider.effect ? " or " + rider.effect : "");
 }
+
+// ── Roll requests outside combat ─────────────────────────────────────────
+// The DM asks a character for a roll; it rides in the story as that
+// character's line ("🎲 DM asks: Dexterity check, DC 12"), so it works on
+// both backends with no new table. The player's phone answers it with one
+// tap ("🎲 Dexterity check (DC 12): 17 …").
+export const SKILLS = [
+  ["Acrobatics", "DEX"], ["Animal Handling", "WIS"], ["Arcana", "INT"], ["Athletics", "STR"], ["Deception", "CHA"],
+  ["History", "INT"], ["Insight", "WIS"], ["Intimidation", "CHA"], ["Investigation", "INT"], ["Medicine", "WIS"],
+  ["Nature", "INT"], ["Perception", "WIS"], ["Performance", "CHA"], ["Persuasion", "CHA"], ["Religion", "INT"],
+  ["Sleight of Hand", "DEX"], ["Stealth", "DEX"], ["Survival", "WIS"]
+];
+export const ABILITY_FULL = { STR: "Strength", DEX: "Dexterity", CON: "Constitution", INT: "Intelligence", WIS: "Wisdom", CHA: "Charisma" };
+const ASK = /^🎲 DM asks: (.+?)(?:, (DC|AC) (\d+))?(?: — (.+))?$/u;
+
+// roll: a skill name, "Dexterity check", "Wisdom save", or "Attack roll".
+export function rollAskText(roll, target = null, note = "") {
+  const goal = target?.value ? ", " + (target.kind === "AC" ? "AC" : "DC") + " " + Number(target.value) : "";
+  return "🎲 DM asks: " + roll + goal + (note ? " — " + String(note).trim() : "");
+}
+export function parseRollAsk(text) {
+  const match = String(text ?? "").match(ASK);
+  if (!match) return null;
+  const roll = match[1].trim();
+  const save = roll.match(/^(\w+) save$/i);
+  const check = roll.match(/^(\w+) check$/i);
+  const ability = (save ?? check) && Object.entries(ABILITY_FULL).find(([, full]) => full.toLowerCase() === (save ?? check)[1].toLowerCase())?.[0];
+  return {
+    roll,
+    kind: /^attack roll$/i.test(roll) ? "attack" : save && ability ? "save" : check && ability ? "check" : "skill",
+    ability: ability ?? SKILLS.find(([name]) => name.toLowerCase() === roll.toLowerCase())?.[1] ?? null,
+    target: match[2] ? { kind: match[2], value: Number(match[3]) } : null,
+    note: match[4] ?? ""
+  };
+}
+// The roll's label on the answer line, and whether it beat the DC or AC.
+export const rollAskLabel = ask => ask.roll + (ask.target ? " (" + ask.target.kind + " " + ask.target.value + ")" : "");
+export function rollAskVerdict(ask, total) {
+  if (!ask?.target) return "";
+  return total >= ask.target.value ? " · ✓ meets " + ask.target.kind + " " + ask.target.value : " · ✗ under " + ask.target.kind + " " + ask.target.value;
+}
+// A character's bonus for an ask, from the full sheet: a skill, a check
+// (ability modifier), or a save. null when the sheet doesn't say.
+export function rollAskBonus(ask, sheet) {
+  if (!ask || !sheet) return null;
+  const mods = abilityMods(sheet);
+  if (ask.kind === "save") return mods.find(entry => entry.ability === ask.ability)?.save ?? null;
+  if (ask.kind === "check") return mods.find(entry => entry.ability === ask.ability)?.mod ?? null;
+  if (ask.kind === "skill") {
+    const skill = (sheet.skills ?? []).find(([name]) => name.toLowerCase() === ask.roll.toLowerCase());
+    const bonus = skill ? Number.parseInt(String(skill[2]).replace("−", "-"), 10) : NaN;
+    if (Number.isFinite(bonus)) return bonus;
+    return ask.ability ? mods.find(entry => entry.ability === ask.ability)?.mod ?? null : null;
+  }
+  return null;
+}
