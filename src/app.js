@@ -5504,15 +5504,15 @@ function drawBoard() {
     if (!first && record && record.hp <= 0 && was > 0) boardFlash(member.name.replace(/^The /, "").toUpperCase() + " IS DOWN", "red");
     if (record) board.hp.set(member.name, record.hp);
     const item = document.createElement("li");
-    item.className = "hero is-" + health + (member.name === currentName ? " is-turn" : "") + (state.resources?.[member.name]?.raging ? " is-raging" : "");
+    item.className = "party-hero is-" + health + (member.name === currentName ? " is-turn" : "") + (state.resources?.[member.name]?.raging ? " is-raging" : "");
     const share = record?.max ? Math.max(0, Math.min(100, Math.round(record.hp / record.max * 100))) : 0;
     const ring = document.createElement("div");
-    ring.className = "hero-ring";
+    ring.className = "party-hero-ring";
     ring.style.setProperty("--hp", share + "%");
     ring.append(element("span", "", initials(member.name)));
     const ac = partyAc(index);
     const info = document.createElement("div");
-    info.className = "hero-info";
+    info.className = "party-hero-info";
     info.append(element("strong", "", shortName(member.name)),
       element("span", "", (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP —") + (ac ? " · AC " + ac.text : "") + (state.resources?.[member.name]?.raging ? " · 😤" : "")));
     item.append(ring, info);
