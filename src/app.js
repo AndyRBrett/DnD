@@ -3712,7 +3712,20 @@ function drawAttack() {
   // (Action Surge, a bonus-action attack): a second tap says so.
   const cap = baseAttack.perAction ? attackCap(me, baseAttack.perAction) : 0;
   const actionDone = Boolean(baseAttack.perAction) && made >= cap;
-  const next = stepButton(baseAttack.perAction && made && made < cap
+  // Nothing left to attack with this turn (the action is spent and no
+  // bonus-action attack is waiting): moving on means ending the turn, so the
+  // button takes the player back up to the turn card instead of offering a
+  // free swing.
+  const uses = usesThisTurn(me);
+  const bonusLeft = uses.bonus < 1 && attacksFor(me).some(isBonusAction);
+  const turnDone = turnsRunning() && state?.combat?.turn === "pc:" + me && !bonusLeft
+    && (actionDone || (!baseAttack.perAction && !isBonusAction(baseAttack) && !baseAttack.free && actionsUsed(uses) >= 1 + surgesThisTurn(me)));
+  // The card stays on this attack's result, so the turn guide up top keeps
+  // pointing at End my turn.
+  const next = turnDone ? stepButton("Done attacking: end your turn ▲", "quiet", () => {
+    showTab("combat");
+    scrollToCard($("combat-head"));
+  }) : stepButton(baseAttack.perAction && made && made < cap
     ? "Next attack (" + (cap - made) + " more this turn" + (cap > baseAttack.perAction ? ", Action Surge" : "") + ")"
     : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
       if (actionDone && !confirmTap(event.currentTarget, "Tap again: an extra attack (Action Surge or a bonus action)")) return;
@@ -3925,6 +3938,14 @@ function drawAttack() {
     // Once the damage is with the DM, moving on is the next thing to do.
     const delivered = attackFlow.sent.length > 0 || !backend.postAction || !Array.isArray(state?.actions);
     if (delivered) { next.className = "cta"; parts.push(next); } else extras.push(next);
+  }
+  // A rare extra swing the DM allows (a feat or item not on the sheet): kept
+  // out of the way, two taps.
+  if (turnDone && (attackFlow.step === "miss" || attackFlow.step === "damage")) {
+    extras.push(stepButton("Another attack (only if the DM allows it)", "quiet", event => {
+      if (!confirmTap(event.currentTarget, "Tap again: an extra attack your DM allows")) return;
+      resetAttack(); drawAttack();
+    }));
   }
   steps.replaceChildren(...parts, ...moreFold(extras));
   drawTurnGuide();
