@@ -352,7 +352,7 @@
             <button id="narrate-clear" class="quiet" type="button">Clear the list</button>
           </details>
           <details id="roll-ask-tool" class="fold" hidden>
-            <summary>Ask for a roll</summary>
+            <summary>Ask for a roll (one player or everyone)</summary>
             <p class="fineprint">The roll shows on each chosen player's phone with their bonus filled in; one tap rolls it and posts the result.</p>
             <form id="roll-ask-form" class="stack">
               <div id="roll-ask-who" class="chips" role="group" aria-label="Who rolls"></div>
@@ -364,6 +364,7 @@
               <button type="submit" class="secondary">Ask</button>
               <p id="roll-ask-status" class="fineprint"></p>
             </form>
+            <div id="roll-ask-results" class="roll-ask-results" hidden aria-live="polite"></div>
           </details>
           <details id="party-actions" class="fold" hidden>
             <summary>Actions for each character</summary>
@@ -385,6 +386,12 @@
           <button id="enc-combat" class="cta" type="button" hidden>Start combat</button>
           <p id="enc-combat-status" class="fineprint"></p>
           <div class="controls" id="encounter-controls" hidden><button id="enc-init" class="ghost" type="button">Roll initiative</button><button id="enc-clear" class="quiet" type="button">Clear encounter</button></div>
+          <form id="quick-enemy" class="quick-enemy" aria-label="Quick add enemies">
+            <label class="quick-enemy-pick">Quick add<select id="quick-template" aria-label="Stock enemy"></select></label>
+            <label class="quick-enemy-count">How many<input id="quick-count" type="number" min="1" max="30" value="1" inputmode="numeric"></label>
+            <button type="submit" class="cta">Add</button>
+          </form>
+          <p id="quick-status" class="fineprint"></p>
           <div id="enemy-list"></div>
           <p id="encounter-sync" class="fineprint"></p>
           <details id="enemy-builder" class="fold">

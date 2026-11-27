@@ -630,3 +630,49 @@ test("TV board: the scene in screen-sized passages, and story lines as moments",
   assert.equal(boardMoment("Logan Ninefingers", "has Exhaustion level 1 🥵").text, "has Exhaustion level 1");
   assert.equal(boardMoment("Logan Ninefingers", "🎯 attacks Bandit — with Greataxe, 14 to hit · ✗ DM: miss").kind, "miss");
 });
+
+test("stock enemies: every one has a CR, rollable stats, and a tier for the party", async () => {
+  const { templates, createEnemies, enemyTier, crValue, enemyRoutine, swingCount, TIERS } = await import("../src/encounter.js");
+  const { parse } = await import("../src/dice.js");
+  assert.ok(templates.length >= 40);
+  assert.equal(new Set(templates.map(template => template.name)).size, templates.length, "no duplicate names");
+  for (const template of templates) {
+    assert.ok(crValue(template.cr) !== null, template.name + " has a CR");
+    assert.ok(TIERS.includes(enemyTier(template, 10)), template.name + " sorts into a tier");
+    assert.ok(parse(template.hp), template.name + " HP rolls");
+    assert.equal(template.saves.length, 6, template.name + " has six saves");
+    for (const [name, , damage] of template.attacks) assert.ok(parse(damage), template.name + ": " + name + " damage rolls");
+    for (const index of template.routine ?? []) assert.ok(template.attacks[index], template.name + " routine points at an attack");
+  }
+  assert.equal(crValue("1/4"), 0.25);
+  assert.equal(enemyTier({ cr: "1/2" }, 10), "Minions");
+  assert.equal(enemyTier({ cr: "3" }, 10), "Soldiers");
+  assert.equal(enemyTier({ cr: "6" }, 10), "Elites");
+  assert.equal(enemyTier({ cr: "10" }, 10), "Bosses");
+  assert.equal(enemyTier({ cr: "3" }, 3), "Bosses", "tiers follow the party's level");
+  // A turn: the routine's attacks, each as many times as its (×N) says.
+  const [dragon] = createEnemies(templates.find(template => template.name === "Young Red Dragon"), 1);
+  assert.deepEqual(enemyRoutine(dragon).map(([[name], times]) => [name, times]), [["Claw (×2)", 2], ["Bite", 1]]);
+  assert.deepEqual(enemyRoutine({ attacks: [["Brass Rake (x2)", 7, "1d10+4"], ["Thrown chip", 7, "2d6+3"]] }).map(([[name], times]) => [name, times]), [["Brass Rake (x2)", 2]]);
+  assert.equal(swingCount("Bite"), 1);
+  assert.deepEqual(enemyRoutine({ attacks: [] }), []);
+});
+
+test("group roll requests: each character's answer, with pass or fail", async () => {
+  const { rollAskText, rollAskResults } = await import("../src/encounter.js");
+  const ask = rollAskText("Strength save", { kind: "DC", value: 14 }, "the rakes");
+  const actions = [
+    { id: 1, character: 3, text: "🎲 Strength save (DC 14): 9 (d20+3: 6+3) · ✗ under DC 14" }, // before the ask: not counted
+    { id: 2, character: 3, text: ask }, { id: 3, character: 4, text: ask }, { id: 4, character: 2, text: ask },
+    { id: 5, character: 4, text: "🎲 Strength save (DC 14): 17 (d20+1: 16+1) · ✓ meets DC 14" },
+    { id: 6, character: 3, text: "Dum Dum braces." },
+    { id: 7, character: 3, text: "🎲 Strength save (DC 14): 11 (d20+3: 8+3) · ✗ under DC 14" },
+    { id: 8, character: 3, text: "🎲 Strength save (DC 14): 20 (d20+3: 17+3) · ✓ meets DC 14" } // a reroll: the first answer counts
+  ];
+  assert.deepEqual(rollAskResults(actions, ask), [
+    { character: 3, answered: true, total: 11, pass: false },
+    { character: 4, answered: true, total: 17, pass: true },
+    { character: 2, answered: false }
+  ]);
+  assert.deepEqual(rollAskResults(actions, "not an ask"), []);
+});

@@ -9,44 +9,129 @@ import { lookupRule } from "./rules.js";
 // saves: saving throw bonuses in the order Str, Dex, Con, Int, Wis, Cha.
 const ASSASSIN_POISON = { damage: "7d6", type: "poison", save: "Con", dc: 15, half: true };
 export const templates = [
-  { name: "Guard", ac: 16, hp: "2d8+2", init: 1, speed: 30, saves: [1, 1, 1, 0, 0, 0], attacks: [["Spear", 3, "1d6+1"]],
+  { name: "Guard", cr: "1/8", ac: 16, hp: "2d8+2", init: 1, speed: 30, saves: [1, 1, 1, 0, 0, 0], attacks: [["Spear", 3, "1d6+1"]],
     abilities: "Chain shirt and shield. Spear can be thrown (20/60 ft)." },
-  { name: "Bandit", ac: 12, hp: "2d8+2", init: 1, speed: 30, saves: [0, 1, 1, 0, 0, 0], attacks: [["Scimitar", 3, "1d6+1"], ["Light crossbow", 3, "1d8+1"]],
+  { name: "Bandit", cr: "1/8", ac: 12, hp: "2d8+2", init: 1, speed: 30, saves: [0, 1, 1, 0, 0, 0], attacks: [["Scimitar", 3, "1d6+1"], ["Light crossbow", 3, "1d8+1"]],
     abilities: "Crossbow range 80/320 ft." },
-  { name: "Thug", ac: 11, hp: "5d8+10", init: 0, speed: 30, saves: [2, 0, 2, 0, 0, 0], attacks: [["Mace (×2)", 4, "1d6+2"], ["Heavy crossbow", 2, "1d10"]],
+  { name: "Thug", cr: "1/2", ac: 11, hp: "5d8+10", init: 0, speed: 30, saves: [2, 0, 2, 0, 0, 0], attacks: [["Mace (×2)", 4, "1d6+2"], ["Heavy crossbow", 2, "1d10"]],
     abilities: "Multiattack: two mace attacks. Pack Tactics: advantage when an ally is within 5 ft of the target." },
-  { name: "Bandit Captain", ac: 15, hp: "10d8+20", init: 3, speed: 30, saves: [4, 5, 2, 2, 2, 2], attacks: [["Scimitar (×2)", 5, "1d6+3"], ["Dagger", 5, "1d4+3"]],
+  { name: "Bandit Captain", routine: [0, 1], cr: "2", ac: 15, hp: "10d8+20", init: 3, speed: 30, saves: [4, 5, 2, 2, 2, 2], attacks: [["Scimitar (×2)", 5, "1d6+3"], ["Dagger", 5, "1d4+3"]],
     abilities: "Multiattack: two scimitars and a dagger. Parry (reaction): +2 AC against one melee hit it can see." },
-  { name: "Spy", ac: 12, hp: "6d8", init: 2, speed: 30, saves: [0, 2, 0, 1, 2, 3], attacks: [["Shortsword (×2)", 4, "1d6+2"], ["Hand crossbow", 4, "1d6+2"]],
+  { name: "Spy", cr: "1", ac: 12, hp: "6d8", init: 2, speed: 30, saves: [0, 2, 0, 1, 2, 3], attacks: [["Shortsword (×2)", 4, "1d6+2"], ["Hand crossbow", 4, "1d6+2"]],
     abilities: "Cunning Action: Dash, Disengage, or Hide as a bonus action. Sneak Attack +2d6 once per turn with advantage or an ally adjacent." },
-  { name: "Veteran", ac: 17, hp: "9d8+18", init: 1, speed: 30, saves: [3, 1, 2, 0, 0, 0], attacks: [["Longsword (×2)", 5, "1d8+3"], ["Heavy crossbow", 3, "1d10+1"]],
+  { name: "Veteran", cr: "3", ac: 17, hp: "9d8+18", init: 1, speed: 30, saves: [3, 1, 2, 0, 0, 0], attacks: [["Longsword (×2)", 5, "1d8+3"], ["Heavy crossbow", 3, "1d10+1"]],
     abilities: "Multiattack: two longsword attacks (plus a shortsword if drawn)." },
-  { name: "Mage", ac: 12, hp: "9d8", init: 2, speed: 30, saves: [-1, 2, 0, 6, 4, 0], attacks: [["Dagger", 5, "1d4+2"], ["Fire Bolt (spell)", 6, "2d10"]],
+  { name: "Mage", cr: "6", ac: 12, hp: "9d8", init: 2, speed: 30, saves: [-1, 2, 0, 6, 4, 0], attacks: [["Dagger", 5, "1d4+2"], ["Fire Bolt (spell)", 6, "2d10"]],
     abilities: "Spell DC 14, +6. Mage Armor (AC 15). Spells: Misty Step, Counterspell, Fireball (8d6, Dex save), Ice Storm, Greater Invisibility, Cone of Cold (8d8, Con save)." },
-  { name: "Goblin", ac: 15, hp: "2d6", init: 2, speed: 30, saves: [-1, 2, 0, 0, -1, -1], attacks: [["Scimitar", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
+  { name: "Goblin", cr: "1/4", ac: 15, hp: "2d6", init: 2, speed: 30, saves: [-1, 2, 0, 0, -1, -1], attacks: [["Scimitar", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
     abilities: "Nimble Escape: Disengage or Hide as a bonus action." },
-  { name: "Wolf", ac: 13, hp: "2d8+2", init: 2, speed: 40, saves: [1, 2, 1, -4, 1, -2], attacks: [["Bite", 4, "2d4+2", { save: "Str", dc: 11, effect: "knocked prone" }]],
+  { name: "Wolf", cr: "1/4", ac: 13, hp: "2d8+2", init: 2, speed: 40, saves: [1, 2, 1, -4, 1, -2], attacks: [["Bite", 4, "2d4+2", { save: "Str", dc: 11, effect: "knocked prone" }]],
     abilities: "Bite: DC 11 Strength save or knocked prone. Pack Tactics. Keen Hearing and Smell." },
-  { name: "Ogre", ac: 11, hp: "7d10+21", init: -1, speed: 40, saves: [4, -1, 3, -3, -2, -2], attacks: [["Greatclub", 6, "2d8+4"], ["Javelin", 6, "2d6+4"]],
+  { name: "Ogre", cr: "2", ac: 11, hp: "7d10+21", init: -1, speed: 40, saves: [4, -1, 3, -3, -2, -2], attacks: [["Greatclub", 6, "2d8+4"], ["Javelin", 6, "2d6+4"]],
     abilities: "Large. Javelin range 30/120 ft." },
   // Tougher foes for a level 10 party (challenge 5 to 8).
-  { name: "Gladiator", ac: 16, hp: "15d8+45", init: 2, speed: 30, saves: [7, 5, 6, 0, 1, 2], attacks: [["Spear (×3)", 7, "2d6+4"], ["Shield Bash", 7, "2d4+4", { save: "Str", dc: 15, effect: "knocked prone" }]],
+  { name: "Gladiator", cr: "5", ac: 16, hp: "15d8+45", init: 2, speed: 30, saves: [7, 5, 6, 0, 1, 2], attacks: [["Spear (×3)", 7, "2d6+4"], ["Shield Bash", 7, "2d4+4", { save: "Str", dc: 15, effect: "knocked prone" }]],
     abilities: "Multiattack: three melee attacks (or two ranged spear throws, 20/60 ft). Shield Bash: DC 15 Strength save or knocked prone. Parry (reaction): +3 AC against one melee hit it can see." },
-  { name: "Troll", ac: 15, hp: "8d10+40", init: 1, speed: 30, saves: [4, 1, 5, -2, -1, -2], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "1d6+4"]],
+  { name: "Troll", routine: [0, 1], cr: "5", ac: 15, hp: "8d10+40", init: 1, speed: 30, saves: [4, 1, 5, -2, -1, -2], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "1d6+4"]],
     abilities: "Large. Multiattack: a bite and two claws. Regeneration: regains 10 HP at the start of its turn unless it took acid or fire damage since its last turn; it only dies at 0 HP if it doesn't regenerate. Keen Smell." },
-  { name: "Hill Giant", ac: 13, hp: "10d12+40", init: -1, speed: 40, saves: [5, -1, 4, -3, -1, -2], attacks: [["Greatclub (×2)", 8, "3d8+5"], ["Rock", 8, "3d10+5"]],
+  { name: "Hill Giant", cr: "5", ac: 13, hp: "10d12+40", init: -1, speed: 40, saves: [5, -1, 4, -3, -1, -2], attacks: [["Greatclub (×2)", 8, "3d8+5"], ["Rock", 8, "3d10+5"]],
     abilities: "Huge. Multiattack: two greatclub attacks. Rock range 60/240 ft." },
-  { name: "Wraith", ac: 13, hp: "9d8+27", init: 3, speed: 60, saves: [-2, 3, 3, 1, 2, 2], attacks: [["Life Drain", 6, "4d8+3", { save: "Con", dc: 14, effect: "max HP drops by the damage until a long rest" }]],
+  { name: "Wraith", cr: "5", ac: 13, hp: "9d8+27", init: 3, speed: 60, saves: [-2, 3, 3, 1, 2, 2], attacks: [["Life Drain", 6, "4d8+3", { save: "Con", dc: 14, effect: "max HP drops by the damage until a long rest" }]],
     abilities: "Flies (60 ft) and moves through creatures and objects. Life Drain is necrotic: DC 14 Constitution save or the target's max HP drops by the damage until a long rest. Resists most nonmagical weapon damage; immune to necrotic and poison. Sunlight: disadvantage on attacks and Perception." },
-  { name: "Oni", ac: 16, hp: "13d10+39", init: 0, speed: 30, saves: [4, 3, 6, 2, 4, 5], attacks: [["Glaive (×2)", 7, "2d10+4"]],
+  { name: "Oni", cr: "7", ac: 16, hp: "13d10+39", init: 0, speed: 30, saves: [4, 3, 6, 2, 4, 5], attacks: [["Glaive (×2)", 7, "2d10+4"]],
     abilities: "Large; flies 30 ft. Multiattack: two glaive attacks. Regenerates 10 HP a turn while above 0 HP. Innate spells (DC 13): darkness, invisibility, charm person, cone of cold (8d8, Con save), gaseous form, sleep. Can change shape." },
-  { name: "Stone Giant", ac: 17, hp: "11d12+55", init: 2, speed: 40, saves: [6, 5, 8, 0, 4, -1], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6", { save: "Str", dc: 17, effect: "knocked prone" }]],
+  { name: "Stone Giant", cr: "7", ac: 17, hp: "11d12+55", init: 2, speed: 40, saves: [6, 5, 8, 0, 4, -1], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6", { save: "Str", dc: 17, effect: "knocked prone" }]],
     abilities: "Huge. Multiattack: two greatclub attacks. Rock (60/240 ft): DC 17 Strength save or knocked prone. Rock Catching (reaction): DC 10 Dex save to catch a thrown rock." },
-  { name: "Assassin", ac: 15, hp: "12d8+24", init: 3, speed: 30, saves: [0, 6, 2, 4, 0, 0], attacks: [["Shortsword (×2)", 6, "1d6+3", ASSASSIN_POISON], ["Light crossbow", 6, "1d8+3", ASSASSIN_POISON]],
+  { name: "Assassin", cr: "8", ac: 15, hp: "12d8+24", init: 3, speed: 30, saves: [0, 6, 2, 4, 0, 0], attacks: [["Shortsword (×2)", 6, "1d6+3", ASSASSIN_POISON], ["Light crossbow", 6, "1d8+3", ASSASSIN_POISON]],
     abilities: "Multiattack: two shortsword attacks. Each hit also deals 7d6 poison (DC 15 Constitution save for half). Sneak Attack +4d6 once a turn. Assassinate: advantage against anyone who hasn't acted yet, and any hit on a surprised creature is a critical. Evasion." },
-  { name: "Young Green Dragon", ac: 18, hp: "16d10+48", init: 1, speed: 40, saves: [4, 4, 6, 3, 4, 5], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "2d10+4", { damage: "2d6", type: "poison" }]],
-    abilities: "Large; flies 80 ft, swims 40 ft. Multiattack: a bite and two claws; the bite adds 2d6 poison. Poison Breath (recharge 5–6): 30-ft cone, DC 14 Constitution save, 12d6 poison, half on a save. Amphibious. Immune to poison." }
+  { name: "Young Green Dragon", routine: [0, 1], cr: "8", ac: 18, hp: "16d10+48", init: 1, speed: 40, saves: [4, 4, 6, 3, 4, 5], attacks: [["Claw (×2)", 7, "2d6+4"], ["Bite", 7, "2d10+4", { damage: "2d6", type: "poison" }]],
+    abilities: "Large; flies 80 ft, swims 40 ft. Multiattack: a bite and two claws; the bite adds 2d6 poison. Poison Breath (recharge 5–6): 30-ft cone, DC 14 Constitution save, 12d6 poison, half on a save. Amphibious. Immune to poison." },
+  // More standard foes, so the DM can pick one and add a group in one tap.
+  { name: "Skeleton", cr: "1/4", ac: 13, hp: "2d8+4", init: 2, speed: 30, saves: [0, 2, 2, -2, -1, -3], attacks: [["Shortsword", 4, "1d6+2"], ["Shortbow", 4, "1d6+2"]],
+    abilities: "Undead. Vulnerable to bludgeoning; immune to poison. Shortbow range 80/320 ft." },
+  { name: "Zombie", cr: "1/4", ac: 8, hp: "3d8+9", init: -2, speed: 20, saves: [1, -2, 3, -4, 0, -3], attacks: [["Slam", 3, "1d6+1"]],
+    abilities: "Undead Fortitude: dropped to 0 by anything but radiant damage or a critical hit, it makes a Con save (DC 5 + the damage) and stays at 1 HP on a success. Immune to poison." },
+  { name: "Orc", cr: "1/2", ac: 13, hp: "2d8+6", init: 1, speed: 30, saves: [3, 1, 3, -2, 0, 0], attacks: [["Greataxe", 5, "1d12+3"], ["Javelin", 5, "1d6+3"]],
+    abilities: "Aggressive: bonus action to move up to its speed toward an enemy it can see. Javelin range 30/120 ft." },
+  { name: "Hobgoblin", cr: "1/2", ac: 18, hp: "2d8+2", init: 1, speed: 30, saves: [1, 1, 1, 0, 0, -1], attacks: [["Longsword", 3, "1d8+1"], ["Longbow", 3, "1d8+1"]],
+    abilities: "Martial Advantage: once a turn, +2d6 damage to a creature that's within 5 ft of one of its allies. Longbow range 150/600 ft." },
+  { name: "Ghoul", cr: "1", ac: 12, hp: "5d8", init: 2, speed: 30, saves: [1, 2, 0, -2, 0, -2], attacks: [["Claws", 4, "2d4+2", { save: "Con", dc: 10, effect: "paralyzed for 1 minute (repeat the save at the end of each turn); elves are immune" }], ["Bite", 2, "2d6+2"]],
+    abilities: "Undead. Claws: DC 10 Constitution save or paralyzed. Immune to poison and to being charmed." },
+  { name: "Bugbear", cr: "1", ac: 16, hp: "5d8+5", init: 2, speed: 30, saves: [2, 2, 1, -1, 0, -1], attacks: [["Morningstar", 4, "2d8+2"], ["Javelin", 4, "1d6+2"]],
+    abilities: "Surprise Attack: +2d6 damage to a surprised creature on the first round. Long-limbed: melee reach counts as 5 ft more on its turn. Sneaky (Stealth +6)." },
+  { name: "Dire Wolf", cr: "1", ac: 14, hp: "5d10+10", init: 2, speed: 50, saves: [3, 2, 2, -4, 1, -2], attacks: [["Bite", 5, "2d6+3", { save: "Str", dc: 13, effect: "knocked prone" }]],
+    abilities: "Large. Bite: DC 13 Strength save or knocked prone. Pack Tactics. Keen Hearing and Smell." },
+  { name: "Berserker", cr: "2", ac: 13, hp: "9d8+27", init: 1, speed: 30, saves: [3, 1, 3, -1, 0, -1], attacks: [["Greataxe", 5, "1d12+3"]],
+    abilities: "Reckless: at the start of its turn it can attack with advantage, but attacks against it have advantage until its next turn." },
+  { name: "Priest", cr: "2", ac: 13, hp: "5d8+5", init: 0, speed: 30, saves: [0, 0, 1, 1, 3, 1], attacks: [["Mace", 2, "1d6"], ["Guiding Bolt (spell)", 5, "4d6"]],
+    abilities: "Spell DC 13, +5. Sacred Flame (2d8 radiant, Dex save), Spirit Guardians (3d8 radiant, Wis save for half, 15-ft aura), Cure Wounds, Lesser Restoration. Divine Eminence: +3d6 radiant on a melee hit by spending a slot." },
+  { name: "Cult Fanatic", cr: "2", ac: 13, hp: "6d8+6", init: 2, speed: 30, saves: [0, 2, 1, 0, 1, 2], attacks: [["Dagger (×2)", 4, "1d4+2"], ["Inflict Wounds (spell)", 3, "3d10"]],
+    abilities: "Multiattack: two dagger attacks. Spell DC 11, +3: Hold Person, Spiritual Weapon (1d8+1 force), Shield of Faith, Command. Dark Devotion: advantage on saves against being charmed or frightened." },
+  { name: "Knight", cr: "3", ac: 18, hp: "8d8+16", init: 0, speed: 30, saves: [3, 0, 4, 0, 2, 2], attacks: [["Greatsword (×2)", 5, "2d6+3"], ["Heavy crossbow", 2, "1d10"]],
+    abilities: "Multiattack: two greatsword attacks. Brave: advantage on saves against being frightened. Parry (reaction): +2 AC against one melee hit it can see. Leadership (1/rest): allies within 30 ft add 1d4 to attacks and saves for 1 minute." },
+  { name: "Minotaur", routine: [0, 1], cr: "3", ac: 14, hp: "9d10+27", init: 0, speed: 40, saves: [4, 0, 3, -2, 3, -1], attacks: [["Greataxe", 6, "2d12+4"], ["Gore", 6, "2d8+4"]],
+    abilities: "Large. Charge: moving 10 ft straight before a gore adds 2d8 piercing, and the target makes a DC 14 Strength save or is pushed 10 ft and knocked prone. Reckless. Labyrinthine Recall." },
+  { name: "Owlbear", routine: [0, 1], cr: "3", ac: 13, hp: "7d10+21", init: 1, speed: 40, saves: [5, 1, 3, -4, 1, -2], attacks: [["Claws", 7, "2d8+5"], ["Beak", 7, "1d10+5"]],
+    abilities: "Large. Multiattack: a beak and a claws attack. Keen Sight and Smell." },
+  { name: "Werewolf", routine: [0, 1], cr: "3", ac: 12, hp: "9d8+18", init: 1, speed: 40, saves: [2, 1, 2, 0, 0, 0], attacks: [["Claws", 4, "2d4+2"], ["Bite", 4, "1d8+2", { save: "Con", dc: 12, effect: "cursed with werewolf lycanthropy" }]],
+    abilities: "Hybrid form: Multiattack, a bite and a claws attack. Immune to bludgeoning, piercing and slashing from nonmagical, non-silvered weapons. Keen Hearing and Smell." },
+  { name: "Wight", cr: "3", ac: 14, hp: "6d8+18", init: 2, speed: 30, saves: [2, 2, 3, 0, 1, 2], attacks: [["Longsword (×2)", 4, "1d8+2"], ["Life Drain", 4, "1d6+2", { save: "Con", dc: 13, effect: "max HP drops by the damage until a long rest" }]],
+    abilities: "Undead. Multiattack: two longsword attacks, or one plus Life Drain (necrotic). Resists nonmagical weapon damage and necrotic; immune to poison. Sunlight Sensitivity." },
+  { name: "Mummy", cr: "3", ac: 11, hp: "9d8+27", init: -1, speed: 20, saves: [3, -1, 2, -2, 2, 1], attacks: [["Rotting Fist", 5, "2d6+3", { damage: "3d6", type: "necrotic", save: "Con", dc: 12, effect: "cursed with mummy rot (no healing; max HP drops 3d6 every 24 hours)" }]],
+    abilities: "Undead. Multiattack: Dreadful Glare (DC 11 Wis save or frightened; fail by 5+ and paralyzed) and one Rotting Fist. Vulnerable to fire; resists nonmagical weapon damage; immune to necrotic and poison." },
+  { name: "Hell Hound", cr: "3", ac: 15, hp: "7d8+14", init: 1, speed: 50, saves: [3, 1, 2, -2, 1, -2], attacks: [["Bite", 5, "1d8+3", { damage: "2d6", type: "fire" }]],
+    abilities: "Fire Breath (recharge 5–6): 15-ft cone, DC 12 Dexterity save, 6d6 fire, half on a save. Pack Tactics. Immune to fire." },
+  { name: "Vampire Spawn", routine: [0, 1], cr: "5", ac: 15, hp: "11d8+33", init: 3, speed: 30, saves: [3, 6, 3, 0, 3, 1], attacks: [["Claws", 6, "2d4+3"], ["Bite", 6, "1d6+3", { damage: "3d6", type: "necrotic" }]],
+    abilities: "Undead. Multiattack: two attacks, only one a bite (the bite needs a grappled, willing or incapacitated target; its necrotic lowers max HP). Regenerates 10 HP a turn unless hit by radiant or in sunlight. Spider Climb. Resists necrotic and nonmagical weapons." },
+  { name: "Earth Elemental", cr: "5", ac: 17, hp: "12d10+60", init: -1, speed: 30, saves: [5, -1, 5, -3, 0, -3], attacks: [["Slam (×2)", 8, "2d8+5"]],
+    abilities: "Large. Multiattack: two slams. Earth Glide: burrows through earth and stone. Siege Monster. Vulnerable to thunder; resists nonmagical weapon damage; immune to poison." },
+  { name: "Fire Elemental", cr: "5", ac: 13, hp: "12d10+36", init: 3, speed: 50, saves: [0, 3, 3, -2, 0, -2], attacks: [["Touch (×2)", 6, "2d6+3"]],
+    abilities: "Large. Multiattack: two touches (fire). A creature or flammable object it touches ignites: 1d10 fire at the start of each turn until doused. Fire Form: touching or hitting it in melee deals 1d10 fire. Immune to fire and poison; resists nonmagical weapons." },
+  { name: "Flesh Golem", cr: "5", ac: 9, hp: "11d8+44", init: -1, speed: 30, saves: [4, -1, 4, -3, 0, -3], attacks: [["Slam (×2)", 7, "2d8+4"]],
+    abilities: "Multiattack: two slams. Berserk below 40 HP (recharge each turn on a 6). Fire makes it flinch (disadvantage until its next turn); lightning heals it. Magic Resistance. Immune to lightning, poison and nonmagical non-adamantine weapons." },
+  { name: "Chimera", routine: [0, 1], cr: "6", ac: 14, hp: "12d10+48", init: 0, speed: 30, saves: [4, 0, 4, -4, 2, 0], attacks: [["Bite", 7, "2d6+4"], ["Horns", 7, "1d12+4"]],
+    abilities: "Large; flies 60 ft. Multiattack: bite, horns and claws (+7, 2d6+4). Fire Breath (recharge 5–6): 15-ft cone, DC 15 Dexterity save, 7d8 fire, half on a save." },
+  { name: "Cyclops", cr: "6", ac: 14, hp: "12d12+60", init: 0, speed: 30, saves: [6, 0, 5, -1, 0, 0], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6"]],
+    abilities: "Huge. Multiattack: two greatclub attacks. Poor Depth Perception: disadvantage on attacks against targets more than 30 ft away. Rock range 30/120 ft." },
+  { name: "Frost Giant", cr: "8", ac: 15, hp: "12d12+60", init: -1, speed: 40, saves: [6, -1, 8, -1, 3, 4], attacks: [["Greataxe (×2)", 9, "3d12+6"], ["Rock", 9, "4d10+6"]],
+    abilities: "Huge. Multiattack: two greataxe attacks. Rock range 60/240 ft. Immune to cold." },
+  { name: "Hydra", cr: "8", ac: 15, hp: "15d12+75", init: 1, speed: 30, saves: [5, 1, 5, -4, 0, -1], attacks: [["Bite (×5)", 8, "1d10+5"]],
+    abilities: "Huge; swims 30 ft. Five heads, one bite each. 25+ damage in one turn severs a head; at the end of its turn two grow back for each lost unless it took fire damage, and it heals 10 per head regrown. Dies with no heads. Extra reaction per head beyond one." },
+  { name: "Fire Giant", cr: "9", ac: 18, hp: "13d12+78", init: -1, speed: 30, saves: [7, 3, 10, 0, 2, 5], attacks: [["Greatsword (×2)", 11, "6d6+7"], ["Rock", 11, "4d10+7"]],
+    abilities: "Huge. Multiattack: two greatsword attacks. Rock range 60/240 ft. Immune to fire." },
+  { name: "Young Red Dragon", routine: [0, 1], cr: "10", ac: 18, hp: "17d10+85", init: 0, speed: 40, saves: [6, 4, 9, 1, 4, 8], attacks: [["Claw (×2)", 10, "2d6+6"], ["Bite", 10, "2d10+6", { damage: "1d6", type: "fire" }]],
+    abilities: "Large; flies 80 ft. Multiattack: a bite and two claws. Fire Breath (recharge 5–6): 30-ft cone, DC 17 Dexterity save, 16d6 fire, half on a save. Immune to fire. Blindsight 30 ft." },
+  { name: "Stone Golem", cr: "10", ac: 17, hp: "17d10+85", init: -1, speed: 30, saves: [6, -1, 5, -4, 0, -5], attacks: [["Slam (×2)", 10, "3d8+6"]],
+    abilities: "Large. Multiattack: two slams. Slow (recharge 5–6): DC 17 Wisdom save or slowed for 1 minute. Magic Resistance. Immune to poison, psychic and nonmagical non-adamantine weapons." },
+  { name: "Vampire", cr: "13", ac: 16, hp: "17d8+68", init: 4, speed: 30, saves: [4, 9, 4, 3, 7, 9], attacks: [["Unarmed Strike (×2)", 9, "1d8+4"], ["Bite", 9, "1d6+4", { damage: "3d6", type: "necrotic" }]],
+    abilities: "Boss. Multiattack: two attacks, only one a bite (lowers max HP; the target needs to be grappled, willing or incapacitated). Charm: DC 17 Wis save. Regenerates 20 HP a turn unless hit by radiant or in sunlight. Legendary Resistance 3/day; 3 legendary actions (move, unarmed strike, bite). Resists necrotic and nonmagical weapons." }
 ];
+
+// How tough a stock enemy is for the party: from its challenge rating
+// against the party's level (one of four groups in the quick-add list).
+export function crValue(cr) {
+  const [top, bottom] = String(cr ?? "").split("/").map(Number);
+  return bottom ? top / bottom : Number.isFinite(top) ? top : null;
+}
+export const TIERS = ["Minions", "Soldiers", "Elites", "Bosses"];
+export function enemyTier(template, partyLevel = 10) {
+  const cr = crValue(template?.cr);
+  if (cr === null) return null;
+  const share = cr / Math.max(1, partyLevel);
+  return share <= 0.1 ? "Minions" : share <= 0.35 ? "Soldiers" : share <= 0.75 ? "Elites" : "Bosses";
+}
+
+// One enemy turn: which attacks it makes, each as many times as its "(×2)"
+// says. A stat block's routine names them (a dragon's claws and bite);
+// otherwise it's the first attack. Returns [[attack, times], …].
+export function swingCount(label) {
+  return Number(String(label).match(/\([×x](\d)\)/i)?.[1] ?? 1);
+}
+export function enemyRoutine(enemy) {
+  const attacks = enemy?.attacks ?? [];
+  const picks = (Array.isArray(enemy?.routine) && enemy.routine.length ? enemy.routine : [0]).filter(index => attacks[index]);
+  return [...new Set(picks)].map(index => [attacks[index], swingCount(attacks[index][0])]);
+}
 
 // Rolls (or reads) hit points: "2d8+2" is rolled per enemy, "11" is fixed.
 export function hitPoints(value, random) {
@@ -84,6 +169,7 @@ export function createEnemies(stats, count = 1, random, existing = []) {
       maxHp: max,
       init: Number(stats.init) || 0,
       speed: Number(stats.speed) || 30,
+      ...(Array.isArray(stats.routine) ? { routine: stats.routine.filter(Number.isInteger) } : {}),
       attacks: (stats.attacks ?? []).filter(([name]) => name).map(([name, hit, damage, rider]) =>
         rider ? [String(name), Number(hit) || 0, String(damage || ""), rider] : [String(name), Number(hit) || 0, String(damage || "")]),
       abilities: String(stats.abilities ?? ""),
@@ -659,6 +745,25 @@ export const rollAskLabel = ask => ask.roll + (ask.target ? " (" + ask.target.ki
 export function rollAskVerdict(ask, total) {
   if (!ask?.target) return "";
   return total >= ask.target.value ? " · ✓ meets " + ask.target.kind + " " + ask.target.value : " · ✗ under " + ask.target.kind + " " + ask.target.value;
+}
+// A group request's results: for each character asked (with this exact
+// line), their first answer after it, its total and whether it beat the DC.
+// actions: the story's player lines ({ id, character, text }), oldest first.
+export function rollAskResults(actions, askText) {
+  const ask = parseRollAsk(askText);
+  if (!ask) return [];
+  const head = "🎲 " + rollAskLabel(ask) + ":";
+  const results = new Map();
+  for (const action of actions ?? []) {
+    const text = String(action.text ?? "");
+    if (text === askText) { results.set(action.character, { character: action.character, answered: false }); continue; }
+    const entry = results.get(action.character);
+    if (!entry || entry.answered || !text.startsWith(head)) continue;
+    const total = Number(text.slice(head.length).match(/-?\d+/)?.[0]);
+    Object.assign(entry, { answered: true, total: Number.isFinite(total) ? total : null,
+      pass: /✓ meets/u.test(text) ? true : /✗ under/u.test(text) ? false : null });
+  }
+  return [...results.values()];
 }
 // A character's bonus for an ask, from the full sheet: a skill, a check
 // (ability modifier), or a save. null when the sheet doesn't say.
