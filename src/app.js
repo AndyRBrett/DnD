@@ -2925,6 +2925,16 @@ function resourcesWidget(index) {
 // Word, Second Wind), a Potion of Healing for anyone, and Hit Dice on a short
 // rest. Each rolls the dice, spends what it uses, and heals the target.
 const POTION = { name: "Potion of Healing", heal: "2d4+2", note: "An action to drink or give to someone next to you. The DM tracks how many you have." };
+// A heal reads as a button, not a heading: tinted, outlined, with "Roll ▸".
+function healButton(button, label, ready) {
+  button.className = "heal-btn";
+  const text = document.createElement("span");
+  text.textContent = label;
+  const go = document.createElement("span");
+  go.className = "heal-go";
+  go.textContent = "Roll ▸";
+  button.replaceChildren(text, ...(ready ? [go] : []));
+}
 function healingBlock(index, sheet, res) {
   const block = document.createElement("div");
   block.className = "res-block heal-block";
@@ -2961,9 +2971,8 @@ function healingBlock(index, sheet, res) {
     target.value = String(index);
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "ghost";
     button.disabled = Boolean(blocked);
-    button.textContent = blocked ? entry.name + ": " + blocked : entry.name + " · " + dice + (level ? " (" + ORDINAL[level] + "-level slot)" : "");
+    healButton(button, blocked ? entry.name + ": " + blocked : "💚 " + entry.name + " · " + dice + (level ? " (" + ORDINAL[level] + "-level slot)" : ""), !blocked);
     button.onclick = () => {
       const who = Number(target.value);
       openDice(dice, entry.name, total => {
@@ -2986,9 +2995,8 @@ function healingBlock(index, sheet, res) {
     row.className = "heal-row";
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "ghost";
     button.disabled = left < 1;
-    button.textContent = left < 1 ? "No Hit Dice left (half come back on a long rest)" : "Spend a Hit Die · " + dice.roll + " (" + left + "/" + dice.max + " left)";
+    healButton(button, left < 1 ? "No Hit Dice left (half come back on a long rest)" : "💚 Spend a Hit Die · " + dice.roll + " (" + left + "/" + dice.max + " left)", left >= 1);
     button.onclick = () => openDice(dice.roll, "Hit Die", total => {
       heal(index, Math.max(0, total), "a Hit Die", HIT_DICE);
       setTimeout(closeDice, 1200);
