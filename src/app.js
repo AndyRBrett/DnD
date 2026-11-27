@@ -4476,11 +4476,15 @@ function drawHitInbox() {
     }
     // The enemy's notes say it resists something (a swarm, a golem): one tap
     // for half, with the note right there so the DM can check the damage type.
-    const resists = !report.halfOnSave && target ? String(target.abilities ?? "").match(/[^.;]*\bresist[^.;]*/i)?.[0].trim() : "";
-    if (resists) {
+    const resists = target ? String(target.abilities ?? "").match(/[^.;]*\bresist[^.;]*/i)?.[0].trim() ?? "" : "";
+    // The hit's damage type, from the attacker's sheet ("Shadow Slash (E)" is
+    // slashing): when the note names it, the resistance is certain.
+    const damageType = attacksFor(state.party.findIndex(character => character.name === action.name)).find(attack => how.startsWith(attack.name))?.type ?? "";
+    const resisted = Boolean(resists && damageType && new RegExp("\\b" + damageType + "\\b", "i").test(resists));
+    if (resists && !report.save) {
       const half = document.createElement("button");
       half.type = "button";
-      half.className = "ghost";
+      half.className = resisted ? "cta" : "ghost";
       half.textContent = "Resists: " + Math.floor(report.amount / 2);
       half.title = resists;
       half.disabled = !target || needsPick;
@@ -4494,7 +4498,7 @@ function drawHitInbox() {
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "cta";
-      saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")";
+      saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")" + (resisted ? " · resists " + damageType : "");
       saveButton.onclick = () => {
         if (report.save.rider) {
           // A maneuver: the damage lands either way; the save decides the effect.
@@ -4507,9 +4511,10 @@ function drawHitInbox() {
           return;
         }
         const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
-        hitEnemy(outcome.damage, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + ")");
+        const dealt = resisted ? Math.floor(outcome.damage / 2) : outcome.damage; // resistance halves after the save
+        hitEnemy(dealt, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + (resisted ? ", resists " + damageType : "") + ")");
         $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
-          + (outcome.saved ? "saved, " : "failed, ") + outcome.damage + " damage applied.";
+          + (outcome.saved ? "saved, " : "failed, ") + dealt + " damage applied" + (resisted ? " (resists " + damageType + ")" : "") + ".";
       };
       buttons.prepend(saveButton);
     }
