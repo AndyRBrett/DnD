@@ -83,8 +83,16 @@ test("combat: host starts it, players add initiative, enemy HP never stored", as
   const { combat } = (await call(room)).body;
   assert.deepEqual(combat, { round: 2, turn: "pc:1", party: { 1: 17 },
     enemies: [{ id: "g1", name: "Guard 1", initiative: 14, status: "bloodied", conditions: ["Prone"] }] });
+  // The DM sits a character out of the fight, and brings them back.
+  assert.equal((await post(room + "/combat", { sitOut: { character: 0, out: true } })).status, 403);
+  assert.equal((await post(room + "/combat", { sitOut: { character: 9, out: true } }, { "x-table-host": host })).status, 400);
+  assert.equal((await post(room + "/combat", { sitOut: { character: 0, out: true } }, { "x-table-host": host })).status, 200);
+  assert.deepEqual((await call(room)).body.combat.party, { 0: "out", 1: 17 });
+  assert.equal((await post(room + "/combat", { sitOut: { character: 0, out: false } }, { "x-table-host": host })).status, 200);
+  assert.deepEqual((await call(room)).body.combat.party, { 1: 17 });
   assert.equal((await post(room + "/combat", { end: true }, { "x-table-host": host })).status, 200);
   assert.equal((await call(room)).body.combat, null);
+  assert.equal((await post(room + "/combat", { sitOut: { character: 0, out: true } }, { "x-table-host": host })).status, 400); // no fight
 });
 
 test("the host can edit and delete any story update", async () => {
@@ -138,6 +146,10 @@ test("the player whose turn it is can pass it, in initiative order", async () =>
   await post(room + "/combat", { round: 3, turn: "pc:4", enemies }, { "x-table-host": host });
   assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "pc:0", round: 4 }); // new round
   assert.equal((await call(room)).body.combat.turn, "pc:0");
+  // A character sitting out is skipped.
+  await post(room + "/combat", { sitOut: { character: 0, out: true } }, { "x-table-host": host });
+  await post(room + "/combat", { round: 4, turn: "pc:4", enemies }, { "x-table-host": host });
+  assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "en:a", round: 5 });
 });
 
 test("tables stay open while there's activity, and close after 3 idle days", async () => {

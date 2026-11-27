@@ -100,6 +100,14 @@ test("combat order, turns, and what players may see", async () => {
   assert.equal(lastDown.at(-1).key, "en:x");
   assert.deepEqual(nextTurn(lastDown, "en:x", 1), { turn: "pc:2", round: 2 }); // last in order: new round
   assert.equal(upNext(lastDown, "en:x"), "pc:2");
+  // A character sat out of the fight has no place in the order and no turn.
+  const { sittingOut, isSittingOut } = await import("../src/encounter.js");
+  const away = { ...combat, party: { 0: "out", 2: 20 } };
+  assert.deepEqual(combatOrder(away, party).map(entry => entry.key), ["pc:2", "en:" + guard.id, "en:x", "pc:1"]);
+  assert.deepEqual(sittingOut(away, party), [0]);
+  assert.equal(isSittingOut(away, 0), true);
+  assert.equal(isSittingOut(away, 1), false);
+  assert.deepEqual(nextTurn(combatOrder(away, party), "pc:2", 1), { turn: "en:" + guard.id, round: 1 });
 });
 
 test("3D dice are real polyhedra with every number once", async () => {

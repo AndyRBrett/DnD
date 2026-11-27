@@ -95,6 +95,7 @@ function localBackend() {
     combatEnd: code => post(code, "combat", { end: true }),
     combatEnemies: (code, enemies) => post(code, "combat", { enemies, enemiesOnly: true }),
     combatPassTurn: (code, character) => post(code, "pass-turn", { character }, false),
+    combatSitOut: (code, character, out) => post(code, "combat", { sitOut: { character, out: Boolean(out) } }),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
   };
 }
@@ -202,6 +203,8 @@ function hostedBackend({ url, anonKey }) {
     deleteAction: (code, id) => rpc("dnd_delete_action", { p_code: code, p_id: id }),
     combatInitiative: (code, character, value) => rpc("dnd_combat_initiative", { p_code: code, p_character: character, p_value: value }),
     combatPassTurn: (code, character) => rpc("dnd_combat_pass_turn", { p_code: code, p_character: character }),
+    // Sit a character out of this fight, or bring them back (migration 0018).
+    combatSitOut: (code, character, out) => rpc("dnd_combat_sit_out", { p_code: code, p_character: character, p_out: Boolean(out) }),
     // Who can start tables (migration 0010). Before it runs, everyone can.
     async canStartTables() {
       try {

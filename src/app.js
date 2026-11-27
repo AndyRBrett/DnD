@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -2177,7 +2177,9 @@ function drawTurnGuide() {
   let label = "";
   guideAction = null;
   const toAttack = () => { showTab("combat"); scrollToCard($("attack-card")); };
-  if (!rolled) {
+  if (isSittingOut(combat, me)) {
+    text = "You're sitting out this fight: you're somewhere else in the story. Post what you're doing in the Scene tab.";
+  } else if (!rolled) {
     text = "Roll initiative (a d20) to find out when your turn comes.";
     label = "🎲 Roll initiative";
     guideAction = () => $("init-roll").click();
@@ -2341,6 +2343,8 @@ function drawCombat() {
     : current.key === myKey ? "Your turn!" : current.name + (current.kind === "enemy" ? " acts" : "'s turn");
   $("combat-next").textContent = !current ? (isHost ? "Tap Next turn to start round 1. Players can still add their initiative." : "The DM starts the first turn once everyone has rolled.")
     : next ? (next.key === myKey ? "You're up next — get ready." : "Up next: " + next.name) : "";
+  const meOut = !isHost && me !== null && isSittingOut(combat, me);
+  if (meOut && !current) $("combat-turn").textContent = "You're sitting out";
   const foes = order.filter(entry => entry.kind === "enemy");
   const up = foes.filter(entry => entry.status !== "down").length;
   $("combat-foes").textContent = foes.length ? up + " of " + foes.length + " enemies standing" : "No enemies yet";
@@ -2351,7 +2355,7 @@ function drawCombat() {
   if (!myTurn) { $("combat-end-turn").disabled = false; $("combat-end-turn").textContent = "End my turn ▶"; }
 
   const mine = me === null ? undefined : combat.party?.[me];
-  $("combat-init").hidden = isHost || Number.isFinite(mine); // rolled: it's in the order below
+  $("combat-init").hidden = isHost || Number.isFinite(mine) || meOut; // rolled: it's in the order below
   $("init-title").textContent = Number.isFinite(mine) ? "Your initiative: " + mine : "Your initiative";
   $("init-roll").textContent = "Roll " + initiativeExpression() + (initiativeMode() === "advantage" ? " (advantage)" : "");
   $("combat-hint").hidden = isHost;
@@ -2422,10 +2426,67 @@ function drawCombat() {
       input.value = entry.initiative ?? "";
       input.setAttribute("aria-label", "Initiative for " + entry.name);
       input.onchange = () => setInitiative(entry.character, input.value, $("combat-status"));
-      item.append(input);
+      const out = document.createElement("button");
+      out.type = "button";
+      out.className = "quiet sit-out";
+      out.textContent = "Sit out";
+      out.title = "Not in this fight (elsewhere in the story): no turn and no initiative prompt";
+      out.setAttribute("aria-label", "Sit " + entry.name + " out of this fight");
+      out.onclick = () => setSittingOut(entry.character, true, out);
+      item.append(input, out);
+    }
+    return item;
+  }), ...sittingOut(combat, state.party).map(index => {
+    // Not in this fight: listed after the order, with no turn.
+    const item = document.createElement("li");
+    item.className = "combatant is-pc is-out" + (index === me ? " is-me" : "");
+    const score = document.createElement("b");
+    score.className = "init";
+    score.textContent = "–";
+    const body = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = partyName(index) + (index === me && !isHost ? " (you)" : "");
+    const meta = document.createElement("div");
+    meta.className = "chips";
+    const tag = document.createElement("span");
+    tag.textContent = "sitting out this fight";
+    meta.append(tag);
+    body.append(name, meta);
+    item.append(score, body);
+    if (isHost) {
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "ghost sit-out";
+      back.textContent = "Join fight";
+      back.setAttribute("aria-label", "Bring " + partyName(index) + " into this fight");
+      back.onclick = () => setSittingOut(index, false, back);
+      item.append(back);
     }
     return item;
   }));
+}
+
+// The DM sits a character out of the fight (or brings them back). If it was
+// their turn, the turn moves on first, so the fight isn't left on nobody.
+async function setSittingOut(character, out, button) {
+  if (!backend.combatSitOut || !state?.combat) return;
+  button.disabled = true;
+  try {
+    const step = out && state.combat.turn === "pc:" + character
+      ? nextTurn(liveOrder(), state.combat.turn, state.combat.round, 1) : null;
+    await backend.combatSitOut(room, character, out);
+    const party = { ...state.combat.party };
+    if (out) party[character] = "out"; else delete party[character];
+    state.combat = { ...state.combat, party };
+    if (step) await publishCombat(step);
+    $("combat-status").textContent = partyName(character) + (out ? " sits out this fight." : " joins the fight: they can roll initiative now.");
+    drawCombat();
+    sync();
+  } catch (error) {
+    button.disabled = false;
+    $("combat-status").textContent = /could not find the function/i.test(error.message)
+      ? "Sitting out needs the latest database update (migration 0018)." : error.message;
+  }
 }
 
 // ── Who's at the table: each player's phone checks in every 20 seconds with
