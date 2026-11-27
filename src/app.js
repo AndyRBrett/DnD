@@ -1615,6 +1615,7 @@ function drawDicePresets() {
       dice.pool = {};
       dice.modifier = 0;
       dice.label = label;
+      dice.labelFromPurpose = null;
       setDiceMode(mode);
       $("mod-value").textContent = "+0";
       $("dice-expression").value = expression;
@@ -1651,6 +1652,7 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   dice.pool = {};
   dice.modifier = 0;
   dice.label = label;
+  dice.labelFromPurpose = null;
   $("mod-value").textContent = "+0";
   $("dice-expression").value = expression;
   $("dice-label").textContent = label ? label + " · " + expression : "";
@@ -1734,11 +1736,74 @@ $("dice-clear").onclick = () => openDice();
 // the DM never has to guess. Sheet rolls carry their own label.
 function setRollPurpose(text) {
   $("dice-for-text").value = text;
-  for (const chip of $("dice-for").querySelectorAll(".chip")) chip.classList.toggle("is-active", chip.textContent === text);
+  // A label a purpose chip put there ("Stealth") goes when the purpose
+  // changes, so the roll posts as what the player picked now.
+  if (dice.labelFromPurpose && dice.labelFromPurpose !== text) {
+    dice.label = "";
+    dice.labelFromPurpose = null;
+    $("dice-label").textContent = "";
+  }
+  for (const chip of $("dice-for").querySelectorAll(":scope > .chip")) chip.classList.toggle("is-active", chip.textContent === text);
+  if (!/^(Saving throw|Check)$/.test(text)) $("dice-ability").hidden = true;
 }
-for (const chip of $("dice-for").querySelectorAll(".chip")) chip.onclick = () => setRollPurpose(chip.classList.contains("is-active") ? "" : chip.textContent);
+// Put a roll in the tray with the character's own bonus, as a preset does.
+function setDiceRoll(label, expression, mode = "normal") {
+  dice.pool = {};
+  dice.modifier = 0;
+  dice.label = label;
+  dice.labelFromPurpose = label;
+  setDiceMode(mode);
+  $("mod-value").textContent = "+0";
+  $("dice-expression").value = expression;
+  $("dice-label").textContent = label + " · " + expression + (mode === "advantage" ? " (advantage)" : "");
+  $("dice-result").hidden = true;
+  for (const other of $("dice-presets").children) other.classList.remove("is-active");
+  previewDice();
+}
+const withBonus = bonus => "d20" + (bonus >= 0 ? "+" : "-") + Math.abs(bonus);
+const ABILITY_NAMES = { STR: "Strength", DEX: "Dexterity", CON: "Constitution", INT: "Intelligence", WIS: "Wisdom", CHA: "Charisma" };
+// A purpose chip (or a typed skill) that names a roll on the sheet sets the
+// dice too: Stealth is d20 + Stealth, not a bare d20. Saving throw and Check
+// ask which ability first, so the modifier is never left off.
+function pickRollPurpose(text) {
+  setRollPurpose(text);
+  const sheet = isHost ? null : sheets[selectedCharacter()?.name];
+  const box = $("dice-ability");
+  if (/^(Saving throw|Check)$/.test(text) && abilityMods(sheet).length) {
+    const save = text === "Saving throw";
+    box.replaceChildren(element("span", "fineprint", save ? "Which save?" : "Which ability?"), ...abilityMods(sheet).map(entry => {
+      const bonus = save ? entry.save : entry.mod;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip" + (save && entry.proficient ? " is-proficient" : "");
+      chip.textContent = entry.ability + " " + (bonus >= 0 ? "+" : "−") + Math.abs(bonus) + (save && entry.proficient ? " ●" : "");
+      chip.onclick = () => {
+        const label = ABILITY_NAMES[entry.ability] + (save ? " save" : " check");
+        setDiceRoll(label, withBonus(bonus));
+        setRollPurpose(label);
+        box.hidden = true;
+      };
+      return chip;
+    }));
+    box.hidden = false;
+    box.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    return;
+  }
+  const skill = (sheet?.skills ?? []).find(([name]) => name.toLowerCase() === text.toLowerCase());
+  const expression = skill && rollableFrom(skill[2]);
+  if (expression) setDiceRoll(skill[0], expression, rollModeFrom(skill[2]));
+}
+for (const chip of $("dice-for").querySelectorAll(":scope > .chip")) chip.onclick = () => chip.classList.contains("is-active") ? setRollPurpose("") : pickRollPurpose(chip.textContent);
 $("dice-for-text").oninput = () => {
-  for (const chip of $("dice-for").querySelectorAll(".chip")) chip.classList.toggle("is-active", chip.textContent === $("dice-for-text").value.trim());
+  const typed = $("dice-for-text").value.trim();
+  if (dice.labelFromPurpose && dice.labelFromPurpose !== typed) {
+    dice.label = "";
+    dice.labelFromPurpose = null;
+    $("dice-label").textContent = "";
+  }
+  for (const chip of $("dice-for").querySelectorAll(":scope > .chip")) chip.classList.toggle("is-active", chip.textContent === typed);
+  const sheet = isHost ? null : sheets[selectedCharacter()?.name];
+  if ((sheet?.skills ?? []).some(([name]) => name.toLowerCase() === typed.toLowerCase())) pickRollPurpose(typed);
 };
 $("dice-share").onchange = () => { $("dice-for").hidden = !$("dice-share").checked; };
 $("dice-roll").onclick = async () => {

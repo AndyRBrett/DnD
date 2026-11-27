@@ -621,6 +621,9 @@ body.board-mode .hdr .role-pill{display:none}
 .heal-row select{flex:1 1 140px}
 .heal-row .fineprint{flex:1 1 100%;margin:0}
 .story-body{flex:1;min-width:0}
+.dice-ability{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1 1 100%;margin:4px 0}
+.dice-ability .fineprint{flex:1 1 100%;margin:0}
+.dice-ability .chip.is-proficient{border-color:var(--gold-border);color:var(--gold)}
 .see-more{display:block;margin-top:4px;font-size:.9rem}
 .history-more{list-style:none;padding-top:6px}
 .history-more button{width:100%}
