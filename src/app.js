@@ -1530,13 +1530,32 @@ async function setCondition(name, level) {
   drawConditions();
   const character = selectedCharacter();
   if (!character || !backend.postAction || !Array.isArray(state?.actions) || ended) return;
+  // Stepping exhaustion (1 → 2 → 3, or back) posts one line once the taps
+  // stop, with where it ended up.
+  const index = Number($("character").value);
+  if (name === "Exhaustion" && before && level) {
+    clearTimeout(exhaustionPost.timer);
+    exhaustionPost.from ??= before;
+    exhaustionPost.timer = setTimeout(() => {
+      const from = exhaustionPost.from;
+      exhaustionPost.from = null;
+      const now = readJson(key, {}).Exhaustion ?? 0;
+      if (now && now !== from) postCondition(name, now, from, key, index);
+    }, 1500);
+    $("condition-status").textContent = "";
+    return;
+  }
+  await postCondition(name, level, before, key, index);
+}
+const exhaustionPost = { timer: 0, from: null };
+async function postCondition(name, level, before, key, index) {
   const { icon } = conditionByName[name];
   const text = !level ? "is no longer " + name + (name === "Exhaustion" ? "ed" : "")
     : name === "Exhaustion" ? "has Exhaustion level " + level + " " + icon
     : name === "Concentrating" ? "is concentrating on a spell " + icon
     : "is " + name + " " + icon;
   try {
-    await backend.postAction(room, Number($("character").value), text.replace("Exhaustioned", "exhausted"));
+    await backend.postAction(room, index, text.replace("Exhaustioned", "exhausted"));
     $("condition-status").textContent = "The table can see this.";
     sync();
   } catch (error) {
@@ -2948,6 +2967,17 @@ function endRages() {
   });
   drawHp();
 }
+// A rage that ended after a Frenzy swing owes a level of exhaustion. The
+// flag and the exhaustion both live on the barbarian's own phone (like
+// conditions), so it settles there however the rage ended: End rage, the
+// DM's End combat, or a rest.
+const FRENZY_KEY = index => "dnd-frenzy:" + room + ":" + index;
+function settleFrenzy(index) {
+  if (isHost || !storage.get(FRENZY_KEY(index)) || readRes(index).raging) return;
+  storage.remove(FRENZY_KEY(index));
+  setCondition("Exhaustion", (activeConditions().Exhaustion ?? 0) + 1);
+  $("condition-status").textContent = "Frenzy's price: one level of exhaustion (a long rest removes one).";
+}
 function writeRes(index, value) {
   saveRes(index, value);
   showOptions();
@@ -3297,6 +3327,7 @@ function fillHp(container, index, options = {}) {
 function drawHp() {
   const available = hpAvailable();
   const me = Number($("character").value);
+  if (state?.party?.[me]) settleFrenzy(me);
   const ready = available && state?.party?.[me];
   $("hp-badge").hidden = !ready || isHost;
   if (!ready) for (const id of ["res-sheet", "res-combat", "res-combat-fold", "rage-badge"]) $(id).hidden = true;
@@ -4155,7 +4186,13 @@ function drawAttack() {
         }));
     } else {
       if (baseAttack.perAction) parts.push(stepText(attackCountText(me, baseAttack), "fineprint attack-count"));
-      const startToHit = () => { spend("hit"); if (baseAttack.perAction) countAttack(me); markUsedOnce(me, baseAttack); };
+      const startToHit = () => {
+        spend("hit");
+        if (baseAttack.perAction) countAttack(me);
+        markUsedOnce(me, baseAttack);
+        // A Frenzy swing makes this rage a frenzy: exhaustion when it ends.
+        if (baseAttack.whileRaging) storage.set(FRENZY_KEY(me), "1");
+      };
       const landToHit = result => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;

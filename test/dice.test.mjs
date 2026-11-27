@@ -590,3 +590,4 @@ test("roll requests: the DM's ask, the bonus from the sheet, and the answer line
   assert.equal(parseRollAsk("🎲 Stealth (d20+9): 17"), null); // an answer is not an ask
   assert.equal(parseRollAsk(rollAskText("Perception")).target, null);
 });
+
