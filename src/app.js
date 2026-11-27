@@ -3359,8 +3359,17 @@ function actionSpent(index) {
   if (per && made && made < attackCap(index, per)) return false; // Action Surge swings
   return actionsUsed(uses) >= 1 + surgesThisTurn(index);
 }
-// Bonus-action attacks still open this turn (Spiritual Weapon, Shadow Slash).
-const bonusAttacksLeft = index => usesThisTurn(index).bonus < 1 ? attacksFor(index).filter(isBonusAction).map(attack => attack.name) : [];
+// Bonus-action attacks still open this turn (Spiritual Weapon, Shadow Slash),
+// leaving out any the card would block: no slot left for a spell that isn't
+// already up, or none of the resource it spends.
+function bonusAttacksLeft(index) {
+  if (usesThisTurn(index).bonus >= 1) return [];
+  const sheet = sheets[partyName(index)];
+  const res = readRes(index);
+  return attacksFor(index).filter(attack => isBonusAction(attack)
+    && (!attack.slot || (attack.lasting && lastingUp.has(index + ":" + attack.name)) || castableLevels(attack, sheet, res).length)
+    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)).map(attack => attack.name);
+}
 const attacksSpent = index => actionSpent(index) && !bonusAttacksLeft(index).length;
 // Why this attack would be one action (or bonus action) too many, or "".
 function turnBlock(index, attack) {
