@@ -675,4 +675,11 @@ test("group roll requests: each character's answer, with pass or fail", async ()
     { character: 2, answered: false }
   ]);
   assert.deepEqual(rollAskResults(actions, "not an ask"), []);
+  // The same request again, to Roan only: the earlier one's answers stay out.
+  const again = [...actions, { id: 9, character: 4, text: ask }, { id: 10, character: 4, text: "🎲 Strength save (DC 14): 8 (d20+1: 7+1) · ✗ under DC 14" }];
+  assert.deepEqual(rollAskResults(again, ask, { after: 8, who: [4] }), [{ character: 4, answered: true, total: 8, pass: false }]);
+  // An attack roll's answer names the weapon.
+  const attack = rollAskText("Attack roll", { kind: "AC", value: 15 });
+  assert.deepEqual(rollAskResults([{ id: 1, character: 2, text: attack }, { id: 2, character: 2, text: "🎲 Attack roll (AC 15) · Greataxe: 18 (d20+9: 9+9) · ✓ meets AC 15" }], attack),
+    [{ character: 2, answered: true, total: 18, pass: true }]);
 });

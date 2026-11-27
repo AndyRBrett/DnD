@@ -1347,8 +1347,9 @@ function drawRollAsks() {
 const LAST_ASK = () => "dnd-last-ask:" + room;
 function drawRollAskResults() {
   const box = $("roll-ask-results");
-  const text = storage.get(LAST_ASK());
-  const results = text ? rollAskResults(state?.actions ?? [], text) : [];
+  const last = readJson(LAST_ASK(), null);
+  const text = typeof last?.text === "string" ? last.text : "";
+  const results = text ? rollAskResults(state?.actions ?? [], text, last) : [];
   box.hidden = !results.length;
   if (!results.length) { box.replaceChildren(); return; }
   const ask = parseRollAsk(text);
@@ -1414,8 +1415,10 @@ $("roll-ask-form").onsubmit = async event => {
   const button = event.submitter;
   button.disabled = true;
   try {
+    // This request only: asks posted after the newest line so far, to these characters.
+    const after = Math.max(0, ...(state?.actions ?? []).map(action => Number(action.id) || 0));
     for (const index of who) await backend.postAction(room, index, text);
-    storage.set(LAST_ASK(), text); // its answers gather below the form
+    storage.set(LAST_ASK(), JSON.stringify({ text, after, who })); // its answers gather below the form
     $("roll-ask-status").textContent = "Asked " + who.map(index => partyName(index).replace(/^The /, "")).join(", ") + ": " + roll + (value ? " (" + (roll === "Attack roll" ? "AC " : "DC ") + value + ")" : "") + ".";
     for (const box of $("roll-ask-who").querySelectorAll("input")) box.checked = false;
     $("roll-ask-note").value = "";

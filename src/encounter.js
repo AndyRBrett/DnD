@@ -89,8 +89,8 @@ export const templates = [
     abilities: "Large. Multiattack: two touches (fire). A creature or flammable object it touches ignites: 1d10 fire at the start of each turn until doused. Fire Form: touching or hitting it in melee deals 1d10 fire. Immune to fire and poison; resists nonmagical weapons." },
   { name: "Flesh Golem", cr: "5", ac: 9, hp: "11d8+44", init: -1, speed: 30, saves: [4, -1, 4, -3, 0, -3], attacks: [["Slam (×2)", 7, "2d8+4"]],
     abilities: "Multiattack: two slams. Berserk below 40 HP (recharge each turn on a 6). Fire makes it flinch (disadvantage until its next turn); lightning heals it. Magic Resistance. Immune to lightning, poison and nonmagical non-adamantine weapons." },
-  { name: "Chimera", routine: [0, 1], cr: "6", ac: 14, hp: "12d10+48", init: 0, speed: 30, saves: [4, 0, 4, -4, 2, 0], attacks: [["Bite", 7, "2d6+4"], ["Horns", 7, "1d12+4"]],
-    abilities: "Large; flies 60 ft. Multiattack: bite, horns and claws (+7, 2d6+4). Fire Breath (recharge 5–6): 15-ft cone, DC 15 Dexterity save, 7d8 fire, half on a save." },
+  { name: "Chimera", routine: [0, 1, 2], cr: "6", ac: 14, hp: "12d10+48", init: 0, speed: 30, saves: [4, 0, 4, -4, 2, 0], attacks: [["Bite", 7, "2d6+4"], ["Horns", 7, "1d12+4"], ["Claws", 7, "2d6+4"]],
+    abilities: "Large; flies 60 ft. Multiattack: bite, horns and claws. Fire Breath (recharge 5–6): 15-ft cone, DC 15 Dexterity save, 7d8 fire, half on a save." },
   { name: "Cyclops", cr: "6", ac: 14, hp: "12d12+60", init: 0, speed: 30, saves: [6, 0, 5, -1, 0, 0], attacks: [["Greatclub (×2)", 9, "3d8+6"], ["Rock", 9, "4d10+6"]],
     abilities: "Huge. Multiattack: two greatclub attacks. Poor Depth Perception: disadvantage on attacks against targets more than 30 ft away. Rock range 30/120 ft." },
   { name: "Frost Giant", cr: "8", ac: 15, hp: "12d12+60", init: -1, speed: 40, saves: [6, -1, 8, -1, 3, 4], attacks: [["Greataxe (×2)", 9, "3d12+6"], ["Rock", 9, "4d10+6"]],
@@ -749,17 +749,28 @@ export function rollAskVerdict(ask, total) {
 // A group request's results: for each character asked (with this exact
 // line), their first answer after it, its total and whether it beat the DC.
 // actions: the story's player lines ({ id, character, text }), oldest first.
-export function rollAskResults(actions, askText) {
+// request (optional): { after, who } for one request: only ask lines after
+// that story id, for those characters, count, so an identical earlier request
+// (or another group) doesn't mix in. An attack roll's answer names the weapon
+// ("🎲 Attack roll (AC 15) · Greataxe: 18").
+export function rollAskResults(actions, askText, request = null) {
   const ask = parseRollAsk(askText);
   if (!ask) return [];
-  const head = "🎲 " + rollAskLabel(ask) + ":";
+  const head = "🎲 " + rollAskLabel(ask);
+  const after = Number(request?.after ?? -Infinity);
+  const who = Array.isArray(request?.who) ? new Set(request.who.map(Number)) : null;
   const results = new Map();
   for (const action of actions ?? []) {
     const text = String(action.text ?? "");
-    if (text === askText) { results.set(action.character, { character: action.character, answered: false }); continue; }
+    if (text === askText) {
+      if (Number(action.id) > after && (!who || who.has(Number(action.character)))) results.set(action.character, { character: action.character, answered: false });
+      continue;
+    }
     const entry = results.get(action.character);
     if (!entry || entry.answered || !text.startsWith(head)) continue;
-    const total = Number(text.slice(head.length).match(/-?\d+/)?.[0]);
+    const rest = text.slice(head.length);
+    if (!rest.startsWith(":") && !rest.startsWith(" · ")) continue; // another roll that starts the same way
+    const total = Number(rest.slice(rest.indexOf(":") + 1).match(/-?\d+/)?.[0]);
     Object.assign(entry, { answered: true, total: Number.isFinite(total) ? total : null,
       pass: /✓ meets/u.test(text) ? true : /✗ under/u.test(text) ? false : null });
   }
