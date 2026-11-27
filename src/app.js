@@ -5384,6 +5384,9 @@ function boardFlash(text, kind = "") {
     const flash = board.flashes.shift();
     if (!flash) { board.flashing = false; $("board-flash").hidden = true; return; }
     board.flashing = true;
+    // Hidden for a frame, so each queued flash replays its animation.
+    $("board-flash").hidden = true;
+    void $("board-flash").offsetWidth;
     $("board-flash").className = "board-flash" + (flash.kind ? " is-" + flash.kind : "");
     $("board-flash-text").textContent = flash.text;
     $("board-flash").hidden = false;
@@ -5429,12 +5432,21 @@ function drawBoard() {
   // Moments since the DM's latest post: an attack's call is folded into its
   // hit, an answered roll request into its roll.
   const actions = (state.actions ?? []).filter(action => !latest || action.created >= latest.created)
-    .map(action => ({ id: "a" + action.id, at: action.created, moment: boardMoment(action.name, action.text) }))
+    .map(action => ({ id: "a" + action.id, at: action.created, name: action.name, raw: String(action.text), moment: boardMoment(action.name, action.text) }))
     .filter(entry => entry.moment);
+  // A roll request closes when its own answer arrives: the same label from
+  // the same character, one answer per check or save (as on their phone).
+  const answeredAsks = new Set();
+  for (const answer of actions.filter(entry => entry.moment.kind === "roll")) {
+    const open = actions.find(entry => entry.moment.kind === "ask" && entry.name === answer.name && Number(entry.id.slice(1)) < Number(answer.id.slice(1))
+      && (parseRollAsk(entry.raw)?.kind === "attack" || !answeredAsks.has(entry.id))
+      && answer.raw.startsWith("🎲 " + rollAskLabel(parseRollAsk(entry.raw))));
+    if (open) answeredAsks.add(open.id);
+  }
   const shown = actions.filter((entry, index) => {
     const later = actions.slice(index + 1);
     if (entry.moment.kind === "call") return !later.some(next => next.moment.kind === "hit" && next.moment.who === entry.moment.who && next.moment.enemy === entry.moment.enemy);
-    if (entry.moment.kind === "ask") return !later.some(next => next.moment.kind === "roll" && next.moment.who === entry.moment.who);
+    if (entry.moment.kind === "ask") return !answeredAsks.has(entry.id);
     return true;
   }).slice(-4);
   renderInto($("board-moments"), shown.map(momentCard));

@@ -626,7 +626,7 @@ body.board-combat .board-previously{display:none}
 @keyframes flash-in{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @keyframes flash-word{from{transform:scale(1.25);letter-spacing:.2em}to{transform:none}}
 .board-flash p{animation:flash-word .8s ease-out}
-@media (max-width:900px){.board-moments{grid-template-columns:repeat(2,minmax(0,1fr))}.board-party{flex-wrap:wrap}.board-top{flex-wrap:wrap;padding-right:110px}.board-round{padding-right:0}.board-track{order:3;flex-basis:100%}.board{overflow:auto;height:auto;min-height:100vh}}
+@media (max-width:900px){.board-moments{grid-template-columns:repeat(2,minmax(0,1fr))}.board-party{flex-wrap:wrap}.board-top{flex-wrap:wrap;padding-right:110px}.board-round{padding-right:0}.board-track{order:3;flex-basis:100%}body.board-mode{overflow:auto}.board{overflow:visible;height:auto;min-height:100vh}}
 @media (prefers-reduced-motion:reduce){.board-atmos{display:none}.board-scene,.board-scene.is-in{animation:none;opacity:1;transform:none}.moment.is-new,.moment.is-ask,.board-flash,.board-flash p{animation:none}}
 /* Quiet on a TV, but always there: the board hides every other control. */
 /* The story so far: earlier posts in order, newest last, fading out at the
