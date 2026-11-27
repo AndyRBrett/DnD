@@ -1920,7 +1920,13 @@ function drawTurnGuide() {
     const cap = per ? attackCap(me, per) : 0;
     text = per && made < cap
       ? "You get " + (cap - made) + " more attack" + (cap - made === 1 ? "" : "s") + ": tap Next attack on the card. Or end your turn."
+      : attacksSpent(me) ? "That's your attacks for this turn. End your turn so the next player goes."
       : "Done? End your turn so the next player goes.";
+    $("combat-end-turn").classList.add("is-next");
+  } else if (attackFlow.step === "ready" && attacksSpent(me)) {
+    // Back on a fresh Attack card with the action already used.
+    step = 3;
+    text = "You've used your action this turn. End your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
@@ -3339,6 +3345,19 @@ function markUsedOnce(index, attack) {
   }
   turnUses.set(index, uses);
 }
+// Nothing left to attack with this turn: the action (and any Action Surge) is
+// spent, the Attack action has no swings left, and no bonus-action attack is
+// waiting. Moving on then means ending the turn.
+function attacksSpent(index) {
+  if (!turnsRunning() || state?.combat?.turn !== "pc:" + index) return false;
+  const uses = usesThisTurn(index);
+  if (uses.bonus < 1 && attacksFor(index).some(isBonusAction)) return false;
+  const per = attacksFor(index).find(attack => attack.perAction)?.perAction ?? 0;
+  const made = attacksThisTurn(index);
+  if (per && made % per !== 0) return false; // swings left in this Attack action
+  if (per && made && made < attackCap(index, per)) return false; // Action Surge swings
+  return actionsUsed(uses) >= 1 + surgesThisTurn(index);
+}
 // Why this attack would be one action (or bonus action) too many, or "".
 function turnBlock(index, attack) {
   if (!turnsRunning() || attack.free) return "";
@@ -3720,10 +3739,7 @@ function drawAttack() {
   // bonus-action attack is waiting): moving on means ending the turn, so the
   // button takes the player back up to the turn card instead of offering a
   // free swing.
-  const uses = usesThisTurn(me);
-  const bonusLeft = uses.bonus < 1 && attacksFor(me).some(isBonusAction);
-  const turnDone = turnsRunning() && state?.combat?.turn === "pc:" + me && !bonusLeft
-    && (actionDone || (!baseAttack.perAction && !isBonusAction(baseAttack) && !baseAttack.free && actionsUsed(uses) >= 1 + surgesThisTurn(me)));
+  const turnDone = attacksSpent(me);
   // The card stays on this attack's result, so the turn guide up top keeps
   // pointing at End my turn.
   const next = turnDone ? stepButton("Done attacking: end your turn ▲", "quiet", () => {
