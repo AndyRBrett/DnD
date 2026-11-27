@@ -396,6 +396,9 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .dm-idea{border-left:3px solid var(--gold);padding:4px 0 4px 12px}
 .dm-idea p{margin:4px 0}
 .dm-idea blockquote{margin:6px 0;color:var(--muted2);font-style:italic}
+.scene-to{align-items:center;margin:8px 0 4px}
+.scene-to .chip.is-on{background:var(--gold);color:var(--on-accent);border-color:var(--gold)}
+.scene-to-note{color:var(--gold);margin:0 0 6px}
 .quick-enemy{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:10px 0 0}
 .quick-enemy label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted2)}
 .quick-enemy-pick{flex:1 1 200px;min-width:0}

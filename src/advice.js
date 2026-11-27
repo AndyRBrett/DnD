@@ -46,6 +46,7 @@ export const adviceSystem = [
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM, ideally one that would clarify the bigger picture or the immediate options.",
   "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context.",
+  "An update starting \"🔒 To:\" was told only to the characters it names (the party is split up). Those characters know it; the others are elsewhere and don't, unless they've regrouped.",
   "Player actions are what the players said their characters are doing; the DM has not necessarily resolved them. Build on what this character already declared instead of repeating it, and account for what the others are doing.",
   "The campaign history is the group's own notes and may mention stats or abilities; those never count as available unless the character's sheet lists them as READY."
 ].join("\n");
@@ -77,6 +78,16 @@ export function sheetText(character) {
   ].join("\n\n");
 }
 
+// "🔒 To: The White Wizard" on an update's first line: only those characters
+// heard it (the app's split-party updates; src/encounter.js reads the same).
+export function sceneHeardBy(text, name) {
+  const value = String(text ?? "");
+  if (!value.startsWith("🔒 To: ")) return true;
+  const plain = entry => String(entry ?? "").trim().toLowerCase().replace(/^the\s+/, "");
+  const end = value.indexOf("\n");
+  return value.slice("🔒 To: ".length, end < 0 ? undefined : end).split(",").some(entry => plain(entry) === plain(name));
+}
+
 // Keeps the most recent updates that fit, oldest first, so a long session
 // still sends hours of narration.
 export const SESSION_CHARS = 30000;
@@ -100,8 +111,10 @@ export function sessionWindow(scenes) {
 // table (optional): a short TABLE STATE snapshot from the player's phone.
 export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "", table = "") {
   const session = sessionWindow(scenes);
-  const latest = session.at(-1);
-  const earlier = session.slice(0, -1);
+  // A split party: the latest update is the newest one this character heard
+  // (one starting "🔒 To:" went only to the characters it names).
+  const latest = [...session].reverse().find(scene => sceneHeardBy(scene.text, character.name)) ?? session.at(-1);
+  const earlier = session.filter(scene => scene !== latest);
   const latestAt = Number(latest?.created ?? Infinity);
   const firstAt = Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity);
   const timeline = [

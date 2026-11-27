@@ -829,3 +829,31 @@ export function boardMoment(name, text) {
   if (/^(😤|✨|⚡|🧠|🥵|is |has |🛌|💤)/u.test(raw) || /^is no longer /.test(raw)) return { kind: "status", who, text: raw.replace(/\s*[\p{Extended_Pictographic}\u{FE0F}]+\s*$/u, "") };
   return chronicleLine(name, text);
 }
+
+// ── Split-party scenes ───────────────────────────────────────────────────
+// A DM update for part of the party starts with "🔒 To: The White Wizard"
+// (names comma-separated) on its own line. It needs no new storage, reads
+// plainly in the campaign history and to Claude, and each phone shows the
+// newest update meant for its character (or for everyone) as its scene.
+export const AUDIENCE_PREFIX = "🔒 To: ";
+const plainName = name => String(name ?? "").trim().toLowerCase().replace(/^the\s+/, "");
+export function sceneAudience(text) {
+  const value = String(text ?? "");
+  if (!value.startsWith(AUDIENCE_PREFIX)) return null;
+  const end = value.indexOf("\n");
+  const names = value.slice(AUDIENCE_PREFIX.length, end < 0 ? undefined : end).split(",").map(name => name.trim()).filter(Boolean);
+  return names.length ? { names, body: end < 0 ? "" : value.slice(end + 1).trim() } : null;
+}
+export function addressScene(text, names) {
+  const body = String(sceneAudience(text)?.body ?? text).trim();
+  return names?.length ? AUDIENCE_PREFIX + names.join(", ") + "\n" + body : body;
+}
+export const sceneIsFor = (scene, name) => {
+  const audience = sceneAudience(scene?.text);
+  return !audience || audience.names.some(entry => plainName(entry) === plainName(name));
+};
+// The newest scene this character should see; null if none yet.
+export function sceneFor(scenes, name) {
+  for (let index = (scenes ?? []).length - 1; index >= 0; index--) if (sceneIsFor(scenes[index], name)) return scenes[index];
+  return null;
+}

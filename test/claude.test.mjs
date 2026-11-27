@@ -253,3 +253,20 @@ test("the DM assistant answers with ideas and lines to read out", async () => {
   assert.ok(requests.at(-1).body.system.includes("Dungeon Master"));
   assert.deepEqual(requests.at(-1).body.output_config.format.schema.required, ["answer", "ideas"]);
 });
+
+test("a split party: Claude's latest update is the one this character heard", async () => {
+  const { claudeRequest, sceneHeardBy } = await import("../src/advice.js");
+  const scenes = [
+    { text: "The door booms shut.", created: 1 },
+    { text: "🔒 To: The White Wizard\nThe wheel spins for you alone.", created: 2 },
+    { text: "🔒 To: Logan Ninefingers, Dum Dum\nRakes come down in the corridor.", created: 3 }
+  ];
+  const text = request => JSON.parse(request.body).messages[0].content.map(block => block.text).join("\n");
+  const wizard = text(claudeRequest("k", { name: "The White Wizard", moves: "" }, scenes));
+  assert.match(wizard, /LATEST DM UPDATE:\n🔒 To: The White Wizard\nThe wheel spins/);
+  assert.ok(wizard.includes("Rakes come down"), "the other group's update stays in the session, labeled");
+  assert.match(text(claudeRequest("k", { name: "Logan Ninefingers", moves: "" }, scenes)), /LATEST DM UPDATE:\n🔒 To: Logan Ninefingers, Dum Dum/);
+  assert.equal(sceneHeardBy("🔒 To: White Wizard\nx", "The White Wizard"), true);
+  assert.equal(sceneHeardBy("🔒 To: Dum Dum\nx", "Arcturus"), false);
+  assert.equal(sceneHeardBy("Everyone.", "Arcturus"), true);
+});

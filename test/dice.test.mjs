@@ -683,3 +683,19 @@ test("group roll requests: each character's answer, with pass or fail", async ()
   assert.deepEqual(rollAskResults([{ id: 1, character: 2, text: attack }, { id: 2, character: 2, text: "🎲 Attack roll (AC 15) · Greataxe: 18 (d20+9: 9+9) · ✓ meets AC 15" }], attack),
     [{ character: 2, answered: true, total: 18, pass: true }]);
 });
+
+test("split-party scenes: an update for some characters, and each phone's current scene", async () => {
+  const { sceneAudience, addressScene, sceneFor, sceneIsFor } = await import("../src/encounter.js");
+  const vault = addressScene("The wheel spins.", ["The White Wizard"]);
+  assert.equal(vault, "🔒 To: The White Wizard\nThe wheel spins.");
+  assert.deepEqual(sceneAudience(vault), { names: ["The White Wizard"], body: "The wheel spins." });
+  assert.equal(sceneAudience("Everyone hears it."), null);
+  assert.equal(addressScene(vault, ["Roan the Last Shadow", "Dum Dum"]), "🔒 To: Roan the Last Shadow, Dum Dum\nThe wheel spins.", "re-addressing replaces the line");
+  assert.equal(addressScene(vault, []), "The wheel spins.", "to everyone: the line goes");
+  const scenes = [{ id: 1, text: "The door booms shut." }, { id: 2, text: vault }, { id: 3, text: addressScene("Rakes come down.", ["Roan the Last Shadow", "Dum Dum", "Logan Ninefingers", "Arcturus"]) }];
+  assert.equal(sceneFor(scenes, "The White Wizard").id, 2);
+  assert.equal(sceneFor(scenes, "White Wizard").id, 2, "\"The\" is optional");
+  assert.equal(sceneFor(scenes, "Logan Ninefingers").id, 3);
+  assert.equal(sceneFor([{ id: 1, text: vault }], "Logan Ninefingers"), null);
+  assert.equal(sceneIsFor(scenes[0], "anyone"), true);
+});
