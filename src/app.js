@@ -1530,13 +1530,35 @@ async function setCondition(name, level) {
   drawConditions();
   const character = selectedCharacter();
   if (!character || !backend.postAction || !Array.isArray(state?.actions) || ended) return;
+  // Stepping exhaustion (1 → 2 → 3, or back) posts one line once the taps
+  // stop, with where it ended up.
+  const index = Number($("character").value);
+  if (name === "Exhaustion" && before && level) {
+    // Kept per character, so stepping one and then another on a shared phone
+    // posts both.
+    const pending = exhaustionPosts.get(key) ?? { timer: 0, from: before };
+    clearTimeout(pending.timer);
+    exhaustionPosts.set(key, pending);
+    pending.timer = setTimeout(() => {
+      const from = pending.from;
+      exhaustionPosts.delete(key);
+      const now = readJson(key, {}).Exhaustion ?? 0;
+      if (now && now !== from) postCondition(name, now, from, key, index);
+    }, 1500);
+    $("condition-status").textContent = "";
+    return;
+  }
+  await postCondition(name, level, before, key, index);
+}
+const exhaustionPosts = new Map(); // condition key → { timer, from }
+async function postCondition(name, level, before, key, index) {
   const { icon } = conditionByName[name];
   const text = !level ? "is no longer " + name + (name === "Exhaustion" ? "ed" : "")
     : name === "Exhaustion" ? "has Exhaustion level " + level + " " + icon
     : name === "Concentrating" ? "is concentrating on a spell " + icon
     : "is " + name + " " + icon;
   try {
-    await backend.postAction(room, Number($("character").value), text.replace("Exhaustioned", "exhausted"));
+    await backend.postAction(room, index, text.replace("Exhaustioned", "exhausted"));
     $("condition-status").textContent = "The table can see this.";
     sync();
   } catch (error) {
@@ -2948,6 +2970,17 @@ function endRages() {
   });
   drawHp();
 }
+// A rage that ended after a Frenzy swing owes a level of exhaustion. The
+// flag and the exhaustion both live on the barbarian's own phone (like
+// conditions), so it settles there however the rage ended: End rage, the
+// DM's End combat, or a rest.
+const FRENZY_KEY = index => "dnd-frenzy:" + room + ":" + index;
+function settleFrenzy(index) {
+  if (isHost || !storage.get(FRENZY_KEY(index)) || readRes(index).raging) return;
+  storage.remove(FRENZY_KEY(index));
+  setCondition("Exhaustion", (activeConditions().Exhaustion ?? 0) + 1);
+  $("condition-status").textContent = "Frenzy's price: one level of exhaustion (a long rest removes one).";
+}
 function writeRes(index, value) {
   saveRes(index, value);
   showOptions();
@@ -3297,6 +3330,7 @@ function fillHp(container, index, options = {}) {
 function drawHp() {
   const available = hpAvailable();
   const me = Number($("character").value);
+  if (state?.party?.[me]) settleFrenzy(me);
   const ready = available && state?.party?.[me];
   $("hp-badge").hidden = !ready || isHost;
   if (!ready) for (const id of ["res-sheet", "res-combat", "res-combat-fold", "rage-badge"]) $(id).hidden = true;
@@ -4155,7 +4189,13 @@ function drawAttack() {
         }));
     } else {
       if (baseAttack.perAction) parts.push(stepText(attackCountText(me, baseAttack), "fineprint attack-count"));
-      const startToHit = () => { spend("hit"); if (baseAttack.perAction) countAttack(me); markUsedOnce(me, baseAttack); };
+      const startToHit = () => {
+        spend("hit");
+        if (baseAttack.perAction) countAttack(me);
+        markUsedOnce(me, baseAttack);
+        // A Frenzy swing makes this rage a frenzy: exhaustion when it ends.
+        if (baseAttack.whileRaging) storage.set(FRENZY_KEY(me), "1");
+      };
       const landToHit = result => {
           attackFlow.toHit = result;
           attackFlow.crit = result.critical;
@@ -4439,11 +4479,15 @@ function drawHitInbox() {
     }
     // The enemy's notes say it resists something (a swarm, a golem): one tap
     // for half, with the note right there so the DM can check the damage type.
-    const resists = !report.halfOnSave && target ? String(target.abilities ?? "").match(/[^.;]*\bresist[^.;]*/i)?.[0].trim() : "";
-    if (resists) {
+    const resists = target ? String(target.abilities ?? "").match(/[^.;]*\bresist[^.;]*/i)?.[0].trim() ?? "" : "";
+    // The hit's damage type, from the attacker's sheet ("Shadow Slash (E)" is
+    // slashing): when the note names it, the resistance is certain.
+    const damageType = attacksFor(state.party.findIndex(character => character.name === action.name)).find(attack => how.startsWith(attack.name))?.type ?? "";
+    const resisted = Boolean(resists && damageType && new RegExp("\\b" + damageType + "\\b", "i").test(resists));
+    if (resists && (!report.save || report.save.rider)) {
       const half = document.createElement("button");
       half.type = "button";
-      half.className = "ghost";
+      half.className = resisted ? "cta" : "ghost";
       half.textContent = "Resists: " + Math.floor(report.amount / 2);
       half.title = resists;
       half.disabled = !target || needsPick;
@@ -4457,22 +4501,23 @@ function drawHitInbox() {
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "cta";
-      saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")";
+      saveButton.textContent = "Roll " + report.save.ability + " save (" + (bonus >= 0 ? "+" : "") + bonus + ")" + (resisted ? " · resists " + damageType : "");
       saveButton.onclick = () => {
         if (report.save.rider) {
           // A maneuver: the damage lands either way; the save decides the effect.
           const outcome = enemySave(target, { ...report.save, amount: report.amount, half: false });
           const effect = report.save.effect || "the effect";
-          hitEnemy(report.amount, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
+          hitEnemy(resisted ? Math.floor(report.amount / 2) : report.amount, (resisted ? " (resists " + damageType + ")" : "") + " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
             + (outcome.saved ? "saved, no " + effect : "failed, " + effect) + ")");
           $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
-            + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + report.amount + " damage applied.";
+            + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + (resisted ? Math.floor(report.amount / 2) + " damage applied (resists " + damageType + ")." : report.amount + " damage applied.");
           return;
         }
         const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
-        hitEnemy(outcome.damage, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + ")");
+        const dealt = resisted ? Math.floor(outcome.damage / 2) : outcome.damage; // resistance halves after the save
+        hitEnemy(dealt, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": " + (outcome.saved ? "saved" : "failed") + (resisted ? ", resists " + damageType : "") + ")");
         $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
-          + (outcome.saved ? "saved, " : "failed, ") + outcome.damage + " damage applied.";
+          + (outcome.saved ? "saved, " : "failed, ") + dealt + " damage applied" + (resisted ? " (resists " + damageType + ")" : "") + ".";
       };
       buttons.prepend(saveButton);
     }
