@@ -1083,14 +1083,41 @@ function renderStory(force = false) {
 const canEditStory = entry => !ended && (entry.kind === "scene"
   ? isHost
   : Boolean(backend.editAction) && (isHost || entry.mine));
+// Long posts in the story lists fold to a preview with "See more"; the
+// choice is kept across the table's refreshes.
+const STORY_PREVIEW = 280;
+const HISTORY_STEP = 10;
+let historyPage = HISTORY_STEP; // how many Earlier updates are listed
+const openStory = new Set(); // "<kind>:<id>" shown in full
 function storyItem(entry) {
   const item = document.createElement("li");
-  item.dataset.story = entry.kind + ":" + entry.id;
+  const key = entry.kind + ":" + entry.id;
+  item.dataset.story = key;
   if (entry.kind === "action") item.className = "player-action";
   const text = document.createElement("span");
   text.className = "story-text";
-  text.textContent = entry.kind === "action" ? entry.name + ": " + entry.text : entry.text;
-  item.append(text);
+  const full = entry.kind === "action" ? entry.name + ": " + entry.text : entry.text;
+  const body = document.createElement("div");
+  body.className = "story-body";
+  body.append(text);
+  item.append(body);
+  if (full.length > STORY_PREVIEW + 40) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "link see-more";
+    const show = () => {
+      const open = openStory.has(key);
+      const cut = full.slice(0, STORY_PREVIEW);
+      text.textContent = open ? full : cut.slice(0, cut.lastIndexOf(" ") > 200 ? cut.lastIndexOf(" ") : STORY_PREVIEW) + "…";
+      more.textContent = open ? "See less" : "See more";
+      more.setAttribute("aria-expanded", String(open));
+    };
+    more.onclick = () => { if (openStory.has(key)) openStory.delete(key); else openStory.add(key); show(); };
+    show();
+    body.append(more);
+  } else {
+    text.textContent = full;
+  }
   if (canEditStory(entry)) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1206,7 +1233,7 @@ function drawStory() {
       const tag = document.createElement("small");
       tag.className = "held-over-tag";
       tag.textContent = "posted while you were writing";
-      item.querySelector(".story-text").append(" ", tag);
+      item.querySelector(".story-text").after(tag);
     }
     return item;
   }));
@@ -1221,7 +1248,24 @@ function drawStory() {
   const shown = Math.max(0, 3 - since.length);
   $("recent-earlier").replaceChildren(...earlier.slice(0, shown).map(storyItem));
   $("recent-wrap").hidden = !shown || !earlier.length;
-  $("history").replaceChildren(...earlier.slice(shown).map(storyItem));
+  // Earlier updates come in pages, newest first, so a long session isn't
+  // one endless list.
+  const older = earlier.slice(shown);
+  const page = older.slice(0, historyPage);
+  const rest = older.length - page.length;
+  const items = page.map(storyItem);
+  if (rest > 0) {
+    const item = document.createElement("li");
+    item.className = "history-more";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.textContent = "Show " + Math.min(rest, HISTORY_STEP) + " more (" + rest + " earlier)";
+    button.onclick = () => { historyPage += HISTORY_STEP; renderStory(true); };
+    item.append(button);
+    items.push(item);
+  }
+  $("history").replaceChildren(...items);
   $("history").closest("details").hidden = earlier.length <= shown;
 }
 
