@@ -98,31 +98,21 @@
     <!-- ── Table ── -->
     <!-- TV board (?room=…&board=1): read-only, big text, for a screen the whole table can see -->
     <section id="board" class="board" hidden>
-      <div class="board-left">
-      <div class="board-main">
-        <p class="eyebrow red">THE ONYX JEWEL · THE STORY SO FAR</p>
+      <div class="board-atmos" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <header class="board-top">
+        <p class="board-title">THE ONYX JEWEL</p>
+        <div id="board-track" class="board-track" hidden aria-label="Turn order"></div>
+        <p id="board-round" class="board-round" hidden></p>
+      </header>
+      <div class="board-stage">
+        <p id="board-turn" class="board-turn" hidden></p>
         <p id="board-previously" class="board-previously" hidden></p>
-        <ol id="board-chronicle" class="board-chronicle" aria-label="What happened before this"></ol>
-        <p class="eyebrow red board-now">NOW</p>
-        <p id="board-scene" class="board-scene" aria-live="polite">Waiting for the DM.</p>
-        <div id="board-actions-wrap" hidden>
-          <p class="eyebrow">SINCE THEN</p>
-          <ol id="board-actions" class="board-actions"></ol>
-        </div>
+        <blockquote id="board-scene" class="board-scene" aria-live="polite">Waiting for the DM.</blockquote>
+        <div id="board-pages" class="board-pages" aria-hidden="true"></div>
       </div>
-      </div>
-      <div class="board-side">
-        <div id="board-combat" class="board-panel" hidden>
-          <p class="eyebrow red">COMBAT · ROUND <span id="board-round">1</span></p>
-          <h2 id="board-turn" class="display"></h2>
-          <p id="board-next" class="board-next"></p>
-          <ol id="board-order" class="board-order"></ol>
-        </div>
-        <div id="board-party-panel" class="board-panel">
-          <p class="eyebrow">THE PARTY</p>
-          <ul id="board-party" class="board-party"></ul>
-        </div>
-      </div>
+      <ol id="board-moments" class="board-moments" aria-label="What's happened since"></ol>
+      <ul id="board-party" class="board-party" aria-label="The party"></ul>
+      <div id="board-flash" class="board-flash" hidden aria-live="assertive"><p id="board-flash-text"></p></div>
     </section>
 
     <div id="table" hidden>

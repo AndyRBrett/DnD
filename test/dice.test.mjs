@@ -591,3 +591,20 @@ test("roll requests: the DM's ask, the bonus from the sheet, and the answer line
   assert.equal(parseRollAsk(rollAskText("Perception")).target, null);
 });
 
+
+test("TV board: the scene in screen-sized passages, and story lines as moments", async () => {
+  const { scenePassages, boardMoment } = await import("../src/encounter.js");
+  assert.deepEqual(scenePassages("One.\n\nTwo."), ["One.", "Two."]);
+  const long = "The wheel spins. ".repeat(40).trim();
+  const passages = scenePassages(long);
+  assert.ok(passages.length > 1 && passages.every(passage => passage.length <= 320), "long paragraphs split");
+  assert.ok(scenePassages("word ".repeat(200)).every(passage => passage.length <= 320), "a run-on breaks between words");
+  assert.deepEqual(scenePassages(""), [""]);
+  const roll = boardMoment("Dum Dum", "🎲 Dexterity check (DC 12): 17 (d20: 16 + 1) · ✓ meets DC 12");
+  assert.deepEqual([roll.kind, roll.text, roll.total, roll.verdict], ["roll", "Dexterity check", 17, "success"]);
+  assert.equal(boardMoment("Roan the Last Shadow", "🎲 Attack roll (AC 12) · Razor Shuriken (Q): 29 (d20: 20 + 9) · ✓ meets AC 12").natural, 20);
+  assert.equal(boardMoment("Roan", "🎲 DM asks: Attack roll, AC 12 — cut the straps").kind, "ask");
+  assert.equal(boardMoment("The White Wizard", "💚 heals Dum Dum for 8 HP (Cure Wounds)").text, "heals Dum Dum for 8 HP");
+  assert.equal(boardMoment("Logan Ninefingers", "has Exhaustion level 1 🥵").text, "has Exhaustion level 1");
+  assert.equal(boardMoment("Logan Ninefingers", "🎯 attacks Bandit — with Greataxe, 14 to hit · ✗ DM: miss").kind, "miss");
+});

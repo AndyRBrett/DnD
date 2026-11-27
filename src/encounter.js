@@ -659,3 +659,41 @@ export function rollAskBonus(ask, sheet) {
   }
   return null;
 }
+
+// ── TV board ─────────────────────────────────────────────────────────────
+// The DM's post in screen-sized passages, read like captions: paragraphs,
+// with a long one split at sentence ends so no passage runs off the screen.
+export function scenePassages(text, max = 320) {
+  const passages = [];
+  for (const paragraph of String(text ?? "").split(/\n\s*\n|\n/).map(part => part.trim()).filter(Boolean)) {
+    if (paragraph.length <= max) { passages.push(paragraph); continue; }
+    let current = "";
+    const sentences = (paragraph.match(/[^.!?]+[.!?]+["”’)]*\s*|[^.!?]+$/g) ?? [paragraph])
+      // A sentence longer than a passage breaks between words.
+      .flatMap(sentence => sentence.length <= max ? [sentence] : sentence.match(new RegExp(".{1," + max + "}(\\s|$)", "g")) ?? [sentence]);
+    for (const sentence of sentences) {
+      if (current && (current + sentence).length > max) { passages.push(current.trim()); current = ""; }
+      current += sentence;
+    }
+    if (current.trim()) passages.push(current.trim());
+  }
+  return passages.length ? passages : [""];
+}
+// One story line as a moment on the board: what a spectator wants to see
+// ("Roan · Dexterity check · 24 ✓"), not the bookkeeping behind it.
+export function boardMoment(name, text) {
+  const who = String(name ?? "").replace(/^The /, "");
+  const raw = String(text ?? "");
+  const ask = raw.match(/^🎲 DM asks: (.+?)(?:, (DC|AC) (\d+))?(?: — (.+))?$/u);
+  if (ask) return { kind: "ask", who, text: ask[1] + (ask[2] ? " · " + ask[2] + " " + ask[3] : ""), note: ask[4] ?? "" };
+  const roll = raw.match(/^🎲 (.+?): (\d+) \((.*?)\)(?: · (✓|✗) (?:meets|under) (DC|AC) (\d+))?$/u);
+  if (roll) {
+    const label = roll[1].replace(/ \((?:DC|AC) \d+\)/, "").replace(/ \(d\d+[^)]*\)$/, "").replace(/^Attack roll · /, "");
+    return { kind: "roll", who, text: label, total: Number(roll[2]), natural: /d20: 20\b/.test(roll[3]) ? 20 : /d20: 1\b/.test(roll[3]) ? 1 : null,
+      verdict: roll[4] === "✓" ? "success" : roll[4] === "✗" ? "fail" : null };
+  }
+  const heal = raw.match(/^💚 (?:regains (\d+) HP|heals (.+?) for (\d+) HP) \((.+)\)$/u);
+  if (heal) return { kind: "heal", who, text: heal[1] ? "regains " + heal[1] + " HP" : "heals " + heal[2].replace(/^The /, "") + " for " + heal[3] + " HP", note: heal[4] };
+  if (/^(😤|✨|⚡|🧠|🥵|is |has |🛌|💤)/u.test(raw) || /^is no longer /.test(raw)) return { kind: "status", who, text: raw.replace(/\s*[\p{Extended_Pictographic}\u{FE0F}]+\s*$/u, "") };
+  return chronicleLine(name, text);
+}
