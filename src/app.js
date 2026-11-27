@@ -4,7 +4,7 @@ import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./s
 // opening line out of view.
 const PRACTICE_MARK = "PRACTICE TABLE";
 import { backend, storage } from "./backend.js";
-import { organizeSheet, basics, conditions, sectionMeaning } from "./rules.js";
+import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
 import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter } from "./encounter.js";
@@ -2874,6 +2874,7 @@ function resourcesWidget(index) {
           start.onclick = () => {
             const next = { ...spendResource(sheet, readRes(index), resource.name), raging: true };
             writeRes(index, next);
+            markTurnUse(index, "Rage", "bonus");
             tellTable(index, "😤 starts raging (" + resourceLeft(sheet, next, resource.name) + " of " + resource.max + " rages left)");
           };
           rage.append(start);
@@ -2966,6 +2967,8 @@ function healingBlock(index, sheet, res) {
     button.onclick = () => {
       const who = Number(target.value);
       openDice(dice, entry.name, total => {
+        // Healing Word and Second Wind take the bonus action; a potion, the action.
+        markTurnUse(index, entry.name, /bonus action/i.test(entry.note ?? "") ? "bonus" : /\baction\b/i.test(entry.note ?? "") ? "action" : "", Boolean(entry.slot));
         heal(who, total, entry.name, entry.slot ? slotKey(level) : entry.spends ?? null);
         setTimeout(closeDice, 1200);
       });
@@ -3317,6 +3320,7 @@ let typedToHit = null;
 // Spells that stay up once cast (Spiritual Weapon): which ones this phone has
 // cast in the current fight, and at what level, so later attacks spend no slot.
 const lastingUp = new Map();
+const lastingCast = new Map(); // "<index>:<name>" → the turn it was cast
 // Weapon attacks made this turn, per character, so the card can say "1 more
 // attack in this Attack action" (Extra Attack is easy to forget).
 const attacksMade = new Map();
@@ -3344,7 +3348,7 @@ const turnUses = new Map(); // index → { tag, spells, attackActions, bonus, la
 const isBonusAction = attack => /bonus action/i.test(attack.note ?? "");
 function usesThisTurn(index) {
   const entry = turnUses.get(index);
-  return entry && entry.tag === turnTag() ? entry : { tag: turnTag(), spells: 0, attackActions: 0, bonus: 0, last: "", lastBonus: "" };
+  return entry && entry.tag === turnTag() ? entry : { tag: turnTag(), spells: 0, attackActions: 0, bonus: 0, last: "", lastBonus: "", actionSpell: "", bonusSpell: "" };
 }
 const actionsUsed = uses => uses.spells + uses.attackActions;
 function markUsedOnce(index, attack) {
@@ -3355,10 +3359,33 @@ function markUsedOnce(index, attack) {
     const actions = Math.ceil(attacksThisTurn(index) / attack.perAction);
     if (actions > uses.attackActions) Object.assign(uses, { attackActions: actions, last: "the Attack action" });
   } else if (isBonusAction(attack)) {
-    Object.assign(uses, { bonus: uses.bonus + 1, lastBonus: attack.name });
+    Object.assign(uses, { bonus: uses.bonus + 1, lastBonus: attack.name, bonusSpell: uses.bonusSpell || (castsSpell(index, attack) ? attack.name : "") });
   } else {
-    Object.assign(uses, { spells: uses.spells + 1, last: attack.name });
+    Object.assign(uses, { spells: uses.spells + 1, last: attack.name, actionSpell: uses.actionSpell || (castsSpell(index, attack) ? attack.name : "") });
   }
+  turnUses.set(index, uses);
+}
+// A leveled spell cast this turn (a Spiritual Weapon already up from an
+// earlier turn only attacks; casting it is what counts).
+function castsSpell(index, attack) {
+  if (!attack.slot) return false;
+  if (!attack.lasting) return true;
+  const key = index + ":" + attack.name;
+  return !lastingUp.has(key) || lastingCast.get(key) === turnTag();
+}
+// What a feature costs on your turn, from its rule's header ("Bonus action",
+// "Action"): Rage, Living Shadow, Healing Word, Hunter's Mark, Turn Undead…
+function featureCost(name) {
+  const meta = lookupRule(name)?.meta ?? "";
+  return /\bbonus action\b/i.test(meta) ? "bonus" : /(^|·)\s*Action\b/.test(meta) ? "action" : "";
+}
+// Count a non-attack use of the action or bonus action on your own turn, so
+// the Attack card and the turn guide know it's gone.
+function markTurnUse(index, name, kind, leveled = false) {
+  if (!kind || !turnsRunning() || state?.combat?.turn !== "pc:" + index) return;
+  const uses = { ...usesThisTurn(index) };
+  if (kind === "bonus") Object.assign(uses, { bonus: uses.bonus + 1, lastBonus: name, bonusSpell: uses.bonusSpell || (leveled ? name : "") });
+  else Object.assign(uses, { spells: uses.spells + 1, last: name, actionSpell: uses.actionSpell || (leveled ? name : "") });
   turnUses.set(index, uses);
 }
 // Nothing left to attack with this turn: the action (and any Action Surge) is
@@ -3382,7 +3409,9 @@ function bonusAttacksLeft(index) {
   const res = readRes(index);
   return attacksFor(index).filter(attack => isBonusAction(attack)
     && (!attack.slot || (attack.lasting && lastingUp.has(index + ":" + attack.name)) || castableLevels(attack, sheet, res).length)
-    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)).map(attack => attack.name);
+    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)
+    && (!attack.whileRaging || res.raging)
+    && !(usesThisTurn(index).actionSpell && castsSpell(index, attack))).map(attack => attack.name);
 }
 const attacksSpent = index => actionSpent(index) && !bonusAttacksLeft(index).length;
 // Why this attack would be one action (or bonus action) too many, or "".
@@ -3390,7 +3419,12 @@ function turnBlock(index, attack) {
   if (!turnsRunning() || attack.free) return "";
   const uses = usesThisTurn(index);
   if (isBonusAction(attack)) {
-    return uses.bonus >= 1 ? "You've already used your bonus action this turn (" + uses.lastBonus + "). Pick something else, or end your turn." : "";
+    if (uses.bonus >= 1) return "You've already used your bonus action this turn (" + uses.lastBonus + "). Pick something else, or end your turn.";
+    // A bonus-action spell and a leveled action spell can't share a turn.
+    return uses.actionSpell && castsSpell(index, attack) ? "You cast " + uses.actionSpell + " with your action, so a bonus-action spell this turn can only be a cantrip." : "";
+  }
+  if (uses.bonusSpell && castsSpell(index, attack) && actionsUsed(uses) < 1 + surgesThisTurn(index)) {
+    return "You cast " + uses.bonusSpell + " as a bonus action, so your action spell this turn can only be a cantrip.";
   }
   // Swings left in an Attack action already started: the swing count on the card handles those.
   if (attack.perAction && attacksThisTurn(index) % attack.perAction !== 0) return "";
@@ -3435,6 +3469,7 @@ function drawTurnFeatures(me, sheet, res) {
       else items.push(button(left ? "😤 Start rage · bonus action (" + left + " left)" : "😤 No rages left", () => {
         const next = { ...spendResource(sheet, readRes(me), resource.name), raging: true };
         writeRes(me, next);
+        markTurnUse(me, "Rage", "bonus");
         tellTable(me, "😤 starts raging (" + resourceLeft(sheet, next, resource.name) + " of " + resource.max + " rages left)");
         drawAttack();
       }, !left));
@@ -3472,6 +3507,7 @@ function drawTurnFeatures(me, sheet, res) {
         if (own) next = spendResource(sheet, next, own.name);
         saveRes(me, next);
         usedFeatures.set(me, { turn: turnTag(), names: [...featuresThisTurn(me), name] });
+        markTurnUse(me, name, featureCost(name));
         tellTable(me, "✨ uses " + name + " (" + resourceLeft(sheet, next, resource.name) + " " + resource.name + " left)");
         drawHp();
         drawAttack();
@@ -3635,6 +3671,7 @@ function drawAttack() {
         const next = spendResource(sheet, readRes(me), slotKey(level));
         attackFlow.notes = [...(attackFlow.notes ?? []), "Cast " + option.name + " with a " + ORDINAL[level] + "-level slot (" + resourceLeft(sheet, next, slotKey(level)) + " left)" + (option.concentration ? "; you're concentrating on it" : "")];
         if (option.concentration) setCondition("Concentrating", 1);
+        if (/bonus action/i.test(option.note ?? "")) markTurnUse(me, option.name, "bonus", true);
         saveRes(me, next);
         drawHp();
         showOptions();
@@ -3719,7 +3756,7 @@ function drawAttack() {
       if (baseAttack.slot && attackFlow.level && !up) {
         next = spendResource(sheet, next, slotKey(attackFlow.level));
         notes.push("Used a " + ORDINAL[attackFlow.level] + "-level slot (" + resourceLeft(sheet, next, slotKey(attackFlow.level)) + " left)");
-        if (baseAttack.lasting) lastingUp.set(lastingKey, attackFlow.level);
+        if (baseAttack.lasting) { lastingUp.set(lastingKey, attackFlow.level); lastingCast.set(lastingKey, turnTag()); }
         if (baseAttack.concentration) setCondition("Concentrating", 1);
       }
       if (baseAttack.spends) {
@@ -3745,6 +3782,8 @@ function drawAttack() {
   let blocked = "";
   if (baseAttack.slot && !attackFlow.spent && !levels.length && !up) {
     blocked = "No spell slots left for " + baseAttack.name + " (it needs a " + ORDINAL[baseAttack.slot] + "-level slot or higher). Take a long rest, or fix the dots under Resources.";
+  } else if (baseAttack.whileRaging && !res.raging) {
+    blocked = baseAttack.name + " is only while you're raging. Start a rage first (This turn, above).";
   } else if (baseAttack.spends && !attackFlow.spent && resourceLeft(sheet, res, baseAttack.spends) < 1) {
     blocked = "No " + baseAttack.spends + " left — it comes back on a rest.";
   }
