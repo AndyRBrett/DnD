@@ -3326,6 +3326,7 @@ const turnsRunning = () => Boolean(state?.combat?.turn);
 // An Attack action covers its Extra Attack swings; after those, the next
 // swing is another Attack action. free: part of another attack (the shadow's
 // copied throw) and costs nothing.
+let turnEndShown = ""; // "<character>@<turn>" already taken up to the turn card
 const turnUses = new Map(); // index → { tag, spells, attackActions, bonus, last, lastBonus }
 const isBonusAction = attack => /bonus action/i.test(attack.note ?? "");
 function usesThisTurn(index) {
@@ -3988,6 +3989,15 @@ function drawAttack() {
   }
   steps.replaceChildren(...parts, ...moreFold(extras));
   drawTurnGuide();
+  // The last attack of the action is settled (missed, or its damage is with
+  // the DM): take the player up to the turn card once, where End my turn (or
+  // the bonus action left) is waiting.
+  const settled = attackFlow.step === "miss" || (attackFlow.step === "damage" && (attackFlow.sent.length || !backend.postAction || !Array.isArray(state?.actions)));
+  const tag = me + "@" + turnTag();
+  if (settled && actionSpent(me) && turnEndShown !== tag && !$("attack-card").hidden && document.querySelector('[data-panel="combat"]')?.hidden === false) {
+    turnEndShown = tag;
+    setTimeout(() => scrollToCard($("combat-head")), 900); // after the "sent" line shows
+  }
   drawTypedRoll();
 }
 $("attack-target").onchange = () => drawAttack();
@@ -4116,6 +4126,20 @@ function drawHitInbox() {
       half.disabled = !target || needsPick;
       half.onclick = () => hitEnemy(Math.floor(report.amount / 2), " (saved for half)");
       buttons.append(half);
+    }
+    // The enemy's notes say it resists something (a swarm, a golem): one tap
+    // for half, with the note right there so the DM can check the damage type.
+    const resists = !report.halfOnSave && target ? String(target.abilities ?? "").match(/[^.;]*\bresist[^.;]*/i)?.[0].trim() : "";
+    if (resists) {
+      const half = document.createElement("button");
+      half.type = "button";
+      half.className = "ghost";
+      half.textContent = "Resists: " + Math.floor(report.amount / 2);
+      half.title = resists;
+      half.disabled = !target || needsPick;
+      half.onclick = () => hitEnemy(Math.floor(report.amount / 2), " (resisted, half)");
+      buttons.append(half);
+      text.textContent += " · " + resists;
     }
     // One tap: roll the enemy's save against the spell's DC and apply the result.
     if (report.save && target && !needsPick) {
