@@ -5415,6 +5415,9 @@ function setHost(value) {
   $("history-editor").hidden = !isHost || !backend.saveHistory;
   $("tab-dm").hidden = !isHost;
   $("encounter").hidden = !isHost;
+  const claudeDm = isHost && Boolean(state?.ai) && !ended && Boolean(backend.dmAsk);
+  $("claude-enemies").hidden = !claudeDm;
+  $("dm-assistant").hidden = !claudeDm;
   // A DM account that opens a character's view gets no player tools: say why.
   for (const note of document.querySelectorAll(".host-player-note")) {
     note.hidden = !isHost;
@@ -6039,3 +6042,140 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 
 if (room && (!backend.hosted || backend.user())) enterRoom();
 else showLobby(room ? "Sign in to join the table." : "");
+
+
+// ── Claude for the DM: enemies from a description, and the DM assistant ──
+// Host only; nothing is sent until the DM taps. TABLE STATE gives Claude the
+// fight as the DM sees it (real enemy HP included: only the DM reads it).
+function dmTableState() {
+  const lines = [];
+  const combat = state?.combat;
+  if (combat) {
+    const order = liveOrder();
+    const current = order.find(entry => entry.key === combat.turn);
+    lines.push("Fight: round " + combat.round + (current ? ", " + current.name + "'s turn" : ", turn order not started"));
+  } else lines.push("No fight right now.");
+  for (const [index, member] of (state?.party ?? []).entries()) {
+    const record = state.hp?.[member.name];
+    const away = isSittingOut(combat, index) ? " (not in this fight)" : "";
+    lines.push(member.name + ": " + (record ? record.hp + "/" + record.max + " HP" : "HP not set") + (readRes(index).raging ? ", raging" : "") + away);
+  }
+  for (const enemy of enemies) {
+    lines.push(enemy.name + ": " + enemy.hp + "/" + enemy.maxHp + " HP, AC " + enemy.ac + (enemy.conditions?.length ? ", " + enemy.conditions.join(", ") : ""));
+  }
+  return lines.join("\n").slice(0, 3000);
+}
+
+function statBlockCard(enemy, onAdd, onSave) {
+  const card = document.createElement("article");
+  card.className = "claude-enemy";
+  const attacks = enemy.attacks.map(([name, hit, damage, rider]) => name + " " + (hit >= 0 ? "+" : "") + hit + " · " + damage + (rider ? " (" + riderText(rider) + ")" : "")).join("; ");
+  card.append(element("strong", "", enemy.name + " × " + enemy.count),
+    element("p", "fineprint", "CR " + (enemy.cr || "?") + " · AC " + enemy.ac + " · HP " + enemy.hp + " · " + enemy.speed + " ft · init " + (enemy.init >= 0 ? "+" : "") + enemy.init),
+    element("p", "fineprint", attacks || "No attacks"),
+    element("p", "", enemy.abilities));
+  const row = document.createElement("div");
+  row.className = "action-row";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "cta";
+  add.textContent = "Add " + enemy.count;
+  add.onclick = () => { onAdd(); add.disabled = true; add.textContent = "Added"; };
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "quiet";
+  save.textContent = "Save as my template";
+  save.onclick = () => { onSave(); save.disabled = true; save.textContent = "Saved"; };
+  row.append(add, save);
+  card.append(row);
+  return card;
+}
+
+$("claude-enemy-form").onsubmit = async event => {
+  event.preventDefault();
+  const prompt = $("claude-enemy-text").value.trim();
+  if (!prompt) { $("claude-enemy-status").textContent = "Describe the enemies you want."; return; }
+  const button = event.submitter;
+  button.disabled = true;
+  $("claude-enemy-status").textContent = "Claude is building them…";
+  try {
+    const { enemies: built, note } = await backend.dmAsk(room, "enemies", prompt, dmTableState());
+    const addOne = template => {
+      const { count, ...stats } = template;
+      const added = joinFight(createEnemies(stats, count, undefined, enemies));
+      enemies = [...enemies, ...added];
+      saveEncounter();
+      drawEncounter();
+      $("claude-enemy-status").textContent = "Added " + added.length + " × " + stats.name + " (HP " + added.map(enemy => enemy.maxHp).join(", ") + ").";
+    };
+    const saveOne = template => {
+      const { count, ...stats } = template;
+      storage.set(TEMPLATE_KEY, JSON.stringify([stats, ...savedTemplates().filter(saved => saved.name !== stats.name)].slice(0, 30)));
+      drawTemplateOptions();
+    };
+    const cards = built.map(template => statBlockCard(template, () => addOne(template), () => saveOne(template)));
+    if (built.length > 1) {
+      const all = document.createElement("button");
+      all.type = "button";
+      all.className = "secondary";
+      all.textContent = "Add them all";
+      all.onclick = () => { for (const card of cards) card.querySelector("button.cta:not(:disabled)")?.click(); all.disabled = true; };
+      cards.push(all);
+    }
+    $("claude-enemy-list").replaceChildren(...(note ? [element("p", "callout gold", note)] : []), ...cards);
+    $("claude-enemy-status").textContent = "Check them over, then add.";
+  } catch (error) {
+    $("claude-enemy-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+
+const DM_PRESETS = [
+  ["🌀 A twist", "Give me a twist that fits where the story is right now."],
+  ["🎭 An NPC", "Give me an NPC the party could meet next: name, look, voice, and what they want."],
+  ["🏛️ Describe it", "Describe this place or moment vividly, in a few sentences I can read out."],
+  ["⚔️ Enemy tactics", "What would the enemies do on their next turns, given the table state?"],
+  ["🧭 Stuck?", "The players seem stuck. Give me hints I can drop without handing them the answer."]
+];
+$("dm-ask-presets").replaceChildren(...DM_PRESETS.map(([label, text]) => {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip quiet";
+  chip.textContent = label;
+  chip.onclick = () => { $("dm-ask-text").value = text; $("dm-ask-text").focus(); };
+  return chip;
+}));
+$("dm-ask-form").onsubmit = async event => {
+  event.preventDefault();
+  const prompt = $("dm-ask-text").value.trim();
+  if (!prompt) { $("dm-ask-status").textContent = "Ask something, or tap an idea above."; return; }
+  const button = event.submitter;
+  button.disabled = true;
+  $("dm-ask-status").textContent = "Claude is thinking…";
+  try {
+    const { answer, ideas } = await backend.dmAsk(room, "dm", prompt, dmTableState());
+    const items = ideas.map(idea => {
+      const item = document.createElement("div");
+      item.className = "dm-idea";
+      item.append(element("strong", "", idea.title), element("p", "", idea.detail));
+      if (idea.line) {
+        item.append(element("blockquote", "", idea.line));
+        const use = document.createElement("button");
+        use.type = "button";
+        use.className = "quiet";
+        use.textContent = "Add to my update";
+        use.onclick = () => { setDraft([$("draft").value.trim(), idea.line].filter(Boolean).join("\n\n")); use.textContent = "Added to your update"; use.disabled = true; };
+        item.append(use);
+      }
+      return item;
+    });
+    $("dm-ask-out").replaceChildren(...(answer ? [element("p", "", answer)] : []), ...items);
+    $("dm-ask-out").hidden = false;
+    $("dm-ask-status").textContent = "";
+  } catch (error) {
+    $("dm-ask-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};

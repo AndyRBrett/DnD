@@ -41,6 +41,30 @@ async function askClaude(apiKey, character, scenes, question = "", table = "") {
   return readAdvice(response);
 }
 
+// The DM's asks (enemies from a description, the DM assistant): host only,
+// never cached, and counted against the same per-table limit.
+async function dmAsk(request, db, room, code, env, body) {
+  if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the DM can ask this." }, 403);
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 600) : "";
+  if (!prompt) return json({ error: body.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
+  const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
+  if (usage.count >= AI_ROOM_LIMIT) return json({ error: "This session has used its Claude suggestions." }, 429);
+  if (Date.now() - (usage.last.get(-1) ?? 0) < AI_COOLDOWN) return json({ error: "One moment — Claude was just asked." }, 429);
+  usage.count += 1;
+  usage.last.set(-1, Date.now());
+  aiUsage.set(code, usage);
+  const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 200").bind(code).all();
+  const party = JSON.parse(room.party).map(member => ({ name: member.name, role: member.role }));
+  const table = typeof body.table === "string" ? body.table.slice(0, 3000) : "";
+  try {
+    const response = await fetch(CLAUDE_URL, { ...dmRequest(env.ANTHROPIC_API_KEY, body.mode, { scenes: results.reverse(), party, prompt, table }), signal: AbortSignal.timeout(60000) });
+    return json(body.mode === "enemies" ? await readEnemies(response) : await readDmHelp(response));
+  } catch (error) {
+    if (!(error instanceof AdviceError)) console.error(error);
+    return json({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
+  }
+}
+
 // HP and resources carry over between campaign tables; a practice table keeps
 // its own, under a "room:<code>:" prefix.
 const recordKey = (room, name) => room.practice ? "room:" + room.code + ":" + name : name;
@@ -87,6 +111,7 @@ const endpoints = {
   async advise(request, db, room, code, env) {
     if (!env.ANTHROPIC_API_KEY) return json({ error: "Claude suggestions are off on this server." }, 404);
     const body = await request.json();
+    if (body.mode === "enemies" || body.mode === "dm") return await dmAsk(request, db, room, code, env, body);
     const index = Number(body.character);
     const party = importHistory(JSON.parse(room.party));
     const character = party[index];
