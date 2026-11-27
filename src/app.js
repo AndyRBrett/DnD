@@ -1921,12 +1921,14 @@ function drawTurnGuide() {
     text = per && made < cap
       ? "You get " + (cap - made) + " more attack" + (cap - made === 1 ? "" : "s") + ": tap Next attack on the card. Or end your turn."
       : attacksSpent(me) ? "That's your attacks for this turn. End your turn so the next player goes."
+      : actionSpent(me) ? "Your action is used. You still have a bonus action (" + bonusAttacksLeft(me).join(" or ") + "), or end your turn."
       : "Done? End your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
-  } else if (attackFlow.step === "ready" && attacksSpent(me)) {
+  } else if (attackFlow.step === "ready" && actionSpent(me)) {
     // Back on a fresh Attack card with the action already used.
     step = 3;
-    text = "You've used your action this turn. End your turn so the next player goes.";
+    const bonus = bonusAttacksLeft(me);
+    text = "You've used your action this turn. " + (bonus.length ? "You still have a bonus action (" + bonus.join(" or ") + "), or e" : "E") + "nd your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
@@ -3348,16 +3350,18 @@ function markUsedOnce(index, attack) {
 // Nothing left to attack with this turn: the action (and any Action Surge) is
 // spent, the Attack action has no swings left, and no bonus-action attack is
 // waiting. Moving on then means ending the turn.
-function attacksSpent(index) {
+function actionSpent(index) {
   if (!turnsRunning() || state?.combat?.turn !== "pc:" + index) return false;
   const uses = usesThisTurn(index);
-  if (uses.bonus < 1 && attacksFor(index).some(isBonusAction)) return false;
   const per = attacksFor(index).find(attack => attack.perAction)?.perAction ?? 0;
   const made = attacksThisTurn(index);
   if (per && made % per !== 0) return false; // swings left in this Attack action
   if (per && made && made < attackCap(index, per)) return false; // Action Surge swings
   return actionsUsed(uses) >= 1 + surgesThisTurn(index);
 }
+// Bonus-action attacks still open this turn (Spiritual Weapon, Shadow Slash).
+const bonusAttacksLeft = index => usesThisTurn(index).bonus < 1 ? attacksFor(index).filter(isBonusAction).map(attack => attack.name) : [];
+const attacksSpent = index => actionSpent(index) && !bonusAttacksLeft(index).length;
 // Why this attack would be one action (or bonus action) too many, or "".
 function turnBlock(index, attack) {
   if (!turnsRunning() || attack.free) return "";
@@ -3740,11 +3744,17 @@ function drawAttack() {
   // button takes the player back up to the turn card instead of offering a
   // free swing.
   const turnDone = attacksSpent(me);
+  // Action used, a bonus-action attack still open: say so instead of "Next attack".
+  const bonusOnly = !turnDone && actionSpent(me) ? bonusAttacksLeft(me) : [];
   // The card stays on this attack's result, so the turn guide up top keeps
   // pointing at End my turn.
   const next = turnDone ? stepButton("Done attacking: end your turn ▲", "quiet", () => {
     showTab("combat");
     scrollToCard($("combat-head"));
+  }) : bonusOnly.length ? stepButton("Bonus action left: " + bonusOnly.join(" or "), "quiet", () => {
+    resetAttack(); drawAttack();
+    const pick = attacksFor(me).findIndex(attack => attack.name === bonusOnly[0]);
+    if (pick >= 0 && pick !== attackFlow.index) $("attack-list").children[pick]?.click();
   }) : stepButton(baseAttack.perAction && made && made < cap
     ? "Next attack (" + (cap - made) + " more this turn" + (cap > baseAttack.perAction ? ", Action Surge" : "") + ")"
     : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
