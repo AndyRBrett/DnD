@@ -597,6 +597,20 @@ test("roll requests: the DM's ask, the bonus from the sheet, and the answer line
   assert.equal(rollAskLabel(attack), "Attack roll (AC 12)");
   assert.equal(parseRollAsk("🎲 Stealth (d20+9): 17"), null); // an answer is not an ask
   assert.equal(parseRollAsk(rollAskText("Perception")).target, null);
+  // Asks typed by hand still get the sheet's bonus (round 6: these rolled bare d20s).
+  const typed = text => parseRollAsk("🎲 DM asks: " + text);
+  const str = typed("Strength saving throw, DC 14 — resist the rake's pull (fail: dragged 10 ft)");
+  assert.deepEqual([str.kind, str.ability, str.target.value], ["save", "STR", 14]);
+  assert.equal(rollAskLabel(str), "Strength saving throw (DC 14)"); // the answer line keeps the DM's words
+  assert.equal(rollAskBonus(str, sheets["Logan Ninefingers"]), rollAskBonus(parseRollAsk(rollAskText("Strength save")), sheets["Logan Ninefingers"]));
+  assert.equal(typed("Str save, DC 12").ability, "STR");
+  const insight = typed("Wisdom (Insight) check, DC 14 — read the wheel's tell (add Guidance d4)");
+  assert.deepEqual([insight.kind, insight.skill, insight.ability], ["skill", "Insight", "WIS"]);
+  assert.equal(rollAskBonus(insight, sheets["The White Wizard"]), 8);
+  assert.equal(typed("Insight check").skill, "Insight");
+  assert.equal(typed("Sleight of Hand check").skill, "Sleight of Hand");
+  assert.equal(typed("Dexterity").kind, "check");
+  assert.equal(rollAskBonus(typed("Juggling"), sheets["Roan the Last Shadow"]), null); // unknown: a plain d20
 });
 
 

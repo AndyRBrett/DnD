@@ -1326,7 +1326,7 @@ function drawRollAsks() {
       if (!attacks.length) buttons.append(go("Attack roll", "d20"));
     } else {
       const bonus = rollAskBonus(ask, sheet);
-      const skill = ask.kind === "skill" ? (sheet?.skills ?? []).find(([name]) => name.toLowerCase() === ask.roll.toLowerCase()) : null;
+      const skill = ask.kind === "skill" ? (sheet?.skills ?? []).find(([name]) => name.toLowerCase() === (ask.skill ?? ask.roll).toLowerCase()) : null;
       buttons.append(go(ask.roll, bonus === null ? "d20" : "d20" + (bonus >= 0 ? "+" : "-") + Math.abs(bonus), skill ? rollModeFrom(skill[2]) : "normal"));
     }
     const skip = document.createElement("button");
@@ -3585,6 +3585,7 @@ function resumeAsk(me) {
   attackFlow.ask = { text: String(line.text).replace(/ · (✓ DM: hit|✗ DM: miss)$/u, ""), after: Number(line.id) - 1, character: me };
   attackFlow.step = ask.verdict === "hit" ? "hit" : "waiting";
   attackFlow.resumeTarget = ask.enemy;
+  attackFlow.rolledAt = ask.enemy;
 }
 function resetAttack(keepChoice = true) {
   // One-attack options (Dread Ambusher shot, a maneuver) end with the attack.
@@ -3601,7 +3602,7 @@ function resetAttack(keepChoice = true) {
     const line = state.actions.find(action => Number(action.id) > after && String(action.text).startsWith(text));
     if (line) storage.set(RESUMED_KEY(), JSON.stringify([...readJson(RESUMED_KEY(), []), line.id].slice(-100)));
   }
-  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false, ask: null });
+  Object.assign(attackFlow, { step: "ready", toHit: null, crit: false, damage: null, sent: [], spent: false, spentManeuver: false, notes: [], choice: {}, second: false, missTold: false, missText: "", area: new Set(), areaSeeded: false, ask: null, rolledAt: null });
   if (!keepChoice) Object.assign(attackFlow, { index: 0, level: null, options: new Set() });
 }
 // The options each character has on (Great Weapon Master, Reckless, Hunter's
@@ -4061,6 +4062,14 @@ function drawAttack() {
       ...targets.map(enemy => new Option(enemy.name + " · " + (STATUS_TEXT[enemy.status] ?? ""), enemy.name)));
     select.value = targets.some(enemy => enemy.name === chosen) ? chosen : "";
   }
+  // Once the to-hit is with the DM, the attack stays on that enemy: the call
+  // was against its AC. If it falls before the damage lands, the lock lifts.
+  if (attackFlow.rolledAt && attackFlow.step !== "ready") {
+    if ([...select.options].some(option => option.value === attackFlow.rolledAt)) select.value = attackFlow.rolledAt;
+    else attackFlow.rolledAt = null;
+  }
+  select.disabled = Boolean(attackFlow.rolledAt) && attackFlow.step !== "ready";
+  select.title = select.disabled ? "Rolled against " + attackFlow.rolledAt + ": the damage goes there too" : "";
 
   const steps = $("attack-steps");
   // A saving-throw spell (Fireball, Flame Strike) can catch several enemies:
@@ -4269,6 +4278,7 @@ function drawAttack() {
             const text = attackAskText(target, "with " + attack.name + cast + ", " + result.total + " to hit");
             const after = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
             attackFlow.ask = { text, after, character: me };
+            attackFlow.rolledAt = target; // the DM calls it against this enemy's AC: the damage goes there too
             attackFlow.step = "waiting";
             backend.postAction(room, me, text).then(sync).catch(() => { attackFlow.ask = null; attackFlow.step = "rolled"; drawAttack(); });
           }

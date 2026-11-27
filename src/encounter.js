@@ -631,20 +631,28 @@ export function rollAskText(roll, target = null, note = "") {
   const goal = target?.value ? ", " + (target.kind === "AC" ? "AC" : "DC") + " " + Number(target.value) : "";
   return "🎲 DM asks: " + roll + goal + (note ? " — " + String(note).trim() : "");
 }
+// Reads the DM tool's wording ("Strength save", "Dexterity check", "Insight")
+// and the ways a DM types it by hand: "Strength saving throw", "Str save",
+// "Wisdom (Insight) check", "Insight check", so the phone fills in the bonus.
+const abilityNamed = word => Object.entries(ABILITY_FULL)
+  .find(([short, full]) => full.toLowerCase() === word.toLowerCase() || short.toLowerCase() === word.toLowerCase())?.[0] ?? null;
+const skillNamed = name => SKILLS.find(([skill]) => skill.toLowerCase() === String(name).trim().toLowerCase()) ?? null;
 export function parseRollAsk(text) {
   const match = String(text ?? "").match(ASK);
   if (!match) return null;
   const roll = match[1].trim();
-  const save = roll.match(/^(\w+) save$/i);
-  const check = roll.match(/^(\w+) check$/i);
-  const ability = (save ?? check) && Object.entries(ABILITY_FULL).find(([, full]) => full.toLowerCase() === (save ?? check)[1].toLowerCase())?.[0];
-  return {
-    roll,
-    kind: /^attack roll$/i.test(roll) ? "attack" : save && ability ? "save" : check && ability ? "check" : "skill",
-    ability: ability ?? SKILLS.find(([name]) => name.toLowerCase() === roll.toLowerCase())?.[1] ?? null,
-    target: match[2] ? { kind: match[2], value: Number(match[3]) } : null,
-    note: match[4] ?? ""
-  };
+  const target = match[2] ? { kind: match[2], value: Number(match[3]) } : null;
+  const note = match[4] ?? "";
+  if (/^attack roll$/i.test(roll)) return { roll, kind: "attack", ability: null, target, note };
+  const save = roll.match(/^(\w+) sav(?:e|ing throw)$/i);
+  if (save && abilityNamed(save[1])) return { roll, kind: "save", ability: abilityNamed(save[1]), target, note };
+  // "Wisdom (Insight) check", "Insight check", "Sleight of Hand check", or just "Insight".
+  const paren = roll.match(/^\w+ \(([^)]+)\)(?: check)?$/i);
+  const skill = skillNamed(paren?.[1] ?? roll.replace(/ check$/i, ""));
+  if (skill) return { roll, kind: "skill", skill: skill[0], ability: skill[1], target, note };
+  const check = roll.match(/^(\w+)(?: check)?$/i);
+  if (check && abilityNamed(check[1])) return { roll, kind: "check", ability: abilityNamed(check[1]), target, note };
+  return { roll, kind: "skill", ability: null, target, note };
 }
 // The roll's label on the answer line, and whether it beat the DC or AC.
 export const rollAskLabel = ask => ask.roll + (ask.target ? " (" + ask.target.kind + " " + ask.target.value + ")" : "");
@@ -660,7 +668,7 @@ export function rollAskBonus(ask, sheet) {
   if (ask.kind === "save") return mods.find(entry => entry.ability === ask.ability)?.save ?? null;
   if (ask.kind === "check") return mods.find(entry => entry.ability === ask.ability)?.mod ?? null;
   if (ask.kind === "skill") {
-    const skill = (sheet.skills ?? []).find(([name]) => name.toLowerCase() === ask.roll.toLowerCase());
+    const skill = (sheet.skills ?? []).find(([name]) => name.toLowerCase() === (ask.skill ?? ask.roll).toLowerCase());
     const bonus = skill ? Number.parseInt(String(skill[2]).replace("−", "-"), 10) : NaN;
     if (Number.isFinite(bonus)) return bonus;
     return ask.ability ? mods.find(entry => entry.ability === ask.ability)?.mod ?? null : null;
