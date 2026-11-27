@@ -382,6 +382,19 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .combatant .sit-out{flex:0 0 auto;min-height:40px;padding:0 10px;font-size:.85rem}
 .combatant.is-out{opacity:.7}
 #enc-combat{width:100%;margin:6px 0 2px}
+.attack-buttons .enemy-run{flex-basis:100%}
+.roll-ask-results{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}
+.roll-ask-result-list{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
+.roll-ask-result-list li{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--border2);background:var(--card)}
+.roll-ask-result-list li.is-pass{border-color:var(--green)}
+.roll-ask-result-list li.is-fail{border-color:var(--red-border)}
+.roll-ask-result-list li.is-waiting span{color:var(--muted)}
+.quick-enemy{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:10px 0 0}
+.quick-enemy label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted2)}
+.quick-enemy-pick{flex:1 1 200px;min-width:0}
+.quick-enemy-pick select{width:100%}
+.quick-enemy-count input{width:72px}
+.quick-enemy button{flex:0 0 auto;min-height:44px}
 
 /* ── Story editing ── */
 .title-row{display:flex;align-items:center;justify-content:space-between;gap:8px}

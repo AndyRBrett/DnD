@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -1342,12 +1342,50 @@ function drawRollAsks() {
   });
   renderInto(box, cards);
 }
+// The latest request's answers, side by side: who's rolled, their totals, and
+// pass or fail against the DC, so a group save reads at a glance.
+const LAST_ASK = () => "dnd-last-ask:" + room;
+function drawRollAskResults() {
+  const box = $("roll-ask-results");
+  const last = readJson(LAST_ASK(), null);
+  const text = typeof last?.text === "string" ? last.text : "";
+  const results = text ? rollAskResults(state?.actions ?? [], text, last) : [];
+  box.hidden = !results.length;
+  if (!results.length) { box.replaceChildren(); return; }
+  const ask = parseRollAsk(text);
+  const done = results.filter(entry => entry.answered).length;
+  const passed = results.filter(entry => entry.pass === true).length;
+  const head = element("p", "eyebrow", rollAskLabel(ask) + (ask.note ? " — " + ask.note : "") + " · " + done + " of " + results.length + " in"
+    + (ask.target && done ? " · " + passed + " ✓ " + (done - passed) + " ✗" : ""));
+  const list = document.createElement("ul");
+  list.className = "roll-ask-result-list";
+  list.append(...results.map(entry => {
+    const item = document.createElement("li");
+    item.className = entry.answered ? entry.pass === true ? "is-pass" : entry.pass === false ? "is-fail" : "" : "is-waiting";
+    item.append(element("strong", "", partyName(entry.character)?.replace(/^The /, "") ?? "?"),
+      element("span", "", entry.answered ? (entry.total ?? "?") + (entry.pass === true ? " ✓" : entry.pass === false ? " ✗" : "") : "waiting…"));
+    return item;
+  }));
+  renderInto(box, [head, list]);
+}
 function drawRollAskTool() {
   const tool = $("roll-ask-tool");
   tool.hidden = !isHost || ended || !backend.postAction || !Array.isArray(state?.actions);
+  if (!tool.hidden) drawRollAskResults();
   if (tool.hidden || tool.dataset.ready === String(state.party.length)) return;
   tool.dataset.ready = String(state.party.length);
-  $("roll-ask-who").replaceChildren(...state.party.map(({ name }, index) => {
+  // Everyone: the whole party, less anyone sitting out a fight.
+  const everyone = document.createElement("button");
+  everyone.type = "button";
+  everyone.className = "chip quiet";
+  everyone.textContent = "Everyone";
+  everyone.onclick = () => {
+    const boxes = [...$("roll-ask-who").querySelectorAll("input")];
+    const wanted = boxes.filter(box => !isSittingOut(state?.combat, Number(box.value)));
+    const all = wanted.every(box => box.checked);
+    for (const box of boxes) box.checked = !all && wanted.includes(box);
+  };
+  $("roll-ask-who").replaceChildren(everyone, ...state.party.map(({ name }, index) => {
     const label = document.createElement("label");
     label.className = "check chip";
     const box = document.createElement("input");
@@ -1377,7 +1415,10 @@ $("roll-ask-form").onsubmit = async event => {
   const button = event.submitter;
   button.disabled = true;
   try {
+    // This request only: asks posted after the newest line so far, to these characters.
+    const after = Math.max(0, ...(state?.actions ?? []).map(action => Number(action.id) || 0));
     for (const index of who) await backend.postAction(room, index, text);
+    storage.set(LAST_ASK(), JSON.stringify({ text, after, who })); // its answers gather below the form
     $("roll-ask-status").textContent = "Asked " + who.map(index => partyName(index).replace(/^The /, "")).join(", ") + ": " + roll + (value ? " (" + (roll === "Attack roll" ? "AC " : "DC ") + value + ")" : "") + ".";
     for (const box of $("roll-ask-who").querySelectorAll("input")) box.checked = false;
     $("roll-ask-note").value = "";
@@ -4908,8 +4949,30 @@ async function loadCloudEncounter() {
   }
 }
 
+// The party's level, read from the roster ("… · Level 10 · …"): it sorts the
+// stock enemies into Minions, Soldiers, Elites and Bosses for this party.
+function partyLevel() {
+  const levels = (state?.party ?? []).map(member => Number(String(member.role ?? "").match(/Level (\d+)/)?.[1])).filter(Number.isFinite);
+  return levels.length ? Math.max(...levels) : 10;
+}
 function drawTemplateOptions() {
   const custom = savedTemplates();
+  // Quick add: one list grouped by how tough each foe is for this party.
+  const level = partyLevel();
+  const groups = TIERS.map(tier => {
+    const group = document.createElement("optgroup");
+    group.label = tier + " for a level-" + level + " party";
+    group.append(...enemyTemplates.map((template, index) => [template, index]).filter(([template]) => enemyTier(template, level) === tier)
+      .map(([template, index]) => new Option(template.name + " · CR " + template.cr + " · AC " + template.ac, "srd:" + index)));
+    return group;
+  }).filter(group => group.children.length);
+  const yours = document.createElement("optgroup");
+  yours.label = "Your templates";
+  yours.append(...custom.map((template, index) => new Option("★ " + template.name, "custom:" + index)));
+  const quick = $("quick-template");
+  const kept = quick.value;
+  quick.replaceChildren(new Option("Pick an enemy…", ""), ...(custom.length ? [yours] : []), ...groups);
+  quick.value = [...quick.options].some(option => option.value === kept) ? kept : "";
   $("enemy-template").replaceChildren(
     new Option("Blank", ""),
     ...custom.map((template, index) => new Option("★ " + template.name + " (yours)", "custom:" + index)),
@@ -4951,6 +5014,25 @@ function enemyFormStats() {
     saves: parseSaves($("enemy-saves").value)
   };
 }
+// Enemies added mid-fight roll their own initiative, so they join the order
+// without re-rolling the ones already fighting.
+const joinFight = added => state?.combat ? rollInitiative(added) : added;
+const templateFrom = value => {
+  const [kind, index] = String(value).split(":");
+  return kind === "srd" ? enemyTemplates[index] : kind === "custom" ? savedTemplates()[index] : null;
+};
+// One tap: the stock (or saved) stat block goes straight in, HP rolled for each.
+$("quick-enemy").onsubmit = event => {
+  event.preventDefault();
+  const template = templateFrom($("quick-template").value);
+  if (!template) { $("quick-status").textContent = "Pick an enemy first."; $("quick-template").focus(); return; }
+  const added = joinFight(createEnemies(template, $("quick-count").value, undefined, enemies));
+  enemies = [...enemies, ...added];
+  saveEncounter();
+  drawEncounter();
+  $("quick-status").textContent = "Added " + added.length + " × " + template.name + " (HP " + added.map(enemy => enemy.maxHp).join(", ") + ")."
+    + (state?.combat ? " Initiative " + added.map(enemy => enemy.initiative).join(", ") + ": they're in the turn order." : "");
+};
 $("enemy-template").onchange = () => {
   const [kind, index] = $("enemy-template").value.split(":");
   fillEnemyForm(kind === "srd" ? enemyTemplates[index] : kind === "custom" ? savedTemplates()[index] : null);
@@ -4962,7 +5044,7 @@ $("enemy-form").onsubmit = event => {
     $("enemy-status").textContent = "HP should be a number or dice like 2d8+2.";
     return;
   }
-  const added = createEnemies(stats, $("enemy-count").value, undefined, enemies);
+  const added = joinFight(createEnemies(stats, $("enemy-count").value, undefined, enemies));
   enemies = [...enemies, ...added];
   saveEncounter();
   drawEncounter();
@@ -5086,16 +5168,20 @@ function enemyCard(enemy) {
     };
     attacks.append(target);
   }
-  for (const [label, hit, damage, rider] of enemy.attacks) {
+  const rollers = new Map(); // attack → its one-swing roller, for Run turn
+  for (const attackEntry of enemy.attacks) {
+    const [label, hit, damage, rider] = attackEntry;
     // "Longsword (×2)" is a multiattack: one tap rolls every swing.
-    const times = Number(label.match(/\(×(\d)\)/)?.[1] ?? 1);
-    const name = label.replace(/\s*\(×\d\)/, "");
+    const times = swingCount(label);
+    const name = label.replace(/\s*\([×x]\d\)/i, "");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ghost";
     button.textContent = (times > 1 ? times + " × " + name : label) + " " + (hit >= 0 ? "+" : "") + hit + (damage ? " · " + damage : "") + (rider?.damage ? " +" + rider.damage + " " + (rider.type ?? "") : "");
     if (times > 1) button.setAttribute("aria-label", "Roll all " + times + " " + name + " attacks");
-    const rollOne = swing => {
+    // auto (Run turn): a clear hit on someone not raging is applied at once,
+    // and the outcome goes into the turn's summary line.
+    const rollOne = (swing, auto = null) => {
       const label = times > 1 ? name + " " + swing + " of " + times : name;
       const toHit = roll("d20" + (hit >= 0 ? "+" : "") + hit);
       const harm = damage ? roll(damage) : null;
@@ -5156,10 +5242,17 @@ function enemyCard(enemy) {
           row.append(full, half, status);
           parts.push(row);
           if (rider) parts.push(riderRow(rider, toHit.critical, index, who, enemy.name + "'s " + name, landed));
+          if (auto && (outcome === "hit" || outcome === "crit") && !readRes(index).raging) {
+            apply(shown.total, full);
+            auto.damage += shown.total;
+          } else if (auto) auto.open = true; // left for the DM: raging, or an AC it can't check
+          if (auto && rider) auto.open = true; // the rider's save is the DM's to roll
         }
+        if (auto) auto.rolls.push(toHit.total + (outcome === "crit" ? " (crit)" : outcome === "hit" ? " hits" : outcome === "miss" ? " misses" : " (DM's call)"));
       }
       return parts;
     };
+    rollers.set(attackEntry, rollOne);
     button.onclick = () => {
       const parts = [];
       if (rider && enemyTargets.get(enemy.id) == null || rider && enemyTargets.get(enemy.id) === "") {
@@ -5178,6 +5271,44 @@ function enemyCard(enemy) {
       result.hidden = false;
     };
     attacks.append(button);
+  }
+  // Run turn: the whole routine (a dragon's claws and bite, two rakes) at the
+  // picked target in one tap. Clear hits land at once; anything that needs a
+  // ruling (rage, an unsure AC, a rider's save) keeps its buttons. One line
+  // goes to the table with how it went.
+  if (enemy.attacks.length && state?.party) {
+    const run = document.createElement("button");
+    run.type = "button";
+    run.className = "cta enemy-run";
+    const routine = enemyRoutine(enemy);
+    run.textContent = "⚔️ Run turn: " + routine.map(([[label], times]) => (times > 1 ? times + " × " : "") + label.replace(/\s*\([×x]\d\)/i, "")).join(" + ");
+    run.onclick = () => {
+      const choice = enemyTargets.get(enemy.id);
+      if (choice === undefined || choice === "") {
+        result.replaceChildren(Object.assign(document.createElement("strong"), { className: "verdict", textContent: "Pick a target first (🎯 Target…)." }));
+        result.hidden = false;
+        return;
+      }
+      const index = Number(choice);
+      const who = partyName(index).replace(/^The /, "");
+      const auto = { rolls: [], damage: 0, open: false };
+      const parts = [];
+      for (const [entry, times] of routine) {
+        for (let swing = 1; swing <= times; swing++) {
+          const one = document.createElement("div");
+          one.className = "enemy-swing";
+          one.append(...rollers.get(entry)(swing, auto));
+          parts.push(one);
+        }
+      }
+      result.replaceChildren(...parts);
+      result.hidden = false;
+      const names = routine.map(([[label]]) => label.replace(/\s*\([×x]\d\)/i, "")).join(" and ");
+      tellTable(index, "⚔️ " + enemy.name + " attacks " + who + " (" + names + "): " + auto.rolls.join(", ")
+        + (auto.damage ? " · " + auto.damage + " damage" : "") + (auto.open ? " · the DM is deciding the rest" : ""));
+    };
+    const picker = attacks.querySelector("select.enemy-target");
+    attacks.insertBefore(run, picker ? picker.nextSibling : attacks.firstChild);
   }
 
   const addCondition = document.createElement("select");
