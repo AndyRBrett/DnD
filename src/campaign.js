@@ -18,7 +18,7 @@ export const party = [
     "danger | Warding Flare — 4 per long rest (Wis +4); Improved Flare can protect an ally within 30 ft.",
     "danger | Guardian of Faith, Daylight — Light Domain spells, always prepared.",
     "danger | Silence, Dispel Magic, Death Ward — Prepared.",
-    "danger | Choker of Caution — Warns of danger like a spider-sense; the DM says when it triggers. No action, no bonus.",
+    "danger | Third-eye amulet — The White Wizard carries it. Action, touching it: bring down a force field or magical barrier, or draw in a large burst of power or energy. Once per long rest (again sooner risks a backlash); where the energy goes is the DM's call (its last wearer, a warlock, became a dragon when it was pulled from his forehead).",
     "danger | Agility Ring — When the DM calls for it, a Dexterity save to dodge; the DM sets the DC and the outcome.",
     "aid | Healing Word — Bonus action, 60 ft, 1d4+4 at 1st level.",
     "aid | Cure Wounds, Lesser Restoration, Revivify, Greater Restoration — Prepared. Cure Wounds: touch, 1d8+4. Revivify and Greater Restoration need diamonds.",
@@ -100,8 +100,8 @@ export const party = [
     "danger | Break free — Broke out of a guard's hold (and his wrist). Athletics +8.",
     "danger | Indomitable — Reroll a failed saving throw once per long rest.",
     "explore | Know Your Enemy — Watch or talk with a creature for a minute to learn how it compares to you.",
+    "danger | Choker of Caution — Warns of danger like a spider-sense; the DM says when it triggers. No action, no bonus.",
     "explore | Weakness sense — No action, once per turn: Dum Dum senses weak points in a creature, structure, or area he can see within 60 ft (a cracked wall, an unstable floor). The DM gives one clue. The shadow clones were hurt by fire, lightning, and ordinary physical attacks.",
-    "danger | Third-eye amulet — Dum Dum carries it. Action, touching it: bring down a force field or magical barrier, or draw in a large burst of power or energy. Once per long rest (again sooner risks a backlash); where the energy goes is the DM's call (its last wearer, a warlock, became a dragon when it was pulled from his forehead).",
     "explore | Acrobatics, Insight — Proficient: +5, +5.",
     "social | Intimidation, Performance — Proficient: +3, +3. Gladiator crowd work.",
     "social | Speak plainly — Dum Dum's blunt, protective style got the bartender to point the way."
@@ -178,7 +178,8 @@ export const sheets = {
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
       { name: "Channel Divinity", max: 2, per: "short", covers: ["Radiance of the Dawn", "Turn Undead"], note: "Radiance of the Dawn or Turn Undead." },
       { name: "Warding Flare", max: 4, per: "long", note: "Reaction: impose disadvantage on an attack against you (or an ally within 30 ft)." },
-      { name: "Healing potions", max: 3, per: "never", note: "2d4+2 each; drink one from Healing below. Tap a dot back when you find more." }
+      { name: "Healing potions", max: 3, per: "never", note: "2d4+2 each; drink one from Healing below. Tap a dot back when you find more." },
+      { name: "Third-eye amulet", max: 1, per: "long", note: "Bring down a force field or draw in a burst of energy. Using it again before a long rest risks a backlash." }
     ],
     rolls: [["Spell attack", "+8"], ["Spell save DC", "16"], ["Sacred Flame", "2d8+4"], ["AC", "17"], ["Initiative", "+1"], ["WIS save", "+8"], ["Perception", "+8"], ["Insight", "+8"]],
     title: "The White Wizard — Light Domain Cleric",
@@ -222,7 +223,7 @@ export const sheets = {
     ],
     items: [
       ["Cloak", "+2 HP (included in the 75)."],
-      ["Choker of Caution", "A passive danger warning, like a spider-sense: the DM says when it triggers. No action and no bonus."],
+      ["Third-eye amulet", "Action, touching it: brings down a force field or magical barrier, or draws in a large burst of power or energy. Once per long rest; again sooner risks a backlash."],
       ["Agility Ring", "When the DM calls for it, a Dexterity save to dodge; the DM sets the DC and decides the outcome. No automatic bonus or charges."],
       ["Healing potions", "3 (2d4+2 each), tracked under Resources."]
     ],
@@ -258,7 +259,7 @@ export const sheets = {
       "Sheet values are the table's playable defaults from the campaign chat.",
       "No rests since the casino fight; 3 healing potions; no other magic items.",
       "Agility Ring: no fixed bonus; the DM calls for the Dexterity save and sets the DC.",
-      "Choker of Caution: the DM says when it warns; it never costs an action."
+      "Third-eye amulet: an action, touching it to a force field or magical barrier to bring it down, or to a source of power or energy to draw it in. Once per long rest; using it again before then risks a backlash (the DM's call). Where the drawn energy goes is the DM's call."
     ]
   },
   "Logan Ninefingers": {
@@ -355,8 +356,7 @@ export const sheets = {
       { name: "Superiority dice", max: 5, per: "short", covers: ["Combat Superiority", "Trip Attack", "Goading Attack", "Menacing Attack", "Precision Attack", "Disarming Attack", "Pushing Attack", "Riposte"], note: "d10 each; maneuver DC 16." },
       { name: "Action Surge", max: 1, per: "short", surge: true, note: "One extra action on your turn (four attacks)." },
       { name: "Second Wind", max: 1, per: "short", note: "Bonus action: regain 1d10+10 HP." },
-      { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." },
-      { name: "Third-eye amulet", max: 1, per: "long", note: "Bring down a force field or draw in a burst of energy. Using it again before a long rest risks a backlash." }
+      { name: "Indomitable", max: 1, per: "long", note: "Reroll a failed saving throw." }
     ],
     rolls: [["Longsword", "+8"], ["Damage", "1d8+6"], ["Maneuver DC", "16"], ["Superiority", "5 × d10"], ["AC", "20"], ["Initiative", "+1"], ["STR save", "+8"], ["Athletics", "+8"]],
     title: "Dum Dum the Gladiator — Battle Master Fighter",
@@ -389,7 +389,7 @@ export const sheets = {
       ["Performance", "CHA", "+3", "proficient"], ["Persuasion", "CHA", "−1", ""], ["Religion", "INT", "+0", ""],
       ["Sleight of Hand", "DEX", "+1", ""], ["Stealth", "DEX", "+1 (disadvantage in heavy armor)", ""], ["Survival", "WIS", "+1", ""]
     ],
-    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Third-eye amulet", "Action, touching it: brings down a force field or magical barrier, or draws in a large burst of power or energy. Once per long rest; again sooner risks a backlash."]],
+    items: [["Plate armor and shield", "AC 20."], ["Longsword", "Versatile; used one-handed with the shield (Dueling)."], ["Choker of Caution", "A passive danger warning, like a spider-sense: the DM says when it triggers. No action and no bonus."]],
     lists: [
       ["Attack cheat sheet", [
         "Normal hit: d20 + 8; damage 1d8 + 6 (Strength +4, Dueling +2).",
@@ -410,7 +410,7 @@ export const sheets = {
     // Table defaults chosen where the sheet was open; the DM can change any of them.
     defaults: [
       "Weakness sense: no action, once per turn, on a creature, structure, or area Dum Dum can see within 60 ft. The DM gives one clue (a resistance, vulnerability, or weak point). No damage bonus by itself.",
-      "Third-eye amulet: an action, touching it to a force field or magical barrier to bring it down, or to a source of power or energy to draw it in. Once per long rest; using it again before then risks a backlash (the DM's call). Where the drawn energy goes is the DM's call.",
+      "Choker of Caution: the DM says when it warns; it never costs an action.",
       "Superiority dice: all 5 at the start of the session.",
       "No other magic items; the longsword is his only weapon."
     ]
