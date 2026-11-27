@@ -4976,6 +4976,8 @@ $("enemy-save-template").onclick = () => {
   $("enemy-status").textContent = "Saved “" + stats.name + "” to your templates on this device.";
 };
 $("enc-init").onclick = () => {
+  // Mid-fight this re-rolls every enemy and reshuffles the turn order.
+  if (state?.combat && !confirmTap($("enc-init"), "Tap again to re-roll every enemy mid-fight")) return;
   enemies = rollInitiative(enemies);
   saveEncounter();
   drawEncounter();
@@ -5548,7 +5550,9 @@ function drawBoard() {
     const current = order.find(entry => entry.key === combat.turn);
     currentName = current?.kind === "pc" ? current.name : "";
     $("board-round").textContent = "ROUND " + combat.round;
-    $("board-turn").textContent = current ? current.name.replace(/^The /, "") + (current.kind === "enemy" ? " acts" : "'s turn") : "Roll initiative";
+    // The name as the track shows it ("Logan", not "Logan Ninefingers's").
+    const called = current && shortName(current.name, current.kind === "enemy");
+    $("board-turn").textContent = current ? called + (current.kind === "enemy" ? " acts" : /s$/i.test(called) ? "' turn" : "'s turn") : "Roll initiative";
     $("board-turn").className = "board-turn" + (current?.kind === "enemy" ? " is-enemy" : "");
     renderInto($("board-track"), order.map(entry => {
       const chip = document.createElement("div");
@@ -5558,8 +5562,10 @@ function drawBoard() {
       return chip;
     }));
     // Keep the one acting in view when the order is wider than the screen.
-    const live = $("board-track").querySelector(".is-turn");
-    if (live) $("board-track").scrollLeft = Math.max(0, live.offsetLeft - $("board-track").offsetLeft - 60);
+    // Centred, so a phone-width track shows who's before and after.
+    const track = $("board-track");
+    const live = track.querySelector(".is-turn");
+    if (live) track.scrollLeft = Math.max(0, live.offsetLeft - track.offsetLeft - (track.clientWidth - live.offsetWidth) / 2);
     for (const entry of order.filter(entry => entry.kind === "enemy")) {
       const was = board.enemies.get(entry.key);
       if (!first && was && was !== "down" && entry.status === "down") boardFlash(entry.name.toUpperCase() + " FALLS", "red");
@@ -5575,7 +5581,8 @@ function drawBoard() {
     if (!first && record && record.hp <= 0 && was > 0) boardFlash(member.name.replace(/^The /, "").toUpperCase() + " IS DOWN", "red");
     if (record) board.hp.set(member.name, record.hp);
     const item = document.createElement("li");
-    item.className = "party-hero is-" + health + (member.name === currentName ? " is-turn" : "") + (state.resources?.[member.name]?.raging ? " is-raging" : "");
+    const away = isSittingOut(combat, index); // not in this fight (elsewhere in the story)
+    item.className = "party-hero is-" + health + (member.name === currentName ? " is-turn" : "") + (state.resources?.[member.name]?.raging ? " is-raging" : "") + (away ? " is-out" : "");
     const share = record?.max ? Math.max(0, Math.min(100, Math.round(record.hp / record.max * 100))) : 0;
     const ring = document.createElement("div");
     ring.className = "party-hero-ring";
@@ -5586,6 +5593,7 @@ function drawBoard() {
     info.className = "party-hero-info";
     info.append(element("strong", "", shortName(member.name)),
       element("span", "", (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP —") + (ac ? " · AC " + ac.text : "") + (state.resources?.[member.name]?.raging ? " · 😤" : "")));
+    if (away) info.append(element("em", "", "not in this fight"));
     item.append(ring, info);
     return item;
   });
