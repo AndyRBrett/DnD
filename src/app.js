@@ -136,16 +136,29 @@ function useOnCard(link, index) {
 
 // Scroll a card so its top sits just under the pinned header and character
 // bar (scrollIntoView's "start" tucks it underneath them).
-function scrollToCard(element) {
+// With a duration (ms), it glides there at that pace instead of the browser's
+// quick smooth scroll, so a player can follow where they're being taken.
+function scrollToCard(element, duration = 0) {
   if (!element) return;
   requestAnimationFrame(() => {
     const covered = [document.querySelector(".hdr"), $("char-bar")]
       .filter(bar => bar && !bar.hidden && bar.offsetParent !== null)
       .reduce((sum, bar) => sum + bar.getBoundingClientRect().height, 0);
-    const top = element.getBoundingClientRect().top + window.scrollY - covered - 8;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    const top = Math.max(0, element.getBoundingClientRect().top + window.scrollY - covered - 8);
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!duration || still) { window.scrollTo({ top, behavior: still ? "auto" : "smooth" }); return; }
+    const from = window.scrollY;
+    const start = performance.now();
+    const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const step = now => {
+      const t = Math.min(1, (now - start) / duration);
+      window.scrollTo(0, from + (top - from) * ease(t));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   });
 }
+const TURN_CARD_GLIDE = 1400; // ms: the slow ride back up to End my turn
 
 function showOptions() {
   const character = selectedCharacter();
@@ -265,7 +278,7 @@ function goAfterDeclare(option, characterIndex) {
   if (combat && combat.turn === "pc:" + characterIndex) {
     const link = cardLink(option.action ?? "", characterIndex);
     if (link) useOnCard(link, characterIndex);
-    else { showTab("combat"); scrollToCard($("combat-head")); }
+    else { showTab("combat"); scrollToCard($("combat-head"), TURN_CARD_GLIDE); }
     return;
   }
   showTab("scene");
@@ -3760,7 +3773,7 @@ function drawAttack() {
   // pointing at End my turn.
   const next = turnDone ? stepButton("Done attacking: end your turn ▲", "quiet", () => {
     showTab("combat");
-    scrollToCard($("combat-head"));
+    scrollToCard($("combat-head"), TURN_CARD_GLIDE);
   }) : bonusOnly.length ? stepButton("Bonus action left: " + bonusOnly.join(" or "), "quiet", () => {
     resetAttack(); drawAttack();
     const pick = attacksFor(me).findIndex(attack => attack.name === bonusOnly[0]);
@@ -3996,7 +4009,7 @@ function drawAttack() {
   const tag = me + "@" + turnTag();
   if (settled && actionSpent(me) && turnEndShown !== tag && !$("attack-card").hidden && document.querySelector('[data-panel="combat"]')?.hidden === false) {
     turnEndShown = tag;
-    setTimeout(() => scrollToCard($("combat-head")), 900); // after the "sent" line shows
+    setTimeout(() => scrollToCard($("combat-head"), TURN_CARD_GLIDE), 900); // after the "sent" line shows
   }
   drawTypedRoll();
 }
