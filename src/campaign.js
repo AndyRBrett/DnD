@@ -501,6 +501,8 @@ export const sheets = {
     ]
   },
   "Roan the Last Shadow": {
+    // Shown when the Attack card stops a second action.
+    turnHint: "Living Shadow is a bonus action and adds no attack of its own: the shadow throws its copied Q only alongside Roan's Razor Shuriken (Q).",
     attacks: [
       { name: "Wrist blade", ability: "DEX", hit: 9, damage: "1d6+5", type: "slashing", note: "Finesse, 5 ft. One attack per Attack action; the second blade gives no free attack." },
       { name: "Razor Shuriken (Q)", ability: "DEX", ranged: true, hit: 9, damage: "1d6+5", type: "piercing", note: "Action, 60 ft, one target; Roan's own throw costs no energy and isn't magical." },

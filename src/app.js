@@ -1920,7 +1920,15 @@ function drawTurnGuide() {
     const cap = per ? attackCap(me, per) : 0;
     text = per && made < cap
       ? "You get " + (cap - made) + " more attack" + (cap - made === 1 ? "" : "s") + ": tap Next attack on the card. Or end your turn."
+      : attacksSpent(me) ? "That's your attacks for this turn. End your turn so the next player goes."
+      : actionSpent(me) ? "Your action is used. You still have a bonus action (" + bonusAttacksLeft(me).join(" or ") + "), or end your turn."
       : "Done? End your turn so the next player goes.";
+    $("combat-end-turn").classList.add("is-next");
+  } else if (attackFlow.step === "ready" && actionSpent(me)) {
+    // Back on a fresh Attack card with the action already used.
+    step = 3;
+    const bonus = bonusAttacksLeft(me);
+    text = "You've used your action this turn. " + (bonus.length ? "You still have a bonus action (" + bonus.join(" or ") + "), or e" : "E") + "nd your turn so the next player goes.";
     $("combat-end-turn").classList.add("is-next");
   } else {
     step = 1;
@@ -1957,6 +1965,7 @@ $("guide-go").onclick = () => guideAction?.();
 // enemy's turn, that enemy's attacks right here (no hop to the DM tab).
 let dmTurnKey = "";
 let dmTurnStart = 0;
+const DM_TURN_KEY = () => "dnd-dm-turn-start:" + room;
 function drawDmTurn(current, order) {
   const box = $("dm-turn");
   if (!isHost || !state?.combat || ended) { box.hidden = true; dmTurnKey = ""; return; }
@@ -1966,7 +1975,13 @@ function drawDmTurn(current, order) {
     : enemy ? "en:" + enemy.id + ":" + enemy.hp + ":" + (enemy.conditions ?? []).join(",") + ":" + state.combat.round
     : current.key + ":" + state.combat.round;
   const newest = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
-  if (key !== dmTurnKey) dmTurnStart = newest; // story lines after this are this turn's
+  if (key !== dmTurnKey) {
+    // Story lines after this are this turn's. The mark is kept on the device,
+    // so a reload mid-turn still counts what was already done this turn.
+    const saved = String(storage.get(DM_TURN_KEY()) ?? "").split("|");
+    dmTurnStart = saved[0] === key && Number(saved[1]) <= newest ? Number(saved[1]) : newest;
+    storage.set(DM_TURN_KEY(), key + "|" + dmTurnStart);
+  }
   const playerTurn = current && current.kind === "pc";
   if (key === dmTurnKey && !playerTurn) return; // keep rolled attacks on screen between polls
   dmTurnKey = key;
@@ -3332,6 +3347,30 @@ function markUsedOnce(index, attack) {
   }
   turnUses.set(index, uses);
 }
+// Nothing left to attack with this turn: the action (and any Action Surge) is
+// spent, the Attack action has no swings left, and no bonus-action attack is
+// waiting. Moving on then means ending the turn.
+function actionSpent(index) {
+  if (!turnsRunning() || state?.combat?.turn !== "pc:" + index) return false;
+  const uses = usesThisTurn(index);
+  const per = attacksFor(index).find(attack => attack.perAction)?.perAction ?? 0;
+  const made = attacksThisTurn(index);
+  if (per && made % per !== 0) return false; // swings left in this Attack action
+  if (per && made && made < attackCap(index, per)) return false; // Action Surge swings
+  return actionsUsed(uses) >= 1 + surgesThisTurn(index);
+}
+// Bonus-action attacks still open this turn (Spiritual Weapon, Shadow Slash),
+// leaving out any the card would block: no slot left for a spell that isn't
+// already up, or none of the resource it spends.
+function bonusAttacksLeft(index) {
+  if (usesThisTurn(index).bonus >= 1) return [];
+  const sheet = sheets[partyName(index)];
+  const res = readRes(index);
+  return attacksFor(index).filter(attack => isBonusAction(attack)
+    && (!attack.slot || (attack.lasting && lastingUp.has(index + ":" + attack.name)) || castableLevels(attack, sheet, res).length)
+    && (!attack.spends || resourceLeft(sheet, res, attack.spends) >= 1)).map(attack => attack.name);
+}
+const attacksSpent = index => actionSpent(index) && !bonusAttacksLeft(index).length;
 // Why this attack would be one action (or bonus action) too many, or "".
 function turnBlock(index, attack) {
   if (!turnsRunning() || attack.free) return "";
@@ -3341,8 +3380,12 @@ function turnBlock(index, attack) {
   }
   // Swings left in an Attack action already started: the swing count on the card handles those.
   if (attack.perAction && attacksThisTurn(index) % attack.perAction !== 0) return "";
-  return actionsUsed(uses) >= 1 + surgesThisTurn(index)
-    ? "You've already used your action this turn (" + uses.last + "). Only one action a turn: pick a bonus action, or end your turn." : "";
+  if (actionsUsed(uses) < 1 + surgesThisTurn(index)) return "";
+  // Only offer a bonus action when one is on the sheet and still unused.
+  const bonusLeft = uses.bonus < 1 && attacksFor(index).some(isBonusAction);
+  const hint = sheets[partyName(index)]?.turnHint;
+  return "You've already used your action this turn (" + uses.last + "). Only one action a turn: "
+    + (bonusLeft ? "pick a bonus action, or end your turn." : "end your turn.") + (hint ? " " + hint : "");
 }
 function countAttack(index) {
   attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
@@ -3705,7 +3748,23 @@ function drawAttack() {
   // (Action Surge, a bonus-action attack): a second tap says so.
   const cap = baseAttack.perAction ? attackCap(me, baseAttack.perAction) : 0;
   const actionDone = Boolean(baseAttack.perAction) && made >= cap;
-  const next = stepButton(baseAttack.perAction && made && made < cap
+  // Nothing left to attack with this turn (the action is spent and no
+  // bonus-action attack is waiting): moving on means ending the turn, so the
+  // button takes the player back up to the turn card instead of offering a
+  // free swing.
+  const turnDone = attacksSpent(me);
+  // Action used, a bonus-action attack still open: say so instead of "Next attack".
+  const bonusOnly = !turnDone && actionSpent(me) ? bonusAttacksLeft(me) : [];
+  // The card stays on this attack's result, so the turn guide up top keeps
+  // pointing at End my turn.
+  const next = turnDone ? stepButton("Done attacking: end your turn ▲", "quiet", () => {
+    showTab("combat");
+    scrollToCard($("combat-head"));
+  }) : bonusOnly.length ? stepButton("Bonus action left: " + bonusOnly.join(" or "), "quiet", () => {
+    resetAttack(); drawAttack();
+    const pick = attacksFor(me).findIndex(attack => attack.name === bonusOnly[0]);
+    if (pick >= 0 && pick !== attackFlow.index) $("attack-list").children[pick]?.click();
+  }) : stepButton(baseAttack.perAction && made && made < cap
     ? "Next attack (" + (cap - made) + " more this turn" + (cap > baseAttack.perAction ? ", Action Surge" : "") + ")"
     : actionDone ? "Attack action done" + (made > baseAttack.perAction ? " (+" + (made - baseAttack.perAction) + " extra)" : "") : "Next attack", "quiet", event => {
       if (actionDone && !confirmTap(event.currentTarget, "Tap again: an extra attack (Action Surge or a bonus action)")) return;
@@ -3918,6 +3977,14 @@ function drawAttack() {
     // Once the damage is with the DM, moving on is the next thing to do.
     const delivered = attackFlow.sent.length > 0 || !backend.postAction || !Array.isArray(state?.actions);
     if (delivered) { next.className = "cta"; parts.push(next); } else extras.push(next);
+  }
+  // A rare extra swing the DM allows (a feat or item not on the sheet): kept
+  // out of the way, two taps.
+  if (turnDone && (attackFlow.step === "miss" || attackFlow.step === "damage")) {
+    extras.push(stepButton("Another attack (only if the DM allows it)", "quiet", event => {
+      if (!confirmTap(event.currentTarget, "Tap again: an extra attack your DM allows")) return;
+      resetAttack(); drawAttack();
+    }));
   }
   steps.replaceChildren(...parts, ...moreFold(extras));
   drawTurnGuide();
