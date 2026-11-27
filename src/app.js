@@ -3348,8 +3348,12 @@ function turnBlock(index, attack) {
   }
   // Swings left in an Attack action already started: the swing count on the card handles those.
   if (attack.perAction && attacksThisTurn(index) % attack.perAction !== 0) return "";
-  return actionsUsed(uses) >= 1 + surgesThisTurn(index)
-    ? "You've already used your action this turn (" + uses.last + "). Only one action a turn: pick a bonus action, or end your turn." : "";
+  if (actionsUsed(uses) < 1 + surgesThisTurn(index)) return "";
+  // Only offer a bonus action when one is on the sheet and still unused.
+  const bonusLeft = uses.bonus < 1 && attacksFor(index).some(isBonusAction);
+  const hint = sheets[partyName(index)]?.turnHint;
+  return "You've already used your action this turn (" + uses.last + "). Only one action a turn: "
+    + (bonusLeft ? "pick a bonus action, or end your turn." : "end your turn.") + (hint ? " " + hint : "");
 }
 function countAttack(index) {
   attacksMade.set(index, { turn: turnTag(), count: attacksThisTurn(index) + 1 });
