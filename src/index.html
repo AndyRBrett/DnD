@@ -392,6 +392,16 @@
             <button type="submit" class="cta">Add</button>
           </form>
           <p id="quick-status" class="fineprint"></p>
+          <details id="claude-enemies" class="fold" hidden>
+            <summary>✨ Describe enemies (Claude builds them)</summary>
+            <form id="claude-enemy-form" class="stack">
+              <label for="claude-enemy-text">What do you need?</label>
+              <textarea id="claude-enemy-text" rows="3" maxlength="600" placeholder="Three masked croupiers with brass rakes that drag people in, and their boss, a hard fight"></textarea>
+              <button type="submit" class="secondary">Build with Claude</button>
+              <p id="claude-enemy-status" class="fineprint" role="status"></p>
+            </form>
+            <div id="claude-enemy-list" class="claude-enemy-list"></div>
+          </details>
           <div id="enemy-list"></div>
           <p id="encounter-sync" class="fineprint"></p>
           <details id="enemy-builder" class="fold">
@@ -417,6 +427,18 @@
               <p id="enemy-status" class="fineprint"></p>
             </form>
           </details>
+        </section>
+        <section id="dm-assistant" class="card stack" hidden aria-labelledby="dm-assistant-title">
+          <p class="eyebrow gold">ONLY YOU SEE THIS</p>
+          <h2 id="dm-assistant-title" class="display xs">DM assistant</h2>
+          <p class="fineprint">Ask Claude for a twist, an NPC, a description, or what the enemies would do now. It knows the campaign, this session, and the table.</p>
+          <div id="dm-ask-presets" class="chips"></div>
+          <form id="dm-ask-form" class="stack">
+            <textarea id="dm-ask-text" rows="2" maxlength="600" aria-label="Ask the DM assistant" placeholder="The party is stuck at the vault door. Give me a way in."></textarea>
+            <button type="submit" class="secondary">Ask Claude</button>
+            <p id="dm-ask-status" class="fineprint" role="status"></p>
+          </form>
+          <div id="dm-ask-out" class="dm-ask-out" hidden aria-live="polite"></div>
         </section>
         <section id="dm-list" class="card stack" hidden aria-labelledby="dm-list-title">
           <p class="eyebrow">WHO CAN START TABLES</p>

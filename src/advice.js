@@ -180,3 +180,207 @@ export async function readAdvice(response) {
     question: String(advice.ask_dm).slice(0, 300)
   };
 }
+
+// ── For the DM: enemies built from a description, and a DM assistant ──────
+// Both are host-only (the edge function and the local server check) and use
+// the same story context as a player's ask: the campaign history and this
+// session, cached the same way.
+
+export const enemySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["enemies", "note"],
+  properties: {
+    enemies: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "count", "cr", "ac", "hp", "init", "speed", "saves", "attacks", "routine", "abilities"],
+        properties: {
+          name: { type: "string" },
+          count: { type: "integer" },
+          cr: { type: "string" },
+          ac: { type: "integer" },
+          hp: { type: "string" },
+          init: { type: "integer" },
+          speed: { type: "integer" },
+          saves: { type: "array", items: { type: "integer" } },
+          attacks: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["name", "hit", "damage", "extra_damage", "extra_type", "save", "dc", "effect"],
+              properties: {
+                name: { type: "string" },
+                hit: { type: "integer" },
+                damage: { type: "string" },
+                extra_damage: { type: "string" },
+                extra_type: { type: "string" },
+                save: { type: "string" },
+                dc: { type: "integer" },
+                effect: { type: "string" }
+              }
+            }
+          },
+          routine: { type: "array", items: { type: "integer" } },
+          abilities: { type: "string" }
+        }
+      }
+    },
+    note: { type: "string" }
+  }
+};
+
+export const enemySystem = [
+  "You build enemy stat blocks for the DM of an in-person Dungeons & Dragons 5th edition game. The DM describes the enemies they want; you return stat blocks the DM's app can run.",
+  "Fit them to the story so far: names, flavor and abilities should belong to the scene the DM is running. Balance them for the party in PARTY (their levels and size) and the difficulty the DM asks for (default: a fair fight). Use standard 5th edition math for the challenge rating you choose: AC, HP, attack bonus, damage per round and save DCs in line with that CR.",
+  "name is what the DM's tracker shows (\"Masked Croupier\"); the app numbers copies. count is how many of this enemy (1 to 12; what the DM asked for, or a sensible number). cr is the challenge rating as a string (\"1/2\", \"5\"). hp is dice like \"11d8+22\". init is the Dexterity modifier. saves is exactly six integers: Str, Dex, Con, Int, Wis, Cha save bonuses.",
+  "attacks: at most three. name is short; put \"(×2)\" in the name when the enemy makes that attack twice in a turn (\"Brass Rake (×2)\"). hit is the to-hit bonus; damage is dice like \"1d10+4\". When a hit also does something, fill extra_damage and extra_type (\"2d6\", \"fire\") and/or save, dc and effect (\"Str\", 14, \"pulled 10 ft toward it\"); otherwise leave them as empty strings and dc 0. routine is the indexes of the attacks one turn uses (usually [0]; [0, 1] for claws and a bite).",
+  "abilities is two to four short plain sentences: multiattack, special moves with their saves and recharge, resistances and immunities, and one line of tactics (how they fight, when they flee). Write everything in your own words.",
+  "At most four different enemies. note is one sentence to the DM: how hard the fight should be for this party and one way to make it more interesting.",
+  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably."
+].join("\n");
+
+export const dmSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["answer", "ideas"],
+  properties: {
+    answer: { type: "string" },
+    ideas: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "detail", "line"],
+        properties: { title: { type: "string" }, detail: { type: "string" }, line: { type: "string" } }
+      }
+    }
+  }
+};
+
+export const dmSystem = [
+  "You help the Dungeon Master of an in-person Dungeons & Dragons 5th edition game, mid-session, from their phone. The players cannot see your answer.",
+  "Read the campaign history and the whole session first: the party's objective, the threats and mysteries, what NPCs want, threads left open, and what the players have been doing. Everything you suggest should fit that story and build on it.",
+  "The DM may ask for a twist, an NPC (a name, a look, a voice, what they want), a description of a place or moment, what enemies would do now (their tactics given TABLE STATE), a ruling, or anything else. Answer what they asked.",
+  "answer is two to four short sentences that answer the DM directly. ideas are up to three options: title is a few words; detail is one or two sentences on how it plays and why it fits; line is something the DM could read or post to the table as is (narration in second person plural or an NPC's words), or an empty string when there's nothing to read out.",
+  "Never decide for the players or spend their resources. Leave rolls and outcomes to the table. Keep secrets the DM has not revealed out of any line meant for the players.",
+  "TABLE STATE comes from the DM's app: the round and turn, the party's HP and conditions, and the enemies with their real HP. Use it for tactics and pacing.",
+  "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context."
+].join("\n");
+
+// The story every DM ask carries: history and the session, cached.
+function storyBlocks(scenes, history, actions) {
+  const session = sessionWindow(scenes);
+  const firstAt = Number(session[0]?.created ?? -Infinity);
+  const timeline = [
+    ...session.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
+    ...actions.filter(action => Number(action.created) >= firstAt).map(action => ({ at: Number(action.created), line: action.name + " (player): " + action.text }))
+  ].sort((a, b) => a.at - b.at);
+  const blocks = [];
+  if (String(history).trim()) blocks.push({ type: "text", text: "CAMPAIGN HISTORY (the group's notes on earlier sessions, oldest first):\n\n" + String(history).trim(), cache_control: { type: "ephemeral", ttl: "1h" } });
+  if (timeline.length) blocks.push({ type: "text", text: "THIS SESSION SO FAR (DM updates and what players said their characters did, oldest first):\n" + timeline.map(entry => "- " + entry.line).join("\n"), cache_control: { type: "ephemeral" } });
+  return blocks;
+}
+
+// mode: "enemies" (stat blocks from a description) or "dm" (the assistant).
+// party: [{ name, role }] from the roster. table: the DM's TABLE STATE.
+export function dmRequest(apiKey, mode, { scenes = [], history = "", actions = [], party = [], prompt = "", table = "" } = {}) {
+  const enemies = mode === "enemies";
+  const content = storyBlocks(scenes, history, actions);
+  content.push({ type: "text", text: "PARTY:\n" + party.map(member => "- " + member.name + (member.role ? " (" + member.role + ")" : "")).join("\n")
+    + (String(table).trim() ? "\n\nTABLE STATE (from the DM's app, right now):\n" + String(table).trim().slice(0, 3000) : "")
+    + "\n\n" + (enemies ? "THE ENEMIES THE DM WANTS:\n" : "THE DM ASKS:\n") + String(prompt).trim().slice(0, 600) });
+  return {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2026-10-21",
+      "anthropic-beta": "server-side-fallback-2026-07-01"
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 8000,
+      fallbacks: "default",
+      output_config: { effort: "medium", format: { type: "json_schema", schema: enemies ? enemySchema : dmSchema } },
+      system: enemies ? enemySystem : dmSystem,
+      messages: [{ role: "user", content }]
+    })
+  };
+}
+
+async function readJsonAnswer(response) {
+  if (!response.ok) {
+    console.error("Claude request failed", response.status, (await response.text()).slice(0, 300));
+    throw new AdviceError(response.status === 429 ? "Claude is busy. Try again in a moment." : "Claude could not answer. Try again.");
+  }
+  const message = await response.json();
+  if (message.stop_reason === "refusal") throw new AdviceError("Claude declined this one. Try rewording it.");
+  if (message.stop_reason === "max_tokens") throw new AdviceError("Claude ran long. Try again.");
+  try {
+    return JSON.parse(message.content.find(block => block.type === "text")?.text ?? "");
+  } catch {
+    throw new AdviceError("Claude's answer was unreadable. Try again.");
+  }
+}
+
+const whole = (value, low, high, fallback) => Number.isFinite(Number(value)) ? Math.max(low, Math.min(high, Math.round(Number(value)))) : fallback;
+const DICE = /^\d{1,2}d\d{1,3}(\s*[+-]\s*\d{1,3})?$|^\d{1,4}$/;
+const ABILITY_SHORT = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
+
+// Returns { enemies: [template + count], note }: the encounter tracker's
+// template shape ({ name, cr, ac, hp, init, speed, saves, attacks: [[name,
+// hit, damage, rider?]], routine, abilities }), with every number clamped
+// and dice that don't parse dropped.
+export async function readEnemies(response) {
+  const answer = await readJsonAnswer(response);
+  const enemies = (Array.isArray(answer.enemies) ? answer.enemies : []).slice(0, 4).map(enemy => {
+    // Attacks whose damage doesn't roll are dropped; kept[i] is where the
+    // original attack i ended up, so the routine still names the right ones.
+    const kept = [];
+    const attacks = (Array.isArray(enemy.attacks) ? enemy.attacks : []).slice(0, 3)
+      .map((attack, index) => [attack, index])
+      .filter(([attack]) => DICE.test(String(attack.damage ?? "").trim()))
+      .map(([attack, index], position) => {
+        kept[index] = position;
+        const rider = {};
+        if (DICE.test(String(attack.extra_damage ?? "").trim()) && String(attack.extra_damage).trim()) Object.assign(rider, { damage: String(attack.extra_damage).replace(/\s/g, ""), type: String(attack.extra_type ?? "").slice(0, 20) });
+        const save = ABILITY_SHORT.find(short => short.toLowerCase() === String(attack.save ?? "").slice(0, 3).toLowerCase());
+        if (save && Number(attack.dc) > 0) Object.assign(rider, { save, dc: whole(attack.dc, 5, 30, 13), ...(attack.effect ? { effect: String(attack.effect).slice(0, 120) } : {}), ...(rider.damage ? { half: true } : {}) });
+        const base = [String(attack.name ?? "Attack").slice(0, 40), whole(attack.hit, -5, 20, 0), String(attack.damage).replace(/\s/g, "")];
+        return Object.keys(rider).length ? [...base, rider] : base;
+      });
+    const saves = Array.from({ length: 6 }, (_, index) => whole(enemy.saves?.[index], -5, 20, 0));
+    return {
+      name: String(enemy.name ?? "Enemy").slice(0, 40) || "Enemy",
+      count: whole(enemy.count, 1, 12, 1),
+      cr: String(enemy.cr ?? "").slice(0, 6),
+      ac: whole(enemy.ac, 5, 30, 12),
+      hp: DICE.test(String(enemy.hp ?? "").trim()) ? String(enemy.hp).replace(/\s/g, "") : "10",
+      init: whole(enemy.init, -5, 15, 0),
+      speed: whole(enemy.speed, 0, 120, 30),
+      saves,
+      attacks,
+      routine: [...new Set((Array.isArray(enemy.routine) ? enemy.routine : [0]).map(index => kept[Number(index)]).filter(Number.isInteger))].slice(0, 4),
+      abilities: String(enemy.abilities ?? "").slice(0, 1000)
+    };
+  });
+  if (!enemies.length) throw new AdviceError("Claude didn't return any enemies. Try describing them again.");
+  return { enemies, note: String(answer.note ?? "").slice(0, 400) };
+}
+
+// Returns { answer, ideas: [{ title, detail, line }] (up to three) }.
+export async function readDmHelp(response) {
+  const answer = await readJsonAnswer(response);
+  return {
+    answer: String(answer.answer ?? "").slice(0, 1200),
+    ideas: (Array.isArray(answer.ideas) ? answer.ideas : []).slice(0, 3).map(idea => ({
+      title: String(idea.title ?? "").slice(0, 120),
+      detail: String(idea.detail ?? "").slice(0, 500),
+      line: String(idea.line ?? "").slice(0, 600)
+    }))
+  };
+}

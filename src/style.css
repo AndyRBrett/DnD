@@ -389,6 +389,13 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .roll-ask-result-list li.is-pass{border-color:var(--green)}
 .roll-ask-result-list li.is-fail{border-color:var(--red-border)}
 .roll-ask-result-list li.is-waiting span{color:var(--muted)}
+.claude-enemy-list{display:grid;gap:10px;margin-top:10px}
+.claude-enemy{border:1px solid var(--border2);border-radius:12px;padding:12px;background:var(--card)}
+.claude-enemy p{margin:6px 0}
+.dm-ask-out{display:grid;gap:10px}
+.dm-idea{border-left:3px solid var(--gold);padding:4px 0 4px 12px}
+.dm-idea p{margin:4px 0}
+.dm-idea blockquote{margin:6px 0;color:var(--muted2);font-style:italic}
 .quick-enemy{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:10px 0 0}
 .quick-enemy label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted2)}
 .quick-enemy-pick{flex:1 1 200px;min-width:0}

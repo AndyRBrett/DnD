@@ -5,7 +5,7 @@
 // the room is live, and the limits allow it (or returns a cached answer). The
 // Claude call uses this project's ANTHROPIC_API_KEY secret; the answer is cached
 // with the service role. advice.js is a copy of src/advice.js (npm test checks).
-import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice } from "./advice.js";
+import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice, dmRequest, readEnemies, readDmHelp } from "./advice.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -32,13 +32,20 @@ Deno.serve(async req => {
   if (req.method !== "POST") return reply({ error: "Method unavailable." }, 405);
   if (!ANTHROPIC_API_KEY) return reply({ error: "Claude suggestions are off on this server." }, 503);
 
-  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown; table?: unknown };
+  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown; table?: unknown; mode?: unknown; prompt?: unknown };
   try {
     input = await req.json();
   } catch {
     return reply({ error: "Invalid request." }, 400);
   }
   const code = typeof input.code === "string" && /^[a-f0-9]{24}$/.test(input.code) ? input.code : "";
+  // The DM's asks: enemies from a description, or the DM assistant.
+  if (input.mode === "enemies" || input.mode === "dm") {
+    if (!code) return reply({ error: "Invalid request." }, 400);
+    const prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 600) : "";
+    if (!prompt) return reply({ error: input.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
+    return await answerDm(req, reply, code, input.mode, prompt, typeof input.table === "string" ? input.table.slice(0, 3000) : "");
+  }
   const character = Number(input.character);
   if (!code || !Number.isInteger(character) || character < 0 || character > 4) return reply({ error: "Invalid request." }, 400);
   const question = typeof input.question === "string" ? input.question.trim().slice(0, 300) : "";
@@ -150,6 +157,53 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
       signal: AbortSignal.timeout(60000)
     }));
     return reply({ ...advice, sceneId: room.scenes?.at(-1)?.id ?? null, ...(question ? { asked: question } : {}) });
+  } catch (error) {
+    if (!(error instanceof AdviceError)) console.error(error);
+    return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
+  }
+}
+
+// ── The DM's asks ──
+// Only the table's host: the player's token reads the room (dnd_room_v2 checks
+// they're signed in and the table is live, and says whether they host it).
+// Same daily and per-table limits as questions, counted as character -1.
+async function answerDm(req: Request, reply: (body: unknown, status?: number) => Response, code: string, mode: string, prompt: string, table: string) {
+  const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
+    method: "POST",
+    headers: { apikey: ANON_KEY, Authorization: req.headers.get("Authorization") ?? "", "Content-Type": "application/json" },
+    body: JSON.stringify({ p_code: code })
+  });
+  const room = await roomResponse.json().catch(() => ({}));
+  if (!roomResponse.ok) return reply({ error: room.message ?? "Could not reach the room." }, roomResponse.status);
+  const uid = tokenSubject(req);
+  if (!room.isHost || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Only the DM can ask this." }, 403);
+
+  const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
+  if (await countUsage("created_at=gte." + since(86400000)) >= 600) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
+  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= 120) return reply({ error: "You have used today's Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code) >= 500) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code + "&character_index=eq.-1&created_at=gte." + since(8000)) > 0) {
+    return reply({ error: "One moment — Claude was just asked." }, 429);
+  }
+  await fetch(SUPABASE_URL + "/rest/v1/dnd_ai_usage", {
+    method: "POST",
+    headers: { ...service, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ code, character_index: -1, user_id: uid })
+  });
+
+  try {
+    const [historyRows, sceneRows] = await Promise.all([
+      fetch(SUPABASE_URL + "/rest/v1/dnd_campaigns?select=history&name=eq." + encodeURIComponent("The Onyx Jewel"), { headers: service }).then(response => response.ok ? response.json() : []),
+      fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=200", { headers: service }).then(response => response.ok ? response.json() : [])
+    ]);
+    const scenes = sceneRows.reverse().map((scene: { id: number; text: string; created_at: string }) =>
+      ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }));
+    const party = (room.party ?? []).map((member: { name: string; role?: string }) => ({ name: member.name, role: member.role ?? "" }));
+    const response = await fetch(CLAUDE_URL, {
+      ...dmRequest(ANTHROPIC_API_KEY, mode, { scenes: scenes.length ? scenes : room.scenes ?? [], history: historyRows[0]?.history ?? "", actions: room.actions ?? [], party, prompt, table }),
+      signal: AbortSignal.timeout(60000)
+    });
+    return reply(mode === "enemies" ? await readEnemies(response) : await readDmHelp(response));
   } catch (error) {
     if (!(error instanceof AdviceError)) console.error(error);
     return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);

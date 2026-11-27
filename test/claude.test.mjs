@@ -203,3 +203,53 @@ test("the table snapshot (turn, HP, what's left) reaches Claude", async () => {
   assert.match(requests[0].body.system, /Enemy HP and AC are hidden: never guess numbers/);
   assert.equal(requests[0].body.model, "claude-sonnet-5-5");
 });
+
+test("the DM's asks: host only; enemies come back as tracker stat blocks, numbers clamped", async () => {
+  const { post, host } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
+  reply = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
+    enemies: [{ name: "Masked Croupier", count: 3, cr: "5", ac: 15, hp: "11d8+22", init: 3, speed: 30, saves: [4, 5, 3, 0, 3],
+      attacks: [{ name: "Brass Rake (×2)", hit: 7, damage: "1d10+4", extra_damage: "", extra_type: "", save: "Str", dc: 14, effect: "pulled 10 ft" },
+        { name: "Bad dice", hit: 99, damage: "lots", extra_damage: "", extra_type: "", save: "", dc: 0, effect: "" },
+        { name: "Thrown chip", hit: 7, damage: "2d6+3", extra_damage: "1d6", extra_type: "force", save: "", dc: 0, effect: "" }],
+      routine: [0, 2, 7], abilities: "They fight in a line." },
+    { name: "The House", count: 40, cr: "9", ac: 99, hp: "oops", init: 2, speed: 30, saves: [1, 1, 1, 1, 1, 1], attacks: [], routine: [], abilities: "" }],
+    note: "A fair fight."
+  }) }] });
+  assert.equal((await post("/advise", { mode: "enemies", prompt: "croupiers" })).status, 403, "players can't ask");
+  assert.equal((await post("/advise", { mode: "enemies", prompt: " " }, { "x-table-host": host })).status, 400);
+  assert.equal(requests.length, 0);
+  const result = await post("/advise", { mode: "enemies", prompt: "Three masked croupiers", table: "Fight: round 2" }, { "x-table-host": host });
+  assert.equal(result.status, 200);
+  const [croupier, house] = result.body.enemies;
+  assert.deepEqual(croupier.attacks, [["Brass Rake (×2)", 7, "1d10+4", { save: "Str", dc: 14, effect: "pulled 10 ft" }], ["Thrown chip", 7, "2d6+3", { damage: "1d6", type: "force" }]]);
+  assert.deepEqual(croupier.saves, [4, 5, 3, 0, 3, 0], "six saves, missing ones 0");
+  assert.deepEqual(croupier.routine, [0, 1], "the routine follows the attacks that were kept (the chip moved from 2 to 1)");
+  assert.equal(croupier.count, 3);
+  assert.deepEqual([house.count, house.ac, house.hp], [12, 30, "10"], "clamped, and HP that doesn't roll falls back");
+  assert.equal(result.body.note, "A fair fight.");
+  const { body } = requests.at(-1);
+  assert.equal(body.model, "claude-sonnet-5-5");
+  assert.ok(body.system.includes("enemy stat blocks"));
+  assert.deepEqual(body.output_config.format.schema.required, ["enemies", "note"]);
+  const text = body.messages[0].content.map(block => block.text).join("\n");
+  assert.ok(text.includes("Roll initiative. Two guards raise their muskets."), "the session goes along");
+  assert.ok(text.includes("Logan Ninefingers") && text.includes("Fight: round 2") && text.includes("Three masked croupiers"));
+  // Right after: the cooldown.
+  assert.equal((await post("/advise", { mode: "dm", prompt: "a twist" }, { "x-table-host": host })).status, 429);
+});
+
+test("the DM assistant answers with ideas and lines to read out", async () => {
+  const { post, host } = await room({ DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" });
+  reply = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({
+    answer: "The croupiers fall back to protect the wheel.",
+    ideas: [{ title: "The wheel spins", detail: "It shows what the house wants.", line: "The wheel begins to turn on its own." },
+      { title: "Quiet", detail: "No line.", line: "" }, { title: "a", detail: "b", line: "c" }, { title: "dropped", detail: "", line: "" }]
+  }) }] });
+  const result = await post("/advise", { mode: "dm", prompt: "What would the croupiers do now?" }, { "x-table-host": host });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.answer, "The croupiers fall back to protect the wheel.");
+  assert.equal(result.body.ideas.length, 3);
+  assert.equal(result.body.ideas[0].line, "The wheel begins to turn on its own.");
+  assert.ok(requests.at(-1).body.system.includes("Dungeon Master"));
+  assert.deepEqual(requests.at(-1).body.output_config.format.schema.required, ["answer", "ideas"]);
+});

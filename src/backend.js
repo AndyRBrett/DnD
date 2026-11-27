@@ -96,6 +96,8 @@ function localBackend() {
     combatEnemies: (code, enemies) => post(code, "combat", { enemies, enemiesOnly: true }),
     combatPassTurn: (code, character) => post(code, "pass-turn", { character }, false),
     combatSitOut: (code, character, out) => post(code, "combat", { sitOut: { character, out: Boolean(out) } }),
+    // The DM's Claude asks: "enemies" (stat blocks from a description) or "dm" (the assistant).
+    dmAsk: (code, mode, prompt, table = "") => post(code, "advise", { mode, prompt, table }),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
   };
 }
@@ -225,6 +227,16 @@ function hostedBackend({ url, anonKey }) {
     endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
+    async dmAsk(code, mode, prompt, table = "") {
+      const response = await fetch(url + "/functions/v1/dnd-advise", {
+        method: "POST",
+        headers: { apikey: anonKey, Authorization: "Bearer " + await token(), "content-type": "application/json" },
+        body: JSON.stringify({ code, mode, prompt, table })
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw failure(data?.error ?? data?.message, response.status);
+      return data;
+    },
     async advise(code, character, question = "", spent = [], table = "") {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
