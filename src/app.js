@@ -1281,22 +1281,29 @@ function pendingRollAsks(index) {
   const dismissed = new Set(readJson(ASKS_DISMISSED(), []));
   // An attack ask can take several rolls (Roan's Q, then the shadow's copy):
   // it stays until the player taps Done. A check or save is one roll.
-  return actions.map(action => ({ action, ask: parseRollAsk(action.text) }))
-    .filter(({ ask, action }) => ask && !dismissed.has(action.id))
-    .map(entry => ({ ...entry, answered: actions.filter(other => Number(other.id) > Number(entry.action.id) && String(other.text).startsWith("🎲 " + rollAskLabel(entry.ask))).length }))
-    .filter(({ ask, answered }) => ask.kind === "attack" || !answered)
-    .slice(-3);
+  // Each answer closes one request: the oldest open one with that label, so
+  // two Perception asks at DC 12 need two rolls.
+  const asks = actions.map(action => ({ action, ask: parseRollAsk(action.text), answered: 0 })).filter(({ ask }) => ask);
+  const ordered = [...actions].sort((a, b) => Number(a.id) - Number(b.id));
+  for (const answer of ordered) {
+    if (parseRollAsk(answer.text) || !String(answer.text).startsWith("🎲 ")) continue;
+    const open = asks.find(entry => Number(entry.action.id) < Number(answer.id) && String(answer.text).startsWith("🎲 " + rollAskLabel(entry.ask))
+      && (entry.ask.kind === "attack" || !entry.answered));
+    if (open) open.answered += 1;
+  }
+  return asks.filter(({ ask, action, answered }) => !dismissed.has(action.id) && (ask.kind === "attack" || !answered)).slice(-3);
 }
 function drawRollAsks() {
   const box = $("roll-asks");
   const me = Number($("character").value);
   const pending = isHost || ended || !state ? [] : pendingRollAsks(me);
   box.hidden = !pending.length;
-  if (!pending.length) return;
+  if (!pending.length) { box.replaceChildren(); box.renderedHtml = ""; return; }
   const sheet = sheets[partyName(me)];
   const cards = pending.map(({ action, ask, answered }) => {
     const item = document.createElement("div");
     item.className = "roll-ask";
+    item.dataset.ask = String(action.id); // a repeated ask is a new card, with its own buttons
     item.append(element("p", "eyebrow gold", "THE DM ASKS FOR A ROLL"),
       element("p", "roll-ask-what", rollAskLabel(ask) + (ask.note ? " — " + ask.note : "")));
     const buttons = document.createElement("div");
