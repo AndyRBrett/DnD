@@ -338,9 +338,14 @@ const ABILITY_SHORT = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
 export async function readEnemies(response) {
   const answer = await readJsonAnswer(response);
   const enemies = (Array.isArray(answer.enemies) ? answer.enemies : []).slice(0, 4).map(enemy => {
+    // Attacks whose damage doesn't roll are dropped; kept[i] is where the
+    // original attack i ended up, so the routine still names the right ones.
+    const kept = [];
     const attacks = (Array.isArray(enemy.attacks) ? enemy.attacks : []).slice(0, 3)
-      .filter(attack => DICE.test(String(attack.damage ?? "").trim()))
-      .map(attack => {
+      .map((attack, index) => [attack, index])
+      .filter(([attack]) => DICE.test(String(attack.damage ?? "").trim()))
+      .map(([attack, index], position) => {
+        kept[index] = position;
         const rider = {};
         if (DICE.test(String(attack.extra_damage ?? "").trim()) && String(attack.extra_damage).trim()) Object.assign(rider, { damage: String(attack.extra_damage).replace(/\s/g, ""), type: String(attack.extra_type ?? "").slice(0, 20) });
         const save = ABILITY_SHORT.find(short => short.toLowerCase() === String(attack.save ?? "").slice(0, 3).toLowerCase());
@@ -359,7 +364,7 @@ export async function readEnemies(response) {
       speed: whole(enemy.speed, 0, 120, 30),
       saves,
       attacks,
-      routine: (Array.isArray(enemy.routine) ? enemy.routine : [0]).map(Number).filter(index => Number.isInteger(index) && attacks[index]).slice(0, 4),
+      routine: [...new Set((Array.isArray(enemy.routine) ? enemy.routine : [0]).map(index => kept[Number(index)]).filter(Number.isInteger))].slice(0, 4),
       abilities: String(enemy.abilities ?? "").slice(0, 1000)
     };
   });

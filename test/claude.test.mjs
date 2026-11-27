@@ -211,7 +211,7 @@ test("the DM's asks: host only; enemies come back as tracker stat blocks, number
       attacks: [{ name: "Brass Rake (×2)", hit: 7, damage: "1d10+4", extra_damage: "", extra_type: "", save: "Str", dc: 14, effect: "pulled 10 ft" },
         { name: "Bad dice", hit: 99, damage: "lots", extra_damage: "", extra_type: "", save: "", dc: 0, effect: "" },
         { name: "Thrown chip", hit: 7, damage: "2d6+3", extra_damage: "1d6", extra_type: "force", save: "", dc: 0, effect: "" }],
-      routine: [0, 7], abilities: "They fight in a line." },
+      routine: [0, 2, 7], abilities: "They fight in a line." },
     { name: "The House", count: 40, cr: "9", ac: 99, hp: "oops", init: 2, speed: 30, saves: [1, 1, 1, 1, 1, 1], attacks: [], routine: [], abilities: "" }],
     note: "A fair fight."
   }) }] });
@@ -223,7 +223,7 @@ test("the DM's asks: host only; enemies come back as tracker stat blocks, number
   const [croupier, house] = result.body.enemies;
   assert.deepEqual(croupier.attacks, [["Brass Rake (×2)", 7, "1d10+4", { save: "Str", dc: 14, effect: "pulled 10 ft" }], ["Thrown chip", 7, "2d6+3", { damage: "1d6", type: "force" }]]);
   assert.deepEqual(croupier.saves, [4, 5, 3, 0, 3, 0], "six saves, missing ones 0");
-  assert.deepEqual(croupier.routine, [0], "routine only points at real attacks");
+  assert.deepEqual(croupier.routine, [0, 1], "the routine follows the attacks that were kept (the chip moved from 2 to 1)");
   assert.equal(croupier.count, 3);
   assert.deepEqual([house.count, house.ac, house.hp], [12, 30, "10"], "clamped, and HP that doesn't roll falls back");
   assert.equal(result.body.note, "A fair fight.");
