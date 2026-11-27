@@ -1534,11 +1534,14 @@ async function setCondition(name, level) {
   // stop, with where it ended up.
   const index = Number($("character").value);
   if (name === "Exhaustion" && before && level) {
-    clearTimeout(exhaustionPost.timer);
-    exhaustionPost.from ??= before;
-    exhaustionPost.timer = setTimeout(() => {
-      const from = exhaustionPost.from;
-      exhaustionPost.from = null;
+    // Kept per character, so stepping one and then another on a shared phone
+    // posts both.
+    const pending = exhaustionPosts.get(key) ?? { timer: 0, from: before };
+    clearTimeout(pending.timer);
+    exhaustionPosts.set(key, pending);
+    pending.timer = setTimeout(() => {
+      const from = pending.from;
+      exhaustionPosts.delete(key);
       const now = readJson(key, {}).Exhaustion ?? 0;
       if (now && now !== from) postCondition(name, now, from, key, index);
     }, 1500);
@@ -1547,7 +1550,7 @@ async function setCondition(name, level) {
   }
   await postCondition(name, level, before, key, index);
 }
-const exhaustionPost = { timer: 0, from: null };
+const exhaustionPosts = new Map(); // condition key → { timer, from }
 async function postCondition(name, level, before, key, index) {
   const { icon } = conditionByName[name];
   const text = !level ? "is no longer " + name + (name === "Exhaustion" ? "ed" : "")
@@ -4481,7 +4484,7 @@ function drawHitInbox() {
     // slashing): when the note names it, the resistance is certain.
     const damageType = attacksFor(state.party.findIndex(character => character.name === action.name)).find(attack => how.startsWith(attack.name))?.type ?? "";
     const resisted = Boolean(resists && damageType && new RegExp("\\b" + damageType + "\\b", "i").test(resists));
-    if (resists && !report.save) {
+    if (resists && (!report.save || report.save.rider)) {
       const half = document.createElement("button");
       half.type = "button";
       half.className = resisted ? "cta" : "ghost";
@@ -4504,10 +4507,10 @@ function drawHitInbox() {
           // A maneuver: the damage lands either way; the save decides the effect.
           const outcome = enemySave(target, { ...report.save, amount: report.amount, half: false });
           const effect = report.save.effect || "the effect";
-          hitEnemy(report.amount, " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
+          hitEnemy(resisted ? Math.floor(report.amount / 2) : report.amount, (resisted ? " (resists " + damageType + ")" : "") + " (" + report.save.ability + " save " + outcome.total + " vs DC " + report.save.dc + ": "
             + (outcome.saved ? "saved, no " + effect : "failed, " + effect) + ")");
           $("combat-status").textContent = target.name + " rolled " + outcome.total + " on the " + report.save.ability + " save (DC " + report.save.dc + "): "
-            + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + report.amount + " damage applied.";
+            + (outcome.saved ? "saved, no " + effect : "failed: " + effect) + ". " + (resisted ? Math.floor(report.amount / 2) + " damage applied (resists " + damageType + ")." : report.amount + " damage applied.");
           return;
         }
         const outcome = enemySave(target, { ...report.save, amount: report.amount, half: report.halfOnSave });
