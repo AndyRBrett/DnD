@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -5338,98 +5338,175 @@ for (const id of ["character-library", "rules-basics"]) {
 // (scene, combat order, party HP) for a screen everyone can see. Enemies show
 // only as Healthy, Bloodied, or Down, even when the DM's account opens it. ──
 const boardMode = new URLSearchParams(location.search).get("board") === "1";
-function boardEntry(entry) {
-  const item = document.createElement("li");
-  if (entry.dm) {
-    item.className = "is-dm";
-    item.textContent = entry.text;
-    return item;
+// ── TV board: a stage, not a transcript ─────────────────────────────────
+// The DM's post plays a passage at a time, like captions; the last few
+// moments sit in a strip under it; the party are portraits with HP rings; in
+// a fight a turn track runs across the top; big moments get a full-screen
+// flash. Nothing scrolls.
+const board = { sceneId: null, passages: [], page: 0, timer: 0, seen: null, enemies: new Map(), hp: new Map(), combat: false, flashes: [], flashing: false };
+// Short enough for a track chip or a portrait: "Roan", "Logan", "Croupier 2".
+const shortName = (name, enemy = false) => {
+  const plain = name.replace(/^The /, "");
+  if (plain.length <= 12) return plain;
+  const words = plain.split(/\s+/);
+  return enemy ? words.slice(-2).join(" ") : words[0];
+};
+const initials = name => name.replace(/^The /, "").split(/\s+/).filter(word => !/^(the|of)$/i.test(word)).slice(0, 2).map(word => word[0]).join("").toUpperCase();
+function boardPage(page) {
+  clearTimeout(board.timer);
+  board.page = Math.max(0, Math.min(board.passages.length - 1, page));
+  const scene = $("board-scene");
+  scene.classList.remove("is-in");
+  void scene.offsetWidth; // restart the fade
+  scene.textContent = board.passages[board.page] ?? "";
+  scene.classList.add("is-in");
+  $("board-pages").replaceChildren(...(board.passages.length > 1 ? board.passages.map((_, index) => {
+    const dot = document.createElement("i");
+    if (index === board.page) dot.className = "is-on";
+    else if (index < board.page) dot.className = "is-read";
+    return dot;
+  }) : []));
+  // Long enough to read aloud slowly, then the next passage; it rests on the last.
+  if (board.page < board.passages.length - 1) {
+    const words = (board.passages[board.page] ?? "").split(/\s+/).length;
+    board.timer = setTimeout(() => boardPage(board.page + 1), Math.min(22000, Math.max(7000, words * 380)));
   }
-  const { kind, who, text } = entry.line;
-  item.className = "is-" + kind;
-  if (kind === "action") {
-    const name = document.createElement("strong");
-    name.textContent = who + " ";
-    item.append(name, text);
-  } else {
-    item.textContent = ({ hit: "⚔️ ", call: "⚔️ ", miss: "💨 ", pending: "🎲 ", turn: "" }[kind] ?? "") + text;
+}
+document.addEventListener("keydown", event => {
+  if (!boardMode) return;
+  if (event.key === "ArrowRight" || event.key === " ") boardPage(board.page + 1);
+  if (event.key === "ArrowLeft") boardPage(board.page - 1);
+});
+function boardFlash(text, kind = "") {
+  board.flashes.push({ text, kind });
+  if (board.flashing) return;
+  const next = () => {
+    const flash = board.flashes.shift();
+    if (!flash) { board.flashing = false; $("board-flash").hidden = true; return; }
+    board.flashing = true;
+    $("board-flash").className = "board-flash" + (flash.kind ? " is-" + flash.kind : "");
+    $("board-flash-text").textContent = flash.text;
+    $("board-flash").hidden = false;
+    setTimeout(next, 3200);
+  };
+  next();
+}
+const MOMENT_ICON = { hit: "⚔️", call: "⚔️", miss: "💨", pending: "🎯", roll: "🎲", ask: "⏳", heal: "💚", status: "✨", turn: "⏭️", action: "💬", dm: "📜" };
+function momentCard(entry) {
+  const { moment } = entry;
+  const item = document.createElement("li");
+  item.className = "moment is-" + moment.kind + (moment.verdict ? " is-" + moment.verdict : "") + (moment.natural === 20 ? " is-nat20" : moment.natural === 1 ? " is-nat1" : "") + (board.seen && !board.seen.has(entry.id) ? " is-new" : "");
+  const icon = element("span", "moment-icon", MOMENT_ICON[moment.kind] ?? "•");
+  const body = document.createElement("div");
+  body.className = "moment-body";
+  const who = element("strong", "", moment.kind === "ask" ? "Waiting on " + moment.who : moment.who);
+  // chronicleLine sentences start with the name: say it once.
+  const said = moment.text.startsWith(moment.who + " ") ? moment.text.slice(moment.who.length + 1) : moment.text;
+  body.append(who, element("span", "", said + (moment.note && moment.kind !== "ask" ? " · " + moment.note : "")));
+  item.append(icon, body);
+  if (moment.kind === "roll") {
+    const total = element("b", "moment-total", String(moment.total));
+    if (moment.verdict) total.append(element("small", "", moment.verdict === "success" ? "✓" : "✗"));
+    item.append(total);
   }
   return item;
 }
 function drawBoard() {
   if (!boardMode || !state) return;
-  $("board-scene").textContent = ended ? "Session ended." : state.scenes.at(-1)?.text || "Waiting for the DM.";
-  // The story as a reader needs it: what led here (the DM's earlier posts and
-  // what everyone did, in order, as plain sentences), the DM's latest post,
-  // then what's happened since. Attack bookkeeping reads as sentences.
+  const first = board.seen === null;
+  board.seen ??= new Set();
   const latest = state.scenes.at(-1);
-  const entries = [
-    ...state.scenes.slice(0, -1).map(scene => ({ dm: true, at: scene.created, text: scene.text, id: "s" + scene.id })),
-    ...(state.actions ?? []).map(action => ({ at: action.created, line: chronicleLine(action.name, action.text), id: "a" + action.id }))
-  ].filter(entry => entry.dm || entry.line).sort((a, b) => a.at - b.at);
-  // A to-hit the DM called a hit is said again, with the damage, a moment later.
-  const told = entries.filter((entry, index) => !(entry.line?.kind === "call" && entries.slice(index + 1)
-    .some(later => later.line?.kind === "hit" && later.line.who === entry.line.who && later.line.enemy === entry.line.enemy)));
-  const before = told.filter(entry => !latest || entry.at < latest.created).slice(-10);
-  const after = told.filter(entry => latest && entry.at >= latest.created && !entry.dm).slice(-12);
-  const first = state.scenes[0];
-  const showFirst = first && state.scenes.length > 1 && !before.some(entry => entry.id === "s" + first.id);
-  $("board-previously").hidden = !showFirst;
-  $("board-previously").textContent = showFirst ? "Previously: " + first.text : "";
-  $("board-chronicle").replaceChildren(...before.map(boardEntry));
-  $("board-chronicle").hidden = !before.length;
-  $("board-actions-wrap").hidden = !after.length;
-  $("board-actions").replaceChildren(...after.map(boardEntry));
+  const sceneKey = ended ? "ended" : latest ? latest.id + ":" + latest.text : "none";
+  if (sceneKey !== board.sceneId) {
+    board.sceneId = sceneKey;
+    board.passages = ended ? ["The session has ended."] : scenePassages(latest?.text || "Waiting for the DM.");
+    boardPage(0);
+  }
+  const before = state.scenes.at(-2);
+  $("board-previously").hidden = !before;
+  $("board-previously").textContent = before ? "Before this — " + (before.text.length > 170 ? before.text.slice(0, 170).replace(/\s+\S*$/, "") + "…" : before.text) : "";
 
+  // Moments since the DM's latest post: an attack's call is folded into its
+  // hit, an answered roll request into its roll.
+  const actions = (state.actions ?? []).filter(action => !latest || action.created >= latest.created)
+    .map(action => ({ id: "a" + action.id, at: action.created, moment: boardMoment(action.name, action.text) }))
+    .filter(entry => entry.moment);
+  const shown = actions.filter((entry, index) => {
+    const later = actions.slice(index + 1);
+    if (entry.moment.kind === "call") return !later.some(next => next.moment.kind === "hit" && next.moment.who === entry.moment.who && next.moment.enemy === entry.moment.enemy);
+    if (entry.moment.kind === "ask") return !later.some(next => next.moment.kind === "roll" && next.moment.who === entry.moment.who);
+    return true;
+  }).slice(-4);
+  renderInto($("board-moments"), shown.map(momentCard));
+  $("board-moments").hidden = !shown.length;
+
+  // Big moments, once each: a natural 20 or 1, a critical hit.
+  if (!first) {
+    for (const entry of actions) {
+      if (board.seen.has(entry.id)) continue;
+      const { moment } = entry;
+      if (moment.kind === "roll" && moment.natural === 20) boardFlash("NATURAL 20 · " + moment.who, "gold");
+      else if (moment.kind === "roll" && moment.natural === 1) boardFlash("NATURAL 1 · " + moment.who, "dark");
+      else if (moment.kind === "hit" && /critical hit/.test(moment.text)) boardFlash("CRITICAL HIT · " + moment.who, "gold");
+    }
+  }
+  for (const entry of actions) board.seen.add(entry.id);
+
+  // The fight: a turn track, the turn called out over the stage.
   const combat = state.combat;
-  $("board-combat").hidden = !combat;
-  // In a fight the turn order already shows the party's HP.
-  $("board-party-panel").hidden = Boolean(combat);
+  document.body.classList.toggle("board-combat", Boolean(combat));
+  $("board-track").hidden = $("board-round").hidden = $("board-turn").hidden = !combat;
+  if (combat && !board.combat && !first) boardFlash("ROLL INITIATIVE", "red");
+  if (!combat && board.combat && [...board.enemies.values()].length && [...board.enemies.values()].every(status => status === "down")) boardFlash("VICTORY", "gold");
+  board.combat = Boolean(combat);
+  let currentName = "";
   if (combat) {
     const order = combatOrder(combat, state.party);
     const current = order.find(entry => entry.key === combat.turn);
-    const next = order.find(entry => entry.key === upNext(order, combat.turn));
-    $("board-round").textContent = String(combat.round);
+    currentName = current?.kind === "pc" ? current.name : "";
+    $("board-round").textContent = "ROUND " + combat.round;
     $("board-turn").textContent = current ? current.name.replace(/^The /, "") + (current.kind === "enemy" ? " acts" : "'s turn") : "Roll initiative";
-    $("board-next").textContent = current && next ? "Up next: " + next.name.replace(/^The /, "") : "";
-    $("board-order").replaceChildren(...order.map(entry => {
-      const item = document.createElement("li");
-      item.className = "is-" + entry.kind + (entry.key === combat.turn ? " is-turn" : "") + (entry.status === "down" ? " is-down" : "");
-      const score = document.createElement("b");
-      score.textContent = entry.initiative ?? "–";
-      const name = document.createElement("span");
-      name.textContent = entry.name.replace(/^The /, "");
-      const note = document.createElement("em");
-      if (entry.kind === "enemy") note.textContent = (STATUS_TEXT[entry.status] ?? "") + (entry.conditions.length ? " · " + entry.conditions.join(", ") : "");
-      else {
-        const record = state.hp?.[entry.name];
-        note.textContent = record ? (record.hp <= 0 ? "Down" : "HP " + record.hp + "/" + record.max) : "";
-      }
-      item.append(score, name, note);
-      return item;
+    $("board-turn").className = "board-turn" + (current?.kind === "enemy" ? " is-enemy" : "");
+    renderInto($("board-track"), order.map(entry => {
+      const chip = document.createElement("div");
+      chip.className = "track-chip is-" + entry.kind + " is-" + (entry.status ?? "pc") + (entry.key === combat.turn ? " is-turn" : "");
+      chip.append(element("b", "", entry.initiative ?? "–"), element("span", "", shortName(entry.name, entry.kind === "enemy")));
+      if (entry.kind === "enemy") chip.append(element("em", "", STATUS_TEXT[entry.status] ?? ""));
+      return chip;
     }));
-  }
+    // Keep the one acting in view when the order is wider than the screen.
+    const live = $("board-track").querySelector(".is-turn");
+    if (live) $("board-track").scrollLeft = Math.max(0, live.offsetLeft - $("board-track").offsetLeft - 60);
+    for (const entry of order.filter(entry => entry.kind === "enemy")) {
+      const was = board.enemies.get(entry.key);
+      if (!first && was && was !== "down" && entry.status === "down") boardFlash(entry.name.toUpperCase() + " FALLS", "red");
+      board.enemies.set(entry.key, entry.status);
+    }
+  } else if (!board.combat) board.enemies.clear();
 
-  $("board-party").replaceChildren(...state.party.map((member, index) => {
-    const item = document.createElement("li");
+  // The party as portraits: an HP ring, AC, rage; the one acting glows.
+  const party = state.party.map((member, index) => {
     const record = state.hp?.[member.name];
     const health = partyHpStatus(record);
-    item.className = "is-" + health;
-    const name = document.createElement("strong");
-    name.textContent = member.name.replace(/^The /, "");
-    const numbers = document.createElement("span");
+    const was = board.hp.get(member.name);
+    if (!first && record && record.hp <= 0 && was > 0) boardFlash(member.name.replace(/^The /, "").toUpperCase() + " IS DOWN", "red");
+    if (record) board.hp.set(member.name, record.hp);
+    const item = document.createElement("li");
+    item.className = "hero is-" + health + (member.name === currentName ? " is-turn" : "") + (state.resources?.[member.name]?.raging ? " is-raging" : "");
+    const share = record?.max ? Math.max(0, Math.min(100, Math.round(record.hp / record.max * 100))) : 0;
+    const ring = document.createElement("div");
+    ring.className = "hero-ring";
+    ring.style.setProperty("--hp", share + "%");
+    ring.append(element("span", "", initials(member.name)));
     const ac = partyAc(index);
-    numbers.textContent = (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP not set") + (ac ? " · AC " + ac.text : "");
-    const bar = document.createElement("div");
-    bar.className = "hp-bar";
-    const fill = document.createElement("i");
-    fill.style.width = record ? Math.round(record.hp / record.max * 100) + "%" : "0%";
-    bar.append(fill);
-    const raging = state.resources?.[member.name]?.raging;
-    if (raging) numbers.textContent += " · 😤 Raging";
-    item.append(name, numbers, bar);
+    const info = document.createElement("div");
+    info.className = "hero-info";
+    info.append(element("strong", "", shortName(member.name)),
+      element("span", "", (record ? (health === "down" ? "DOWN" : record.hp + " / " + record.max + (record.temp ? " +" + record.temp : "")) : "HP —") + (ac ? " · AC " + ac.text : "") + (state.resources?.[member.name]?.raging ? " · 😤" : "")));
+    item.append(ring, info);
     return item;
-  }));
+  });
+  renderInto($("board-party"), party);
 }
 
 function enterRoom() {
