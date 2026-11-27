@@ -119,10 +119,21 @@ const endpoints = {
     }
   },
   // Combat: only the public view of each enemy is stored (never HP or AC).
-  async combat(request, db, code) {
+  async combat(request, db, room, code) {
     const body = await request.json();
     if (body.end) {
       await db.prepare("DELETE FROM combats WHERE code = ?").bind(code).run();
+      return json({ ok: true });
+    }
+    if (body.sitOut) {
+      // Sit a character out of this fight ("out" in place of an initiative), or bring them back.
+      const index = Number(body.sitOut.character);
+      if (!Number.isInteger(index) || index < 0 || !JSON.parse(room.party)[index]) return json({ error: "Pick a character." }, 400);
+      const key = "$.\"" + index + "\"";
+      const result = body.sitOut.out
+        ? await db.prepare("UPDATE combats SET party_init = json_set(party_init, ?, 'out') WHERE code = ?").bind(key, code).run()
+        : await db.prepare("UPDATE combats SET party_init = json_remove(party_init, ?) WHERE code = ?").bind(key, code).run();
+      if (!result.changes && !result.meta?.changes) return json({ error: "Combat has not started." }, 400);
       return json({ ok: true });
     }
     if (!Array.isArray(body.enemies) || body.enemies.length > 40) return json({ error: "Use up to 40 enemies." }, 400);
@@ -159,7 +170,7 @@ const endpoints = {
     const rolls = JSON.parse(row.party_init);
     const rank = value => Number.isFinite(value) ? value : -1000;
     const entries = [
-      ...party.map((_, i) => ({ key: "pc:" + i, rank: rank(rolls[i]), kind: 0, ord: i })),
+      ...party.map((_, i) => ({ key: "pc:" + i, rank: rank(rolls[i]), kind: 0, ord: i })).filter((_, i) => rolls[i] !== "out"),
       ...JSON.parse(row.enemies).filter(enemy => enemy.status !== "down")
         .map((enemy, j) => ({ key: "en:" + enemy.id, rank: rank(enemy.initiative), kind: 1, ord: 1000 + j }))
     ].sort((a, b) => b.rank - a.rank || a.kind - b.kind || a.ord - b.ord);
@@ -335,7 +346,7 @@ async function roomChange(request, env, room, code, operation) {
   if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
   if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the host can make changes." }, 403);
   if (operation === "close") return await endpoints.close(env.DB, code);
-  if (operation === "combat") return await endpoints.combat(request, env.DB, code);
+  if (operation === "combat") return await endpoints.combat(request, env.DB, room, code);
   if (operation === "scene" || operation === "party") return await endpoints[operation](request, env.DB, code);
   return json({ error: "Invalid request." }, 400);
 }

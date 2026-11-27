@@ -159,13 +159,21 @@ export function publicEnemies(enemies) {
 // One initiative order from the party (their recorded rolls) and the enemies.
 // Highest first; ties go to the party; anyone who hasn't rolled goes last.
 // Turn keys: "pc:<index>" and "en:<id>".
+// A character the DM has sat out of this fight (elsewhere in the story) is
+// stored as "out" in place of an initiative: no turn, no initiative prompt.
+export const SITTING_OUT = "out";
+export const isSittingOut = (combat, index) => combat?.party?.[index] === SITTING_OUT;
+export function sittingOut(combat, party) {
+  return party.map((_, index) => index).filter(index => isSittingOut(combat, index));
+}
+
 export function combatOrder(combat, party) {
   if (!combat) return [];
   const rolls = combat.party ?? {};
   const players = party.map((character, index) => ({
     key: "pc:" + index, kind: "pc", character: index, name: character.name,
     initiative: Number.isFinite(rolls[index]) ? rolls[index] : null, status: "ok", conditions: []
-  }));
+  })).filter(entry => rolls[entry.character] !== SITTING_OUT);
   const foes = (combat.enemies ?? []).map(enemy => ({
     key: "en:" + enemy.id, kind: "enemy", name: enemy.name,
     initiative: Number.isFinite(enemy.initiative) ? enemy.initiative : null,

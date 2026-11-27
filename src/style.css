@@ -379,6 +379,8 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .combatant .state.is-party{color:var(--muted2)}
 .combatant .cond{color:var(--gold)}
 .combatant input.init-input{width:64px;flex:0 0 64px;min-height:40px;padding:0 6px;text-align:center}
+.combatant .sit-out{flex:0 0 auto;min-height:40px;padding:0 10px;font-size:.85rem}
+.combatant.is-out{opacity:.7}
 #enc-combat{width:100%;margin:6px 0 2px}
 
 /* ── Story editing ── */
