@@ -32,14 +32,14 @@ test("the White Wizard's sheet reads like a character sheet", () => {
   assert.match(fireball.notes[0], /24/);
   assert.deepEqual(sheet.confirm, [], "the playable defaults settle every open line");
   for (const name of ["Radiance of the Dawn", "Divine Intervention", "Turn Undead", "Thaumaturgy", "Guidance", "Toll the Dead", "Spare the Dying",
-    "Silence", "Revivify", "Cure Wounds", "Lesser Restoration", "Death Ward", "Choker of Caution", "Agility Ring"]) assert.ok(ready.some(entry => entry.name === name), name);
+    "Silence", "Revivify", "Cure Wounds", "Lesser Restoration", "Death Ward", "Third-eye amulet", "Agility Ring"]) assert.ok(ready.some(entry => entry.name === name), name);
 });
 
 test("lists of names split into separate entries, aliases resolve, duplicates merge", () => {
   const dumDum = organizeSheet(party.find(member => member.name === "Dum Dum"));
   const ready = dumDum.sections.flatMap(section => section.entries.map(entry => entry.name));
   for (const name of ["Trip Attack", "Goading Attack", "Menacing Attack", "Disarming Attack", "Pushing Attack", "Precision Attack", "Riposte",
-    "Battle Master maneuvers", "Action Surge", "Indomitable", "Shield Master", "Dueling", "Longsword"]) assert.ok(ready.includes(name), name);
+    "Battle Master maneuvers", "Action Surge", "Indomitable", "Shield Master", "Dueling", "Longsword", "Choker of Caution"]) assert.ok(ready.includes(name), name);
   assert.deepEqual(dumDum.confirm, [], "all seven maneuvers are known");
   const logan = organizeSheet(party.find(member => member.name === "Logan Ninefingers"));
   const loganReady = logan.sections.flatMap(section => section.entries.map(entry => entry.name));
