@@ -1957,6 +1957,7 @@ $("guide-go").onclick = () => guideAction?.();
 // enemy's turn, that enemy's attacks right here (no hop to the DM tab).
 let dmTurnKey = "";
 let dmTurnStart = 0;
+const DM_TURN_KEY = () => "dnd-dm-turn-start:" + room;
 function drawDmTurn(current, order) {
   const box = $("dm-turn");
   if (!isHost || !state?.combat || ended) { box.hidden = true; dmTurnKey = ""; return; }
@@ -1966,7 +1967,13 @@ function drawDmTurn(current, order) {
     : enemy ? "en:" + enemy.id + ":" + enemy.hp + ":" + (enemy.conditions ?? []).join(",") + ":" + state.combat.round
     : current.key + ":" + state.combat.round;
   const newest = Math.max(0, ...(state.actions ?? []).map(action => Number(action.id) || 0));
-  if (key !== dmTurnKey) dmTurnStart = newest; // story lines after this are this turn's
+  if (key !== dmTurnKey) {
+    // Story lines after this are this turn's. The mark is kept on the device,
+    // so a reload mid-turn still counts what was already done this turn.
+    const saved = String(storage.get(DM_TURN_KEY()) ?? "").split("|");
+    dmTurnStart = saved[0] === key && Number(saved[1]) <= newest ? Number(saved[1]) : newest;
+    storage.set(DM_TURN_KEY(), key + "|" + dmTurnStart);
+  }
   const playerTurn = current && current.kind === "pc";
   if (key === dmTurnKey && !playerTurn) return; // keep rolled attacks on screen between polls
   dmTurnKey = key;
