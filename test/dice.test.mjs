@@ -773,3 +773,24 @@ test("AI DM difficulty: a self-explaining TABLE STATE line, and who the autopilo
   const { aiDmSystem } = await import("../src/advice.js");
   assert.match(aiDmSystem, /DIFFICULTY line set by the host/);
 });
+
+test("AI DM fight narration: after a few attacks, or at once for a big moment", async () => {
+  const { fightBeats, fightNarrationDue } = await import("../src/encounter.js");
+  const posts = [
+    { name: "Roan", text: "🎯 hit Bandit 1 for 9 damage — with Longbow, 17 to hit · ✓ DM applied" },
+    { name: "Arcturus", text: "🎯 missed Bandit 2 with Shortsword" },
+    { name: "The White Wizard", text: "🩸 takes 6 damage" },
+    { name: "The White Wizard", text: "🩸 takes 3 more damage from the same hit" },
+    { name: "Roan", text: "I duck behind the cart" }
+  ];
+  assert.deepEqual(fightBeats(posts), { attacks: 3, crits: 0, deathSaves: 0 });
+  assert.equal(fightNarrationDue({ beats: fightBeats(posts), every: 3 }), "3 attacks since the last update");
+  assert.equal(fightNarrationDue({ beats: fightBeats(posts.slice(0, 2)), every: 3 }), "");
+  assert.equal(fightNarrationDue({ beats: fightBeats(posts), every: 0 }), ""); // rounds only
+  const crit = fightBeats([{ name: "Roan", text: "🎯 hit Bandit 1 for 22 damage — critical hit, with Longbow" }]);
+  assert.equal(crit.crits, 1);
+  assert.equal(fightNarrationDue({ beats: crit, every: 5 }), "a critical hit");
+  assert.equal(fightNarrationDue({ beats: fightBeats([{ name: "Roan", text: "💀 death save 4: 1 ✗" }]), every: 5 }), "a death save");
+  assert.equal(fightNarrationDue({ beats: fightBeats([]), every: 3, newlyDown: ["Bandit 2"] }), "Bandit 2 is down");
+  assert.equal(fightNarrationDue({ beats: fightBeats([]), every: 3, newlyDown: ["The White Wizard", "Bandit 1"] }), "White Wizard and Bandit 1 are down");
+});

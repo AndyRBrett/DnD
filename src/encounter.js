@@ -963,3 +963,33 @@ export function enemyTargetIndex(targets, difficulty = "medium", random = Math.r
   }
   return pool[Math.min(pool.length - 1, Math.floor(random * pool.length))];
 }
+
+// Fight narration (AI DM autopilot): what has happened since the DM last
+// spoke. actions: [{ name, text }] posted since then. attacks counts resolved
+// attacks either way (a character's hit or miss, an enemy's hit as
+// "🩸 takes N damage"); crits and death saves are big moments.
+export function fightBeats(actions = []) {
+  const beats = { attacks: 0, crits: 0, deathSaves: 0 };
+  for (const { name, text } of actions) {
+    const raw = String(text ?? "");
+    if (/^🩸 takes \d+ damage$/u.test(raw)) { beats.attacks++; continue; }
+    if (/^💀 death save/u.test(raw)) { beats.deathSaves++; continue; }
+    const line = chronicleLine(name, raw);
+    if (line?.kind === "hit" || line?.kind === "miss") {
+      beats.attacks++;
+      if (/critical hit/.test(line.text)) beats.crits++;
+    }
+  }
+  return beats;
+}
+// Whether the DM narrates now, mid-round, and why ("" for not yet). every:
+// attacks between narrations (0: only at big moments and new rounds).
+// newlyDown: who has dropped to 0 HP since the DM last spoke.
+export function fightNarrationDue({ beats, every = 3, newlyDown = [] }) {
+  if (newlyDown.length) return newlyDown.map(name => String(name).replace(/^The /, "")).join(" and ") + (newlyDown.length > 1 ? " are" : " is") + " down";
+  if (!beats.attacks && !beats.deathSaves) return "";
+  if (beats.crits) return "a critical hit";
+  if (beats.deathSaves) return "a death save";
+  if (every > 0 && beats.attacks >= every) return beats.attacks + " attacks since the last update";
+  return "";
+}
