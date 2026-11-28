@@ -143,12 +143,19 @@ test("Claude costs: the token log and recaps are service-only, and every path us
   assert.match(worker, new RegExp("const AI_ROOM_LIMIT = " + tableLimit + ";"));
 });
 
-test("the AI DM's hosted turn is host-only and practice-only", async () => {
+test("the AI DM's hosted turn is host-only, with its own allowance kept out of the players' counts", async () => {
   const edge = await read("supabase/functions/dnd-advise/index.ts");
   const dm = edge.slice(edge.indexOf("async function answerDm"));
-  assert.ok(dm.indexOf("Only the DM can ask this.") < dm.indexOf('if (mode === "run")'));
-  assert.match(dm, /if \(rows\[0\]\?\.practice !== true\) return reply\(\{ error: "The AI DM runs on practice tables for now\." \}, 403\);/);
-  assert.ok(dm.indexOf("practice !== true") < dm.indexOf("dnd_ai_usage"));
+  assert.ok(dm.indexOf("Only the DM can ask this.") < dm.indexOf("dnd_ai_usage"));
+  assert.match(edge, /const AI_DM = -2;/);
+  assert.match(dm, /const slot = mode === "run" \? AI_DM : -1;/);
+  assert.match(dm, /character_index=eq\." \+ AI_DM\) >= AI_DM_TABLE_LIMIT/);
+  // Players' table and daily counts leave AI DM turns out, in the edge function and in SQL.
+  assert.equal((edge.match(/notAiDm\) >= (PLAYER_DAY_LIMIT|TABLE_LIMIT)/g) ?? []).length, 4);
+  const sql = await read("supabase/migrations/0022_dnd_ai_dm_allowance.sql");
+  assert.match(sql, /where user_id = uid and character_index <> -2 and created_at > now\(\) - interval '1 day'\) >= 60/);
+  assert.match(sql, /where code = p_code and character_index <> -2\) >= 150/);
+  assert.match(sql, /grant execute on function public\.dnd_advise_begin_v2\(text, int\) to authenticated;/);
 });
 
 test("the AI DM card finds a practice table from the stored flag, not just this phone or the opening update", async () => {

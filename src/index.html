@@ -445,19 +445,25 @@
           <div id="dm-ask-out" class="dm-ask-out" hidden aria-live="polite"></div>
         </section>
         <section id="ai-dm" class="card stack" hidden aria-labelledby="ai-dm-title">
-          <p class="eyebrow gold">PRACTICE TABLES · STEP 1</p>
+          <p class="eyebrow gold">CLAUDE AS THE DM</p>
           <h2 id="ai-dm-title" class="display xs">AI DM</h2>
-          <p class="fineprint">Claude runs the table. Players post what they do and roll when asked. Tap <strong>DM, go</strong> and Claude takes one DM turn: it narrates, asks for rolls, and leaves you a private note. Fights still run from your combat tools.</p>
-          <details class="fold">
-            <summary>Adventure notes (players never see these)</summary>
-            <textarea id="ai-dm-notes" rows="5" maxlength="3000" aria-label="Adventure notes" placeholder="The secret, the villain's goal, the scenes, what's behind each door. Leave empty and Claude improvises from the story."></textarea>
-          </details>
-          <form id="ai-dm-form" class="stack">
-            <input id="ai-dm-steer" type="text" maxlength="600" aria-label="Steer this turn (optional)" placeholder="Optional: steer this turn (the guard grows suspicious)">
-            <button type="submit" class="cta">DM, go</button>
-            <p id="ai-dm-status" class="fineprint" role="status"></p>
-          </form>
-          <div id="ai-dm-out" class="dm-ask-out" hidden aria-live="polite"></div>
+          <p class="fineprint">Claude runs the table. Players post what they do and roll when asked. Each DM turn, Claude narrates, asks for rolls, starts and ends fights, and leaves you a private note. Your rulings still win: you can edit or delete anything it posts.</p>
+          <label class="check"><input type="checkbox" id="ai-dm-on"> Let Claude DM this table</label>
+          <div id="ai-dm-body" class="stack" hidden>
+            <details class="fold">
+              <summary>Adventure notes (players never see these)</summary>
+              <textarea id="ai-dm-notes" rows="5" maxlength="3000" aria-label="Adventure notes" placeholder="The secret, the villain's goal, the scenes, what's behind each door. Leave empty and Claude improvises from the story."></textarea>
+            </details>
+            <label class="check"><input type="checkbox" id="ai-dm-auto"> Autopilot: take DM turns when everyone has acted, and run fights</label>
+            <p class="fineprint">Autopilot runs from this phone: keep this page open. In a fight it calls hits and misses, applies damage, runs the enemies' turns, and ends the fight when they're all down; anything that needs a ruling (rage, a save against an enemy's rider) waits for you.</p>
+            <form id="ai-dm-form" class="stack">
+              <input id="ai-dm-steer" type="text" maxlength="600" aria-label="Steer the next turn (optional)" placeholder="Optional: steer the next turn (the guard grows suspicious)">
+              <button type="submit" class="cta">DM, go</button>
+              <p id="ai-dm-status" class="fineprint" role="status"></p>
+            </form>
+            <div id="ai-dm-out" class="dm-ask-out" hidden aria-live="polite"></div>
+            <ul id="ai-dm-log" class="ai-dm-log fineprint" aria-label="What the autopilot did" hidden></ul>
+          </div>
         </section>
         <section id="dm-list" class="card stack" hidden aria-labelledby="dm-list-title">
           <p class="eyebrow">WHO CAN START TABLES</p>

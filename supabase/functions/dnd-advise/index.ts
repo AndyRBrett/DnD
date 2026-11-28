@@ -16,6 +16,12 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const TABLE_LIMIT = 150;
 const PLAYER_DAY_LIMIT = 60;
 const DAY_LIMIT = 600;
+// AI DM turns have their own allowance per table (counted as character -2),
+// so a night of DM turns doesn't use up the players' Ask Claude or the host's
+// daily limit (migration 0022 leaves them out of those counts).
+const AI_DM_TABLE_LIMIT = 250;
+const AI_DM = -2;
+const notAiDm = "&character_index=neq." + AI_DM;
 const ORIGINS = (Deno.env.get("DND_ALLOWED_ORIGINS") ?? "https://andyrbrett.github.io,http://localhost:4173")
   .split(",").map(origin => origin.trim()).filter(Boolean);
 
@@ -45,7 +51,7 @@ Deno.serve(async req => {
   }
   const code = typeof input.code === "string" && /^[a-f0-9]{24}$/.test(input.code) ? input.code : "";
   // The DM's asks: enemies from a description, the DM assistant, or an AI DM
-  // turn ("run": practice tables only; the prompt is optional direction).
+  // turn ("run": the host's turn for Claude as DM; the prompt is optional direction).
   if (input.mode === "enemies" || input.mode === "dm" || input.mode === "run") {
     if (!code) return reply({ error: "Invalid request." }, 400);
     const prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 600) : "";
@@ -199,8 +205,8 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
 
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
   if (await countUsage("created_at=gte." + since(86400000)) >= DAY_LIMIT) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
-  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000) + notAiDm) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code + notAiDm) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
   if (await countUsage("code=eq." + code + "&character_index=eq." + character + "&created_at=gte." + since(8000)) > 0) {
     return reply({ error: "One moment — Claude was just asked for this character." }, 429);
   }
@@ -230,7 +236,8 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
 // ── The DM's asks ──
 // Only the table's host: the player's token reads the room (dnd_room_v2 checks
 // they're signed in and the table is live, and says whether they host it).
-// Same daily and per-table limits as questions, counted as character -1.
+// Same daily and per-table limits as questions, counted as character -1; AI DM
+// turns have their own per-table allowance, counted as character -2.
 async function answerDm(req: Request, reply: (body: unknown, status?: number) => Response, code: string, mode: string, prompt: string, table: string, notes = "") {
   const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
     method: "POST",
@@ -241,23 +248,22 @@ async function answerDm(req: Request, reply: (body: unknown, status?: number) =>
   if (!roomResponse.ok) return reply({ error: room.message ?? "Could not reach the room." }, roomResponse.status);
   const uid = tokenSubject(req);
   if (!room.isHost || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Only the DM can ask this." }, 403);
-  if (mode === "run") {
-    const rows = await fetch(SUPABASE_URL + "/rest/v1/dnd_rooms?select=practice&code=eq." + code, { headers: service })
-      .then(response => response.ok ? response.json() : []).catch(() => []);
-    if (rows[0]?.practice !== true) return reply({ error: "The AI DM runs on practice tables for now." }, 403);
-  }
-
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
+  const slot = mode === "run" ? AI_DM : -1;
   if (await countUsage("created_at=gte." + since(86400000)) >= DAY_LIMIT) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
-  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code + "&character_index=eq.-1&created_at=gte." + since(8000)) > 0) {
+  if (mode === "run") {
+    if (await countUsage("code=eq." + code + "&character_index=eq." + AI_DM) >= AI_DM_TABLE_LIMIT) return reply({ error: "The AI DM has used this table's turns. Start a new table to keep going." }, 429);
+  } else {
+    if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000) + notAiDm) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
+    if (await countUsage("code=eq." + code + notAiDm) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  }
+  if (await countUsage("code=eq." + code + "&character_index=eq." + slot + "&created_at=gte." + since(8000)) > 0) {
     return reply({ error: "One moment — Claude was just asked." }, 429);
   }
   await fetch(SUPABASE_URL + "/rest/v1/dnd_ai_usage", {
     method: "POST",
     headers: { ...service, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ code, character_index: -1, user_id: uid })
+    body: JSON.stringify({ code, character_index: slot, user_id: uid })
   });
 
   const tokens = tokenLog(code, mode);

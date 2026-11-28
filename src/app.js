@@ -607,6 +607,7 @@ async function sync() {
     const fresh = await backend.room(room);
     applyRoom(fresh);
     cacheRoom(fresh);
+    aiDmTick();
   } catch (error) {
     // The server says the table is gone (ended, or idle for 3 days). It can
     // answer with 404 or 400 depending on the error code, so read the message.
@@ -5192,6 +5193,7 @@ function enemyCard(enemy) {
   const card = document.createElement("article");
   const health = enemyStatus(enemy);
   card.className = "enemy is-" + health;
+  card.dataset.enemy = String(enemy.id); // the AI DM's autopilot finds Run turn by it
   const head = document.createElement("div");
   head.className = "enemy-head";
   const name = document.createElement("strong");
@@ -5535,12 +5537,9 @@ function setHost(value) {
   const claudeDm = isHost && Boolean(state?.ai) && !ended && Boolean(backend.dmAsk);
   $("claude-enemies").hidden = !claudeDm;
   $("dm-assistant").hidden = !claudeDm;
-  $("ai-dm").hidden = !claudeDm || !isPractice();
+  $("ai-dm").hidden = !claudeDm;
   if (claudeDm && !isPractice()) checkPractice();
-  if (!$("ai-dm").hidden && !aiDmNotesLoaded) {
-    $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
-    aiDmNotesLoaded = true;
-  }
+  drawAiDm();
   // A DM account that opens a character's view gets no player tools: say why.
   for (const note of document.querySelectorAll(".host-player-note")) {
     note.hidden = !isHost;
@@ -6301,12 +6300,22 @@ $("dm-ask-form").onsubmit = async event => {
 };
 
 
-// ── AI DM (step 1): on a practice table, Claude takes one DM turn each time
-// the host taps "DM, go". Its narration and roll requests go out through the
-// same paths as the host's own update and "Ask for a roll"; its note to the
-// host stays on this phone. The adventure notes are kept on this phone too.
+// ── AI DM: Claude as the DM. The host switches it on per table (on by
+// default at a practice table). Each DM turn's narration, roll requests and
+// fight go out through the same paths as the host's own update, "Ask for a
+// roll" and encounter tools; its note to the host stays on this phone, as do
+// the adventure notes. With the autopilot on, this phone takes a DM turn once
+// everyone at the table has acted, and runs fights with the encounter tools.
 const AI_DM_NOTES = () => "dnd-aidm-notes:" + room;
+const AI_DM_ON = () => "dnd-aidm-on:" + room;
+const AI_DM_AUTO = () => "dnd-aidm-auto:" + room;
+const AI_DM_MARK = () => "dnd-aidm-mark:" + room; // the last DM turn: { after, at, asked, round }
 let aiDmNotesLoaded = false;
+let aiDmBusy = false;
+let aiDmNextStep = 0;
+let aiDmFightSeen = 0;
+let aiDmEnemyTurn = "";
+const aiDmSeen = new Map(); // action id → when this phone first saw it
 // The hosted room read doesn't say whether a table is a practice table, and
 // its opening "PRACTICE TABLE" update drops out of the latest 30 on a long
 // night. The host's own table list has the stored flag: ask it once.
@@ -6320,14 +6329,74 @@ function checkPractice() {
     setHost(isHost);
   }).catch(() => { practiceChecked = false; });
 }
+function aiDmEnabled() {
+  const chosen = storage.get(AI_DM_ON());
+  return chosen === null ? isPractice() : chosen === "1";
+}
+const aiDmAuto = () => aiDmEnabled() && storage.get(AI_DM_AUTO()) === "1";
+function drawAiDm() {
+  if ($("ai-dm").hidden) return;
+  $("ai-dm-on").checked = aiDmEnabled();
+  $("ai-dm-body").hidden = !aiDmEnabled();
+  $("ai-dm-auto").checked = storage.get(AI_DM_AUTO()) === "1";
+  if (!aiDmNotesLoaded) {
+    $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
+    aiDmNotesLoaded = true;
+  }
+}
+$("ai-dm-on").onchange = () => {
+  const on = $("ai-dm-on").checked;
+  if (on && !isPractice() && !window.confirm("Let Claude run this table as the DM? It narrates and decides outcomes for everyone at the table. You can switch it off any time.")) {
+    $("ai-dm-on").checked = false;
+    return;
+  }
+  storage.set(AI_DM_ON(), on ? "1" : "0");
+  if (!on) storage.set(AI_DM_AUTO(), "0");
+  drawAiDm();
+};
+$("ai-dm-auto").onchange = () => {
+  storage.set(AI_DM_AUTO(), $("ai-dm-auto").checked ? "1" : "0");
+  // Starting the autopilot doesn't answer what came before: it waits for new posts.
+  if ($("ai-dm-auto").checked && !readJson(AI_DM_MARK(), null)) aiDmMark([]);
+  aiDmLog($("ai-dm-auto").checked ? "Autopilot on." : "Autopilot off.");
+};
 $("ai-dm-notes").oninput = () => storage.set(AI_DM_NOTES(), $("ai-dm-notes").value);
-$("ai-dm-form").onsubmit = async event => {
-  event.preventDefault();
-  const button = event.submitter;
+function aiDmLog(text) {
+  const item = element("li", "", new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + text);
+  $("ai-dm-log").prepend(item);
+  while ($("ai-dm-log").children.length > 8) $("ai-dm-log").lastElementChild.remove();
+  $("ai-dm-log").hidden = false;
+}
+function aiDmMark(asked) {
+  storage.set(AI_DM_MARK(), JSON.stringify({ after: maxActionId(), at: Date.now(), asked, round: state?.combat?.round ?? 0 }));
+}
+// Claude's stat blocks join the encounter (as "Add" does for the enemy
+// builder). A new fight starts clean: enemies already down are cleared first.
+async function aiDmFight(fight) {
+  if (!encounterLoaded) await loadCloudEncounter().catch(() => {});
+  if (!state.combat) enemies = enemies.filter(enemy => enemy.hp > 0);
+  const names = [];
+  for (const template of fight.enemies) {
+    const { count, ...stats } = template;
+    const added = joinFight(createEnemies(stats, count, undefined, enemies));
+    enemies = [...enemies, ...added];
+    names.push(added.length + " × " + stats.name);
+  }
+  saveEncounter();
+  drawEncounter();
+  if (!state.combat) await toggleCombat();
+  aiDmLog("Fight: " + names.join(", ") + ". Players, roll initiative.");
+}
+
+// One DM turn. why: what started it (shown in the log); steer: the host's direction.
+async function aiDmTurn(steer = "", why = "") {
+  if (aiDmBusy) return false;
+  aiDmBusy = true;
+  const button = $("ai-dm-form").querySelector("button[type=submit]");
   button.disabled = true;
   $("ai-dm-status").textContent = "The AI DM is reading the table (up to a minute)…";
   try {
-    const turn = await backend.dmAsk(room, "run", $("ai-dm-steer").value.trim(), dmTableState(), $("ai-dm-notes").value);
+    const turn = await backend.dmAsk(room, "run", steer, dmTableState(), $("ai-dm-notes").value);
     await backend.postScene(room, turn.to.length ? addressScene(turn.narration, turn.to) : turn.narration);
     const asked = [];
     const callOut = [];
@@ -6336,24 +6405,161 @@ $("ai-dm-form").onsubmit = async event => {
       const label = roll.character.replace(/^The /, "") + ": " + roll.roll + (roll.dc ? " (" + (roll.roll === "Attack roll" ? "AC " : "DC ") + roll.dc + ")" : "");
       if (index >= 0 && backend.postAction) {
         await backend.postAction(room, index, rollAskText(roll.roll, roll.dc ? { kind: roll.roll === "Attack roll" ? "AC" : "DC", value: roll.dc } : null));
-        asked.push(label);
+        asked.push(roll.character);
       } else callOut.push(label);
     }
-    $("ai-dm-steer").value = "";
     $("ai-dm-out").replaceChildren(
       element("p", "", "Posted" + (turn.to.length ? " to " + turn.to.map(name => name.replace(/^The /, "")).join(", ") : " to everyone") + ": “" + turn.narration + "”"),
-      ...(asked.length ? [element("p", "", "Asked for rolls: " + asked.join(" · "))] : []),
+      ...(asked.length ? [element("p", "", "Asked for rolls: " + turn.rolls.filter(roll => asked.includes(roll.character)).map(roll => roll.character.replace(/^The /, "") + " · " + roll.roll + (roll.dc ? " " + roll.dc : "")).join(", "))] : []),
       ...(callOut.length ? [element("p", "", "Call out these rolls: " + callOut.join(" · "))] : []),
       ...(turn.hostNote ? [element("blockquote", "", "Only you see this: " + turn.hostNote)] : []));
     $("ai-dm-out").hidden = false;
-    $("ai-dm-status").textContent = "Done. When the players have acted or rolled, tap DM, go again.";
+    if (turn.combat.start) await aiDmFight(turn.combat);
+    if (turn.combat.end && state.combat) {
+      await toggleCombat();
+      aiDmLog("The enemies gave up: fight over.");
+    }
+    $("ai-dm-steer").value = "";
     await sync();
+    aiDmMark(asked); // after the sync, so its own roll requests aren't new posts
+    if (why) aiDmLog(why);
+    $("ai-dm-status").textContent = aiDmAuto() ? "Autopilot is on: the next turn comes when everyone has acted." : "Done. When the players have acted or rolled, tap DM, go again.";
+    return true;
   } catch (error) {
     $("ai-dm-status").textContent = error.message;
+    aiDmNextStep = Date.now() + 60000; // the autopilot waits a minute after a failure
+    if (aiDmAuto()) aiDmLog("Couldn't take a turn: " + error.message + " Trying again in a minute.");
+    return false;
   } finally {
+    aiDmBusy = false;
     button.disabled = false;
   }
+}
+$("ai-dm-form").onsubmit = event => {
+  event.preventDefault();
+  aiDmTurn($("ai-dm-steer").value.trim());
 };
+
+// Something a character tried, as opposed to the app's own lines (rolls,
+// attacks, damage, resources, concentration).
+const declared = action => /^[\p{L}"“'(]/u.test(String(action.text)) && !/^is (no longer )?concentrating/i.test(String(action.text));
+function presentNames() {
+  const now = Date.now();
+  return new Set([...hereSeen].filter(([, at]) => now - at < HERE_MEMORY).map(([index]) => partyName(index)).filter(Boolean));
+}
+
+// The autopilot: one step per refresh at most, a moment apart.
+function aiDmTick() {
+  if (!isHost || ended || !state || aiDmBusy || $("ai-dm").hidden || !aiDmAuto()) return;
+  const now = Date.now();
+  for (const action of state.actions ?? []) if (!aiDmSeen.has(action.id)) aiDmSeen.set(action.id, now);
+  if (!state.combat) aiDmFightSeen = 0;
+  else if (!aiDmFightSeen) aiDmFightSeen = now;
+  if (now < aiDmNextStep) return;
+  if (state.combat ? aiDmFightStep(now) : aiDmStoryStep(now)) aiDmNextStep = Math.max(aiDmNextStep, Date.now() + 1500);
+}
+
+// Out of a fight: a DM turn once there's something new, the rolls asked for
+// are in (or three minutes have passed), and everyone at the table has posted
+// (or a minute and a half has passed), after 12 quiet seconds.
+function aiDmStoryStep(now) {
+  const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, at: 0, asked: [] };
+  const fresh = (state.actions ?? []).filter(action => Number(action.id) > mark.after && !String(action.text).startsWith("🎲 DM asks"));
+  if (!fresh.length) return false;
+  const rolled = name => fresh.some(action => action.name === name && /^🎲 /u.test(String(action.text)));
+  const waiting = (mark.asked ?? []).filter(name => !rolled(name));
+  if (waiting.length && now - mark.at < 180000) return false;
+  const acted = new Set(fresh.map(action => action.name));
+  const present = presentNames();
+  const first = Math.min(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
+  const last = Math.max(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
+  if ([...present].some(name => !acted.has(name)) && now - first < 90000) return false;
+  if (now - last < 12000) return false;
+  aiDmTurn("", "Everyone had acted: took a DM turn.");
+  return true;
+}
+
+// In a fight: hit calls and damage first, then whose turn it is.
+function aiDmFightStep(now) {
+  if (!encounterLoaded) return false;
+  const call = document.querySelector("#hit-list li.hit-ask .hit-buttons button.cta");
+  if (call) {
+    const what = call.closest("li").querySelector("span")?.textContent ?? "";
+    call.click();
+    aiDmLog("Called it (" + call.textContent.toLowerCase() + "): " + what);
+    return true;
+  }
+  const hit = document.querySelector("#hit-list li:not(.hit-ask)");
+  if (hit) {
+    const retarget = hit.querySelector("select.hit-retarget");
+    if (retarget && !retarget.value) {
+      const standing = [...retarget.options].find(option => option.value);
+      if (standing) {
+        retarget.value = standing.value;
+        retarget.dispatchEvent(new Event("change"));
+      } else hit.querySelector(".hit-buttons button.quiet")?.click();
+      return true;
+    }
+    const button = hit.querySelector(".hit-buttons button.cta:not(:disabled)") ?? hit.querySelector(".hit-buttons button.danger-soft:not(:disabled)");
+    if (button) {
+      const what = hit.querySelector("span")?.textContent ?? "";
+      button.click();
+      aiDmLog("Applied: " + what);
+      return true;
+    }
+  }
+  if (enemies.length && enemies.every(enemy => enemy.hp <= 0)) {
+    aiDmNextStep = now + 60000; // the turn below sets the real pace
+    toggleCombat().then(() => aiDmTurn("The fight just ended: every enemy is down. Narrate the aftermath in two to four sentences and move the story on.", "Every enemy is down: fight over."));
+    return true;
+  }
+  const order = liveOrder();
+  const combat = state.combat;
+  if (!combat.turn) {
+    const players = order.filter(entry => entry.kind === "pc");
+    if (players.every(entry => entry.initiative !== null) || now - aiDmFightSeen > 60000) {
+      stepTurn(1);
+      aiDmLog("Initiative is in: the fight begins.");
+      return true;
+    }
+    return false;
+  }
+  const current = order.find(entry => entry.key === combat.turn);
+  if (current?.kind === "enemy") {
+    const enemy = enemies.find(foe => "en:" + foe.id === combat.turn);
+    if (!enemy || enemy.hp <= 0) { stepTurn(1); return true; }
+    const key = combat.turn + "@" + combat.round;
+    if (aiDmEnemyTurn === key) {
+      stepTurn(1); // its attacks went out on the last step
+      return true;
+    }
+    aiDmEnemyTurn = key;
+    const targets = order.filter(entry => entry.kind === "pc" && (hpRecord(entry.character)?.hp ?? 1) > 0);
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    if (!target || !enemy.attacks?.length) {
+      aiDmLog(enemy.name + " holds back this turn.");
+      return true;
+    }
+    enemyTargets.set(enemy.id, String(target.character));
+    drawEncounter();
+    const run = document.querySelector('article.enemy[data-enemy="' + CSS.escape(String(enemy.id)) + '"] button.enemy-run');
+    if (run) {
+      run.click();
+      aiDmLog(enemy.name + " attacks " + target.name.replace(/^The /, "") + ".");
+    } else aiDmLog(enemy.name + " has no attack to run; moving on.");
+    aiDmNextStep = now + 3000; // a beat before the turn moves on
+    return true;
+  }
+  // A player's turn: theirs to take. Once a round, the DM answers anything
+  // the characters tried besides attacking.
+  const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, round: 0 };
+  const tried = (state.actions ?? []).filter(action => Number(action.id) > mark.after && declared(action));
+  if (combat.round > (mark.round ?? 0) && tried.length) {
+    aiDmTurn("", "New round: answered what the characters tried.");
+    return true;
+  }
+  return false;
+}
 
 // ── Who an update is for: everyone, or part of a split party. The choice
 // stays until the DM changes it, so a run of updates to the vault all go

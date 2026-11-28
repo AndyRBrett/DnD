@@ -362,7 +362,15 @@ const ABILITY_SHORT = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
 // and dice that don't parse dropped.
 export async function readEnemies(response, onUsage) {
   const answer = await readJsonAnswer(response, onUsage);
-  const enemies = (Array.isArray(answer.enemies) ? answer.enemies : []).slice(0, 4).map(enemy => {
+  const enemies = cleanEnemies(answer.enemies);
+  if (!enemies.length) throw new AdviceError("Claude didn't return any enemies. Try describing them again.");
+  return { enemies, note: String(answer.note ?? "").slice(0, 400) };
+}
+
+// Claude's stat blocks in the tracker's shape (shared by the enemy builder and
+// the AI DM): at most four kinds, every number clamped, bad dice dropped.
+export function cleanEnemies(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 4).map(enemy => {
     // Attacks whose damage doesn't roll are dropped; kept[i] is where the
     // original attack i ended up, so the routine still names the right ones.
     const kept = [];
@@ -393,8 +401,6 @@ export async function readEnemies(response, onUsage) {
       abilities: String(enemy.abilities ?? "").slice(0, 1000)
     };
   });
-  if (!enemies.length) throw new AdviceError("Claude didn't return any enemies. Try describing them again.");
-  return { enemies, note: String(answer.note ?? "").slice(0, 400) };
 }
 
 // Returns { answer, ideas: [{ title, detail, line }] (up to three) }.
@@ -539,7 +545,8 @@ export async function refreshRecap(apiKey, scenes, actions, recap = null, party 
   }
 }
 
-// ── AI DM (step 1: practice tables, one turn each time the host taps "DM, go") ──
+// ── AI DM: one DM turn each time the host taps "DM, go", or on its own when
+// the host's autopilot sees everyone has acted ──
 // Claude runs the table as the DM: it reads the story, the party's sheets, the
 // host's secret adventure notes, and the newest player actions and rolls, then
 // returns one DM turn: narration (optionally for some characters only), roll
@@ -549,9 +556,19 @@ export async function refreshRecap(apiKey, scenes, actions, recap = null, party 
 export const aiDmSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["narration", "to", "rolls", "host_note"],
+  required: ["narration", "to", "rolls", "combat", "host_note"],
   properties: {
     narration: { type: "string" },
+    combat: {
+      type: "object",
+      additionalProperties: false,
+      required: ["start", "end", "enemies"],
+      properties: {
+        start: { type: "boolean" },
+        end: { type: "boolean" },
+        enemies: enemySchema.properties.enemies
+      }
+    },
     to: { type: "array", items: { type: "string" } },
     rolls: {
       type: "array",
@@ -567,14 +584,16 @@ export const aiDmSchema = {
 };
 
 export const aiDmSystem = [
-  "You are the Dungeon Master of an in-person Dungeons & Dragons 5th edition game. The players sit together with their phones: they post what their characters do and roll dice when you ask. Each time the host taps \"DM, go\", you take one DM turn.",
+  "You are the Dungeon Master of an in-person Dungeons & Dragons 5th edition game. The players sit together with their phones: they post what their characters do and roll dice when you ask. You take one DM turn at a time: when the host taps \"DM, go\", or when the app sees everyone has acted.",
   "Read everything first: the campaign history, the ADVENTURE NOTES (the host's secret plan for this game), the party's sheets, the story so far, and especially the player actions and rolls since your last update. Keep the story consistent with all of it.",
   "On your turn: resolve what the characters declared since your last update. When the outcome is uncertain and matters, ask for a roll in rolls and wait: don't narrate the result yet. When the roll is already posted (a line like \"🎲 Perception: 17\"), compare it with the DC you set and narrate what happens. Then move the scene forward and end on a clear invitation to act.",
   "You decide outcomes, NPCs, and the world. Never decide what a player character does, says, thinks, or feels, and never spend their resources or roll for them. Reveal the adventure's secrets through play (clues, NPC words, discoveries), never by announcing them.",
   "narration is what the table hears, read aloud: two to five vivid, plain sentences in second person plural (\"you\"), with NPC speech in quotes. Under 1,200 characters.",
   "to is empty when everyone is there to see it. When the party is split up, list the characters who perceive this narration, by their exact names from THE PARTY; the others won't see it.",
   "rolls: for each roll, character is an exact name from THE PARTY; roll is a skill (Perception, Stealth, Insight, Athletics, Persuasion, Investigation…), \"<Ability> save\", \"<Ability> check\", or \"Attack roll\"; dc is the target you set (about 10 easy, 15 medium, 20 hard; for an Attack roll, the target's AC). At most one roll per character per turn, and none when nothing is uncertain.",
-  "Fights: the app's combat tools are still run by the host. If violence starts, narrate the threat and use host_note to tell the host to start combat in the app and which enemies to add.",
+  "Fights: the app runs initiative, enemy attacks, and hit-or-miss calls itself. When violence starts, set combat.start to true and put the enemies in combat.enemies; you can add reinforcements to a fight that's already on the same way. Otherwise combat.start is false and combat.enemies is empty. Set combat.end to true only when the enemies still standing surrender or flee; the app ends the fight itself when they are all down.",
+  "Each enemy: name (\"Masked Croupier\"; the app numbers copies), count (1 to 12), cr as a string, ac, hp as dice like \"11d8+22\", init (the Dexterity modifier), speed, saves (exactly six integers: Str, Dex, Con, Int, Wis, Cha), attacks (at most three; put \"(×2)\" in the name for an attack made twice a turn; hit is the to-hit bonus; damage is dice like \"1d10+4\"; fill extra_damage and extra_type and/or save, dc and effect for what a hit also does, otherwise empty strings and dc 0), routine (indexes of the attacks one turn uses), abilities (two to four short sentences: specials, resistances, tactics, in your own words). Use standard 5th edition math for the CR, and balance the fight for THE PARTY: a fair fight unless the story calls for more. At most four kinds of enemy.",
+  "During a fight (TABLE STATE shows the round), keep narration to one to three sentences: how the battle feels and what happens to anything the characters tried besides attacking. The app posts attack results, so don't narrate hits or damage and don't ask for attack rolls.",
   "host_note is private to the host, one to three short sentences: what you decided and why, DCs or secrets in play, and anything the host should do in the app. Empty string if nothing.",
   "If HOST SAYS appears, follow that direction for this turn.",
   "Use the character sheets for what each character can do and their skills. Use standard 5th edition rules; the host can overrule you.",
@@ -631,5 +650,11 @@ export async function readAiDm(response, party = [], onUsage) {
     roll: String(roll.roll ?? "").replace(/[\n—]/g, " ").trim().slice(0, 40),
     dc: whole(roll.dc, 0, 30, 0)
   })).filter(roll => roll.character && roll.roll && !seen.has(roll.character) && seen.add(roll.character)).slice(0, 8);
-  return { narration, to: to.length < names.length ? to : [], rolls, hostNote: String(answer.host_note ?? "").trim().slice(0, 800) };
+  const combat = {
+    start: answer.combat?.start === true,
+    end: answer.combat?.end === true,
+    enemies: answer.combat?.start === true ? cleanEnemies(answer.combat?.enemies) : []
+  };
+  if (combat.start && !combat.enemies.length) combat.start = false;
+  return { narration, to: to.length < names.length ? to : [], rolls, combat, hostNote: String(answer.host_note ?? "").trim().slice(0, 800) };
 }
