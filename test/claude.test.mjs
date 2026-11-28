@@ -409,7 +409,8 @@ test("an AI DM turn carries the sheets and secret notes (cached), the newest rol
   const body = JSON.parse(aiDmRequest("k", { scenes, history: "Earlier: the casino.", actions, party: sheetsFor, notes: "The mage is behind the mirror.", prompt: "Make it tense.", table: "Round 1" }).body);
   const blocks = body.messages[0].content;
   assert.equal(body.system, aiDmSystem);
-  assert.equal(body.output_config.format.schema.required.join(), "narration,to,rolls,host_note");
+  assert.equal(body.output_config.format.schema.required.join(), "narration,to,rolls,combat,host_note");
+  assert.deepEqual(body.output_config.format.schema.properties.combat.required, ["start", "end", "enemies"]);
   assert.match(blocks[0].text, /^CAMPAIGN HISTORY/);
   assert.match(blocks[1].text, /^ADVENTURE NOTES \(secret; from the host\):\nThe mage is behind the mirror\./);
   assert.match(blocks[1].text, /Character: Arcturus \(Level 10\)/);
@@ -437,26 +438,45 @@ test("an AI DM turn keeps only real names, one roll each, and sensible DCs", asy
   await assert.rejects(readAiDm(Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ ...answer, narration: " " }) }] }), sheetsFor), /nothing to say/);
 });
 
-test("local server: the AI DM is host-only and practice-only", async () => {
+test("local server: the AI DM is host-only, works at any table, and has its own allowance", async () => {
   const env = { DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" };
   const call = async (path, init = {}) => {
     const response = await worker.fetch(new Request("http://localhost" + path, init), env);
     return { status: response.status, body: await response.json() };
   };
-  const ask = (code, headers = {}) => call("/api/rooms/" + code + "/advise", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ mode: "run", prompt: "", notes: "Secret: the mirror." }) });
-  reply = () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ narration: "The vault hums.", to: [], rolls: [{ character: "Arcturus", roll: "Perception", dc: 15 }], host_note: "" }) }] });
+  const ask = (code, headers = {}, mode = "run") => call("/api/rooms/" + code + "/advise", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ mode, prompt: mode === "run" ? "" : "A twist?", notes: "Secret: the mirror." }) });
+  reply = () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ narration: "The vault hums.", to: [], rolls: [{ character: "Arcturus", roll: "Perception", dc: 15 }], combat: { start: false, end: false, enemies: [] }, host_note: "", answer: "Yes.", ideas: [] }) }] });
   const campaign = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
-  assert.equal((await ask(campaign.code, { "x-table-host": campaign.host })).status, 403);
   const practice = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create", "x-table-practice": "1" } })).body;
   // The room says whether it's a practice table, whatever its first update was.
   assert.equal((await call("/api/rooms/" + practice.code)).body.practice, true);
   assert.equal((await call("/api/rooms/" + campaign.code)).body.practice, false);
-  assert.equal((await ask(practice.code)).status, 403);
-  const turn = await ask(practice.code, { "x-table-host": practice.host });
+  assert.equal((await ask(campaign.code)).status, 403);
+  const turn = await ask(campaign.code, { "x-table-host": campaign.host });
   assert.equal(turn.status, 200);
   assert.equal(turn.body.narration, "The vault hums.");
   assert.deepEqual(turn.body.rolls, [{ character: "Arcturus", roll: "Perception", dc: 15 }]);
+  assert.deepEqual(turn.body.combat, { start: false, end: false, enemies: [] });
   const sent = requests.at(-1).body;
   assert.equal(sent.system.startsWith("You are the Dungeon Master"), true);
   assert.match(sent.messages[0].content.map(block => block.text).join("\n"), /Secret: the mirror\./);
+  // An AI DM turn and the DM assistant have separate cooldowns: one doesn't block the other.
+  assert.equal((await ask(campaign.code, { "x-table-host": campaign.host }, "dm")).status, 200);
+  assert.equal((await ask(campaign.code, { "x-table-host": campaign.host })).status, 429);
+});
+
+test("an AI DM turn can start a fight with tracker-ready enemies, or end one", async () => {
+  const { readAiDm } = await import("../src/advice.js");
+  const answer = combat => Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ narration: "Steel rings out.", to: [], rolls: [], host_note: "", combat }) }] });
+  const enemy = { name: "Masked Croupier", count: 3, cr: "3", ac: 15, hp: "10d8+20", init: 2, speed: 30, saves: [3, 2, 2, 0, 1, 0], routine: [0], abilities: "Pulls with the rake.",
+    attacks: [{ name: "Brass Rake (×2)", hit: 6, damage: "1d10+4", extra_damage: "", extra_type: "", save: "Str", dc: 14, effect: "pulled 10 ft" }, { name: "Bad", hit: 5, damage: "lots", extra_damage: "", extra_type: "", save: "", dc: 0, effect: "" }] };
+  const fight = await readAiDm(answer({ start: true, end: false, enemies: [enemy] }), sheetsFor);
+  assert.equal(fight.combat.start, true);
+  assert.equal(fight.combat.enemies.length, 1);
+  assert.equal(fight.combat.enemies[0].count, 3);
+  assert.deepEqual(fight.combat.enemies[0].attacks, [["Brass Rake (×2)", 6, "1d10+4", { save: "Str", dc: 14, effect: "pulled 10 ft" }]]);
+  const empty = await readAiDm(answer({ start: true, end: false, enemies: [] }), sheetsFor);
+  assert.equal(empty.combat.start, false);
+  const over = await readAiDm(answer({ start: false, end: true, enemies: [enemy] }), sheetsFor);
+  assert.deepEqual(over.combat, { start: false, end: true, enemies: [] });
 });

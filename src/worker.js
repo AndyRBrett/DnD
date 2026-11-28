@@ -34,6 +34,7 @@ const aiCache = new Map();
 const aiUsage = new Map();
 const presence = new Map(); // room code → phone id → { character, at }
 const AI_ROOM_LIMIT = 150;
+const AI_DM_ROOM_LIMIT = 250; // AI DM turns: their own allowance per table
 const recaps = new Map(); // room code → { text, uptoAt }: the running recap (src/advice.js)
 const AI_COOLDOWN = 8000;
 
@@ -60,12 +61,15 @@ async function dmAsk(request, db, room, code, env, body) {
   if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the DM can ask this." }, 403);
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 600) : "";
   if (!prompt && body.mode !== "run") return json({ error: body.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
-  if (body.mode === "run" && !room.practice) return json({ error: "The AI DM runs on practice tables for now." }, 403);
   const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
-  if (usage.count >= AI_ROOM_LIMIT) return json({ error: "This session has used its Claude suggestions." }, 429);
-  if (Date.now() - (usage.last.get(-1) ?? 0) < AI_COOLDOWN) return json({ error: "One moment — Claude was just asked." }, 429);
-  usage.count += 1;
-  usage.last.set(-1, Date.now());
+  const run = body.mode === "run";
+  const slot = run ? -2 : -1;
+  if (run ? (usage.aiDm ?? 0) >= AI_DM_ROOM_LIMIT : usage.count >= AI_ROOM_LIMIT) {
+    return json({ error: run ? "The AI DM has used this table's turns. Start a new table to keep going." : "This session has used its Claude suggestions." }, 429);
+  }
+  if (Date.now() - (usage.last.get(slot) ?? 0) < AI_COOLDOWN) return json({ error: "One moment — Claude was just asked." }, 429);
+  if (run) usage.aiDm = (usage.aiDm ?? 0) + 1; else usage.count += 1;
+  usage.last.set(slot, Date.now());
   aiUsage.set(code, usage);
   const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 400").bind(code).all();
   const party = JSON.parse(room.party).map(member => ({ name: member.name, role: member.role }));
