@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -6381,6 +6381,8 @@ const AI_DM_ON = () => "dnd-aidm-on:" + room;
 const AI_DM_AUTO = () => "dnd-aidm-auto:" + room;
 const AI_DM_MARK = () => "dnd-aidm-mark:" + room; // the last DM turn: { after, at, asked, round }
 const AI_DM_LAST = () => "dnd-aidm-last:" + room; // what the last DM turn posted, for Undo
+const AI_DM_PACE = "dnd-aidm-pace"; // the autopilot's pace, for every table on this phone
+const aiDmPace = () => (storage.get(AI_DM_PACE) in AI_DM_PACES ? storage.get(AI_DM_PACE) : "quick");
 let aiDmNotesLoaded = false;
 let aiDmBusy = false;
 let aiDmNextStep = 0;
@@ -6410,6 +6412,8 @@ function drawAiDm() {
   $("ai-dm-on").checked = aiDmEnabled();
   $("ai-dm-body").hidden = !aiDmEnabled();
   $("ai-dm-auto").checked = storage.get(AI_DM_AUTO()) === "1";
+  $("ai-dm-pace").value = aiDmPace();
+  drawAiDmPace();
   if (!aiDmNotesLoaded) {
     $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
     aiDmNotesLoaded = true;
@@ -6432,6 +6436,19 @@ $("ai-dm-auto").onchange = () => {
   if ($("ai-dm-auto").checked && !readJson(AI_DM_MARK(), null)) aiDmMark([]);
   aiDmLog($("ai-dm-auto").checked ? "Autopilot on." : "Autopilot off.");
   if (!$("ai-dm-auto").checked && $("ai-dm-status").textContent.startsWith("Autopilot: ")) $("ai-dm-status").textContent = "";
+};
+const AI_DM_PACE_NOTES = {
+  quick: "Quick: answers the rolls it asked for as soon as they're in, or goes after 3 posts or 30 seconds.",
+  normal: "Normal: answers the rolls it asked for once they're in, or goes after 4 posts or a minute.",
+  patient: "Patient: waits for everyone at the table to post (up to a minute and a half)."
+};
+function drawAiDmPace() {
+  $("ai-dm-pace-note").textContent = AI_DM_PACE_NOTES[aiDmPace()];
+}
+$("ai-dm-pace").onchange = () => {
+  storage.set(AI_DM_PACE, $("ai-dm-pace").value);
+  drawAiDmPace();
+  aiDmLog("Pace: " + $("ai-dm-pace").selectedOptions[0].textContent + ".");
 };
 $("ai-dm-notes").oninput = () => storage.set(AI_DM_NOTES(), $("ai-dm-notes").value);
 function aiDmLog(text) {
@@ -6581,9 +6598,9 @@ function aiDmTick() {
   if (state.combat ? aiDmFightStep(now) : aiDmStoryStep(now)) aiDmNextStep = Math.max(aiDmNextStep, Date.now() + 1500);
 }
 
-// Out of a fight: a DM turn once there's something new, the rolls asked for
-// are in (or three minutes have passed), and everyone at the table has posted
-// (or a minute and a half has passed), after 12 quiet seconds.
+// Out of a fight: a DM turn once there's something new and no roll is still
+// owed, as soon as the rolls it asked for are in, everyone has posted, a few
+// posts have piled up, or enough time has passed (aiDmReady, by the pace).
 // What the autopilot is waiting on, on the card, so a quiet table never
 // looks stuck.
 function aiDmWaitingFor(text) {
@@ -6592,34 +6609,18 @@ function aiDmWaitingFor(text) {
 }
 function aiDmStoryStep(now) {
   const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, at: 0, asked: [] };
-  const fresh = (state.actions ?? []).filter(action => Number(action.id) > mark.after && !String(action.text).startsWith("🎲 DM asks"));
-  const owedNow = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack")
-    .map(({ ask }) => String(partyName(index) ?? "").replace(/^The /, "") + "'s " + rollAskLabel(ask)));
-  if (!fresh.length) {
-    aiDmWaitingFor(owedNow.length ? "waiting for " + owedNow.join(", ") + "." : "waiting for the players to act.");
+  const age = action => now - (aiDmSeen.get(action.id) ?? now);
+  const fresh = (state.actions ?? []).filter(action => Number(action.id) > mark.after && !String(action.text).startsWith("🎲 DM asks"))
+    .map(action => ({ name: action.name, roll: String(action.text).startsWith("🎲 "), age: age(action) }));
+  // Every roll still owed, from this turn's requests or an earlier one's.
+  const owed = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack")
+    .map(({ ask, action }) => ({ who: partyName(index) ?? "", label: rollAskLabel(ask), age: age(action) })));
+  const next = aiDmReady({ fresh, owed, asked: mark.asked ?? [], present: [...presentNames()], pace: aiDmPace() });
+  if (!next.go) {
+    aiDmWaitingFor(next.wait);
     return false;
   }
-  // Every roll still owed, from this turn's requests or an earlier one's,
-  // holds the turn (each for up to three minutes after it was asked).
-  const owed = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack"));
-  if (owed.some(({ action }) => now - (aiDmSeen.get(action.id) ?? now) < 180000)) {
-    aiDmWaitingFor("waiting for " + owedNow.join(", ") + ".");
-    return false;
-  }
-  const acted = new Set(fresh.map(action => action.name));
-  const present = presentNames();
-  const first = Math.min(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
-  const last = Math.max(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
-  const quiet = [...present].filter(name => !acted.has(name));
-  if (quiet.length && now - first < 90000) {
-    aiDmWaitingFor("waiting for " + quiet.map(name => name.replace(/^The /, "")).join(", ") + " to act (or " + Math.ceil((90000 - (now - first)) / 1000) + "s).");
-    return false;
-  }
-  if (now - last < 12000) {
-    aiDmWaitingFor("everyone's in. Taking a turn in a few seconds.");
-    return false;
-  }
-  aiDmTurn("", "Everyone had acted: took a DM turn.");
+  aiDmTurn("", next.why);
   return true;
 }
 

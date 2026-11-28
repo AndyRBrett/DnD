@@ -727,3 +727,31 @@ test("Claude's text is tidied: missing spaces put back, a runaway tail of tiny s
   for (const fine of ["The door groans. \"Who goes there?\" A guard steps out. Run!", "Roll Perception, DC 13.", ""]) assert.equal(tidyModelText(fine), fine);
   assert.equal(tidyModelText("Mr. Vey waits at 3.5 paces."), "Mr. Vey waits at 3.5 paces.");
 });
+
+test("the AI DM autopilot answers requested rolls at once and doesn't wait on a quiet player", async () => {
+  const { aiDmReady } = await import("../src/encounter.js");
+  const present = ["Roan", "The White Wizard", "Arcturus"];
+  // Nothing new: says what it's waiting for.
+  assert.match(aiDmReady({ present }).wait, /players to act/);
+  assert.match(aiDmReady({ present, owed: [{ who: "Roan", label: "Perception (DC 12)", age: 5000 }] }).wait, /Roan's Perception \(DC 12\)/);
+  // A roll still owed holds the turn, even with posts in.
+  const posted = [{ name: "Arcturus", roll: false, age: 20000 }];
+  assert.equal(aiDmReady({ present, fresh: posted, owed: [{ who: "Roan", label: "Perception", age: 10000 }] }).go, false);
+  // ...until it's been owed too long (Quick: 2 minutes).
+  assert.equal(aiDmReady({ present, fresh: [{ name: "Arcturus", roll: false, age: 20000 }], owed: [{ who: "Roan", label: "Perception", age: 130000 }] }).go, false); // others not in yet
+  // The rolls it asked for are in: goes after a 3-second beat, without the others.
+  const rolls = [{ name: "Roan", roll: true, age: 4000 }];
+  assert.deepEqual(aiDmReady({ present, fresh: rolls, asked: ["Roan"] }), { go: true, why: "The rolls are in: took a DM turn." });
+  assert.match(aiDmReady({ present, fresh: [{ name: "Roan", roll: true, age: 1000 }], asked: ["Roan"] }).wait, /answering in a moment/);
+  assert.equal(aiDmReady({ present, fresh: rolls, asked: ["Roan"], pace: "patient" }).go, false); // Patient waits for everyone
+  // Two asked, one in: keeps waiting for the quiet ones.
+  assert.match(aiDmReady({ present, fresh: rolls, asked: ["Roan", "Arcturus"] }).wait, /White Wizard, Arcturus to act/);
+  // A few posts (3 on Quick) are enough, even if someone hasn't posted.
+  const three = [{ name: "Roan", age: 5000 }, { name: "Roan", age: 4000 }, { name: "Arcturus", age: 4000 }];
+  assert.equal(aiDmReady({ present, fresh: three }).go, true);
+  assert.equal(aiDmReady({ present, fresh: three, pace: "patient" }).go, false);
+  // Everyone has posted, or the wait for the others ran out.
+  assert.equal(aiDmReady({ present: ["Roan"], fresh: [{ name: "Roan", age: 4000 }] }).go, true);
+  assert.equal(aiDmReady({ present, fresh: [{ name: "Roan", age: 31000 }] }).go, true);
+  assert.equal(aiDmReady({ present, fresh: [{ name: "Roan", age: 31000 }], pace: "patient" }).go, false);
+});
