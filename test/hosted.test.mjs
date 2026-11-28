@@ -127,3 +127,18 @@ test("the whole-session read needs a signed-in account and an open table", async
   assert.match(sql, /grant execute on function public\.dnd_session_log\(text\) to authenticated;/);
   assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
 });
+
+test("Claude costs: the token log and recaps are service-only, and every path uses the same per-table limit", async () => {
+  const sql = await read("supabase/migrations/0021_dnd_ai_costs.sql");
+  assert.match(sql, /revoke all on public\.dnd_ai_tokens from anon, authenticated;/);
+  assert.match(sql, /revoke all on public\.dnd_recaps from anon, authenticated;/);
+  assert.match(sql, /grant execute on function public\.dnd_recap_save\(text, text, bigint, text\) to service_role;/);
+  assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
+  const edge = await read("supabase/functions/dnd-advise/index.ts");
+  const tableLimit = Number(edge.match(/const TABLE_LIMIT = (\d+);/)[1]);
+  const playerLimit = Number(edge.match(/const PLAYER_DAY_LIMIT = (\d+);/)[1]);
+  assert.match(sql, new RegExp("dnd_ai_usage where code = p_code\\) >= " + tableLimit));
+  assert.match(sql, new RegExp("created_at > now\\(\\) - interval '1 day'\\) >= " + playerLimit));
+  const worker = await read("src/worker.js");
+  assert.match(worker, new RegExp("const AI_ROOM_LIMIT = " + tableLimit + ";"));
+});

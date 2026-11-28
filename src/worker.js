@@ -33,12 +33,25 @@ function randomToken(bytes) {
 const aiCache = new Map();
 const aiUsage = new Map();
 const presence = new Map(); // room code → phone id → { character, at }
-const AI_ROOM_LIMIT = 500;
+const AI_ROOM_LIMIT = 150;
+const recaps = new Map(); // room code → { text, uptoAt }: the running recap (src/advice.js)
 const AI_COOLDOWN = 8000;
 
-async function askClaude(apiKey, character, scenes, question = "", table = "") {
-  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes, "", [], question, table), signal: AbortSignal.timeout(60000) });
-  return readAdvice(response);
+// What each call used, on the server's console (the hosted app keeps it in dnd_ai_tokens).
+const logTokens = mode => usage => console.log("Claude " + mode + ": " + usage.model + " · in " + usage.input_tokens
+  + " (cache read " + usage.cache_read + ", write " + usage.cache_write + ") · out " + usage.output_tokens);
+
+// The running recap, brought up to date when it's due.
+async function currentRecap(apiKey, code, scenes, party) {
+  const { recap, changed } = await refreshRecap(apiKey, scenes, [], recaps.get(code) ?? null, party, logTokens("recap"));
+  if (changed) recaps.set(code, recap);
+  return recap;
+}
+
+async function askClaude(apiKey, code, character, scenes, party, question = "", table = "") {
+  const recap = await currentRecap(apiKey, code, scenes, party);
+  const response = await fetch(CLAUDE_URL, { ...claudeRequest(apiKey, character, scenes, "", [], question, table, recap), signal: AbortSignal.timeout(60000) });
+  return readAdvice(response, logTokens(question ? "question" : "advice"));
 }
 
 // The DM's asks (enemies from a description, the DM assistant): host only,
@@ -53,12 +66,14 @@ async function dmAsk(request, db, room, code, env, body) {
   usage.count += 1;
   usage.last.set(-1, Date.now());
   aiUsage.set(code, usage);
-  const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 200").bind(code).all();
+  const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 400").bind(code).all();
   const party = JSON.parse(room.party).map(member => ({ name: member.name, role: member.role }));
   const table = typeof body.table === "string" ? body.table.slice(0, 3000) : "";
   try {
-    const response = await fetch(CLAUDE_URL, { ...dmRequest(env.ANTHROPIC_API_KEY, body.mode, { scenes: results.reverse(), party, prompt, table }), signal: AbortSignal.timeout(60000) });
-    return json(body.mode === "enemies" ? await readEnemies(response) : await readDmHelp(response));
+    const scenes = results.reverse();
+    const recap = await currentRecap(env.ANTHROPIC_API_KEY, code, scenes, party);
+    const response = await fetch(CLAUDE_URL, { ...dmRequest(env.ANTHROPIC_API_KEY, body.mode, { scenes, party, prompt, table, recap }), signal: AbortSignal.timeout(60000) });
+    return json(body.mode === "enemies" ? await readEnemies(response, logTokens(body.mode)) : await readDmHelp(response, logTokens(body.mode)));
   } catch (error) {
     if (!(error instanceof AdviceError)) console.error(error);
     return json({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
@@ -116,7 +131,7 @@ const endpoints = {
     const party = importHistory(JSON.parse(room.party));
     const character = party[index];
     if (!Number.isInteger(index) || !character) return json({ error: "Pick a character." }, 400);
-    const { results } = await db.prepare("SELECT id, text FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 200").bind(code).all();
+    const { results } = await db.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 400").bind(code).all();
     const scenes = results.reverse();
     if (!scenes.length) return json({ error: "Wait for a scene update." }, 400);
     const question = typeof body.question === "string" ? body.question.trim().slice(0, 300) : "";
@@ -132,7 +147,7 @@ const endpoints = {
     usage.count += 1;
     usage.last.set(index, Date.now());
     aiUsage.set(code, usage);
-    const pending = askClaude(env.ANTHROPIC_API_KEY, character, scenes, question, table);
+    const pending = askClaude(env.ANTHROPIC_API_KEY, code, character, scenes, party, question, table);
     aiCache.set(key, pending);
     if (aiCache.size > 500) aiCache.delete(aiCache.keys().next().value);
     try {
@@ -306,6 +321,7 @@ const endpoints = {
   },
   async close(db, code) {
     aiUsage.delete(code);
+    recaps.delete(code);
     presence.delete(code);
     await db.prepare("DELETE FROM rooms WHERE code = ?").bind(code).run();
     await db.prepare("DELETE FROM party_hp WHERE name LIKE ?").bind("room:" + code + ":%").run();

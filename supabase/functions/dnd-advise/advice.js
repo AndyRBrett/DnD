@@ -45,7 +45,7 @@ export const adviceSystem = [
   "Only recommend abilities listed under READY on the character's sheet, or ordinary actions any adventurer could attempt (move, hide, help, talk, search, shove). Never recommend anything listed under UNCONFIRMED; if one looks relevant, put it in ask_dm as something to confirm with the DM.",
   "Do not invent spell slots, uses, items, or rules. When an ability has a cost or limit, mention checking it. Never state outcomes, damage, or success; the DM decides those.",
   "situation is a 2-4 word label such as \"Combat\" or \"Talking to the bartender\". ask_dm is one question the player could ask the DM, ideally one that would clarify the bigger picture or the immediate options.",
-  "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context.",
+  "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context. A long session may begin with a recap of its earlier part, written from the transcript; treat it as what happened, and the lines after it as the newest.",
   "An update starting \"🔒 To:\" was told only to the characters it names (the party is split up). Those characters know it; the others are elsewhere and don't, unless they've regrouped.",
   "Player actions are what the players said their characters are doing; the DM has not necessarily resolved them. Build on what this character already declared instead of repeating it, and account for what the others are doing.",
   "The campaign history is the group's own notes and may mention stats or abilities; those never count as available unless the character's sheet lists them as READY."
@@ -109,18 +109,24 @@ export function sessionWindow(scenes) {
 // come first with cache breakpoints, so every character asking about the same
 // moment reuses them; only the sheet, latest update, and newest actions vary.
 // table (optional): a short TABLE STATE snapshot from the player's phone.
-export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "", table = "") {
-  const session = sessionWindow(scenes);
+// recap (optional): { text, uptoAt } from the running recap; the session
+// block then carries only what happened after it.
+export function claudeRequest(apiKey, character, scenes, history = "", actions = [], question = "", table = "", recap = null) {
+  const after = sinceRecap(scenes, actions, recap);
+  const session = sessionWindow(after.scenes);
   // A split party: the latest update is the newest one this character heard
   // (one starting "🔒 To:" went only to the characters it names), found in
   // the whole session, and none at all if they haven't heard one yet.
   const latest = [...scenes].reverse().find(scene => sceneHeardBy(scene.text, character.name)) ?? null;
   const earlier = session.filter(scene => scene !== latest);
   const latestAt = Number(latest?.created ?? Infinity);
-  const firstAt = Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity);
+  // Actions before the first update kept here are left out only when older
+  // updates were trimmed; after a recap, everything after its cutoff counts.
+  const trimmed = session.length < after.scenes.length;
+  const firstAt = trimmed ? Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity) : -Infinity;
   const timeline = [
     ...earlier.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
-    ...actions.filter(action => action.created < latestAt && action.created >= firstAt)
+    ...after.actions.filter(action => action.created < latestAt && action.created >= firstAt)
       .map(action => ({ at: action.created, line: action.name + " (player): " + action.text }))
   ].sort((a, b) => a.at - b.at);
   const newest = actions.filter(action => action.created >= latestAt);
@@ -132,10 +138,11 @@ export function claudeRequest(apiKey, character, scenes, history = "", actions =
       cache_control: { type: "ephemeral", ttl: "1h" }
     });
   }
+  if (after.recap) content.push(recapBlock(after.recap));
   if (timeline.length) {
     content.push({
       type: "text",
-      text: "THIS SESSION SO FAR (DM updates and what players said their characters did, oldest first" + (session.length < scenes.length ? "; the earliest were trimmed" : "") + "):\n" + timeline.map(entry => "- " + entry.line).join("\n"),
+      text: (after.recap ? "THIS SESSION SINCE THAT RECAP" : "THIS SESSION SO FAR") + " (DM updates and what players said their characters did, oldest first" + (session.length < after.scenes.length ? "; the earliest were trimmed" : "") + "):\n" + timeline.map(entry => "- " + entry.line).join("\n"),
       cache_control: { type: "ephemeral" }
     });
   }
@@ -167,12 +174,13 @@ export class AdviceError extends Error {}
 // Returns { answer, bigPicture, situation, options: [{action, why, explain,
 // declare}] (three), question } or throws
 // AdviceError with a message fit to show a player.
-export async function readAdvice(response) {
+export async function readAdvice(response, onUsage = () => {}) {
   if (!response.ok) {
     console.error("Claude request failed", response.status, (await response.text()).slice(0, 300));
     throw new AdviceError(response.status === 429 ? "Claude is busy. Try again in a moment." : "Claude could not answer. Use the suggestions above.");
   }
   const message = await response.json();
+  onUsage(usageOf(message));
   if (message.stop_reason === "refusal") throw new AdviceError("Claude declined this one. Use the suggestions above.");
   if (message.stop_reason === "max_tokens") throw new AdviceError("Claude ran long. Try again.");
   let advice;
@@ -254,7 +262,7 @@ export const enemySystem = [
   "attacks: at most three. name is short; put \"(×2)\" in the name when the enemy makes that attack twice in a turn (\"Brass Rake (×2)\"). hit is the to-hit bonus; damage is dice like \"1d10+4\". When a hit also does something, fill extra_damage and extra_type (\"2d6\", \"fire\") and/or save, dc and effect (\"Str\", 14, \"pulled 10 ft toward it\"); otherwise leave them as empty strings and dc 0. routine is the indexes of the attacks one turn uses (usually [0]; [0, 1] for claws and a bite).",
   "abilities is two to four short plain sentences: multiattack, special moves with their saves and recharge, resistances and immunities, and one line of tactics (how they fight, when they flee). Write everything in your own words.",
   "At most four different enemies. note is one sentence to the DM: how hard the fight should be for this party and one way to make it more interesting.",
-  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably."
+  "The DM updates are speech-to-text transcripts and may contain recognition errors; read them charitably. A long session may begin with a recap of its earlier part, written from the transcript; treat it as what happened, and the lines after it as the newest."
 ].join("\n");
 
 export const dmSchema = {
@@ -282,28 +290,30 @@ export const dmSystem = [
   "answer is two to four short sentences that answer the DM directly. ideas are up to three options: title is a few words; detail is one or two sentences on how it plays and why it fits; line is something the DM could read or post to the table as is (narration in second person plural or an NPC's words), or an empty string when there's nothing to read out.",
   "Never decide for the players or spend their resources. Leave rolls and outcomes to the table. Keep secrets the DM has not revealed out of any line meant for the players.",
   "TABLE STATE comes from the DM's app: the round and turn, the party's HP and conditions, and the enemies with their real HP. Use it for tactics and pacing.",
-  "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context."
+  "The DM updates are speech-to-text transcripts and may contain recognition errors or fragments; read them charitably and in context. A long session may begin with a recap of its earlier part, written from the transcript; treat it as what happened, and the lines after it as the newest."
 ].join("\n");
 
 // The story every DM ask carries: history and the session, cached.
-function storyBlocks(scenes, history, actions) {
-  const session = sessionWindow(scenes);
-  const firstAt = Number(session[0]?.created ?? -Infinity);
+function storyBlocks(scenes, history, actions, recap = null) {
+  const after = sinceRecap(scenes, actions, recap);
+  const session = sessionWindow(after.scenes);
+  const firstAt = session.length < after.scenes.length ? Number(session[0]?.created ?? -Infinity) : -Infinity;
   const timeline = [
     ...session.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
-    ...actions.filter(action => Number(action.created) >= firstAt).map(action => ({ at: Number(action.created), line: action.name + " (player): " + action.text }))
+    ...after.actions.filter(action => Number(action.created) >= firstAt).map(action => ({ at: Number(action.created), line: action.name + " (player): " + action.text }))
   ].sort((a, b) => a.at - b.at);
   const blocks = [];
   if (String(history).trim()) blocks.push({ type: "text", text: "CAMPAIGN HISTORY (the group's notes on earlier sessions, oldest first):\n\n" + String(history).trim(), cache_control: { type: "ephemeral", ttl: "1h" } });
-  if (timeline.length) blocks.push({ type: "text", text: "THIS SESSION SO FAR (DM updates and what players said their characters did, oldest first):\n" + timeline.map(entry => "- " + entry.line).join("\n"), cache_control: { type: "ephemeral" } });
+  if (after.recap) blocks.push(recapBlock(after.recap));
+  if (timeline.length) blocks.push({ type: "text", text: (after.recap ? "THIS SESSION SINCE THAT RECAP" : "THIS SESSION SO FAR") + " (DM updates and what players said their characters did, oldest first):\n" + timeline.map(entry => "- " + entry.line).join("\n"), cache_control: { type: "ephemeral" } });
   return blocks;
 }
 
 // mode: "enemies" (stat blocks from a description) or "dm" (the assistant).
 // party: [{ name, role }] from the roster. table: the DM's TABLE STATE.
-export function dmRequest(apiKey, mode, { scenes = [], history = "", actions = [], party = [], prompt = "", table = "" } = {}) {
+export function dmRequest(apiKey, mode, { scenes = [], history = "", actions = [], party = [], prompt = "", table = "", recap = null } = {}) {
   const enemies = mode === "enemies";
-  const content = storyBlocks(scenes, history, actions);
+  const content = storyBlocks(scenes, history, actions, recap);
   content.push({ type: "text", text: "PARTY:\n" + party.map(member => "- " + member.name + (member.role ? " (" + member.role + ")" : "")).join("\n")
     + (String(table).trim() ? "\n\nTABLE STATE (from the DM's app, right now):\n" + String(table).trim().slice(0, 3000) : "")
     + "\n\n" + (enemies ? "THE ENEMIES THE DM WANTS:\n" : "THE DM ASKS:\n") + String(prompt).trim().slice(0, 600) });
@@ -326,12 +336,13 @@ export function dmRequest(apiKey, mode, { scenes = [], history = "", actions = [
   };
 }
 
-async function readJsonAnswer(response) {
+async function readJsonAnswer(response, onUsage = () => {}) {
   if (!response.ok) {
     console.error("Claude request failed", response.status, (await response.text()).slice(0, 300));
     throw new AdviceError(response.status === 429 ? "Claude is busy. Try again in a moment." : "Claude could not answer. Try again.");
   }
   const message = await response.json();
+  onUsage(usageOf(message));
   if (message.stop_reason === "refusal") throw new AdviceError("Claude declined this one. Try rewording it.");
   if (message.stop_reason === "max_tokens") throw new AdviceError("Claude ran long. Try again.");
   try {
@@ -349,8 +360,8 @@ const ABILITY_SHORT = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
 // template shape ({ name, cr, ac, hp, init, speed, saves, attacks: [[name,
 // hit, damage, rider?]], routine, abilities }), with every number clamped
 // and dice that don't parse dropped.
-export async function readEnemies(response) {
-  const answer = await readJsonAnswer(response);
+export async function readEnemies(response, onUsage) {
+  const answer = await readJsonAnswer(response, onUsage);
   const enemies = (Array.isArray(answer.enemies) ? answer.enemies : []).slice(0, 4).map(enemy => {
     // Attacks whose damage doesn't roll are dropped; kept[i] is where the
     // original attack i ended up, so the routine still names the right ones.
@@ -387,8 +398,8 @@ export async function readEnemies(response) {
 }
 
 // Returns { answer, ideas: [{ title, detail, line }] (up to three) }.
-export async function readDmHelp(response) {
-  const answer = await readJsonAnswer(response);
+export async function readDmHelp(response, onUsage) {
+  const answer = await readJsonAnswer(response, onUsage);
   return {
     answer: String(answer.answer ?? "").slice(0, 1200),
     ideas: (Array.isArray(answer.ideas) ? answer.ideas : []).slice(0, 3).map(idea => ({
@@ -397,4 +408,133 @@ export async function readDmHelp(response) {
       line: String(idea.line ?? "").slice(0, 600)
     }))
   };
+}
+
+// ── Cost: what each call used, and the running recap ──
+
+// The token counts Claude reports for one call, for the dnd_ai_tokens log.
+export function usageOf(message) {
+  const usage = message?.usage ?? {};
+  const count = value => Math.max(0, Math.round(Number(value) || 0));
+  return {
+    model: String(message?.model ?? "").slice(0, 60),
+    input_tokens: count(usage.input_tokens),
+    output_tokens: count(usage.output_tokens),
+    cache_read: count(usage.cache_read_input_tokens),
+    cache_write: count(usage.cache_creation_input_tokens)
+  };
+}
+
+// A long session is sent as a short recap of its earlier part plus the newest
+// lines word for word, so each call carries less and the recap block caches.
+// Once more than RECAP_TRIGGER characters have piled up since the last recap,
+// all but the newest RECAP_KEEP characters are folded into it by the cheap
+// model. A recap that can't be made never blocks advice: the old one (or the
+// raw session) is used.
+export const RECAP_MODEL = "claude-haiku-5-5";
+export const RECAP_TRIGGER = 12000;
+export const RECAP_KEEP = 4000;
+
+export const recapSystem = [
+  "You keep the running recap of a Dungeons & Dragons session in progress, so an assistant can follow the story without the raw transcript.",
+  "You get the recap so far (it may be empty) and the newest lines: DM updates, which are live speech-to-text with recognition errors and stray fragments, and what players said their characters do, including dice rolls and attack results.",
+  "Write the updated recap of the whole session so far as plain text: the earlier recap's facts plus the new lines, in order. Keep names, places, clues, NPC words that matter, rolls that decided something, who was hurt or knocked out, resources spent, and open threads. Mark anything the DM sent only to some characters (lines starting \"🔒 To:\") with who heard it.",
+  "Fix obvious speech-to-text errors using the party and NPC names (for example \"maze\" for mage). Drop fragments that carry no story. Never invent events, outcomes, or motives, and don't guess at secrets: if a line is unclear, leave it out or say it is unclear.",
+  "Under 700 words. No headings or commentary, just the recap."
+].join("\n");
+
+const entryLine = entry => entry.kind === "scene" ? "DM: " + entry.text : entry.name + " (player): " + entry.text;
+function storyEntries(scenes, actions) {
+  return [
+    ...scenes.map(scene => ({ kind: "scene", at: Number(scene.created ?? 0), text: String(scene.text ?? "") })),
+    ...actions.map(action => ({ kind: "action", at: Number(action.created ?? 0), name: action.name, text: String(action.text ?? "") }))
+  ].sort((a, b) => a.at - b.at || (a.kind === "scene" ? -1 : 1));
+}
+
+// A fingerprint of every line up to a cutoff. A recap keeps the fingerprint
+// of what it covers; if the DM edits or deletes one of those lines, the
+// fingerprint no longer matches and the recap is dropped and rebuilt.
+export function storySignature(scenes, actions, uptoAt) {
+  let hash = 2166136261;
+  for (const entry of storyEntries(scenes, actions)) {
+    if (entry.at > uptoAt) break;
+    for (const char of entry.at + "\u0000" + entryLine(entry) + "\u0001") hash = Math.imul(hash ^ char.codePointAt(0), 16777619) >>> 0;
+  }
+  return hash.toString(36);
+}
+export const recapValid = (scenes, actions, recap) => Boolean(recap?.text) && Number.isFinite(Number(recap.uptoAt))
+  && recap.sig === storySignature(scenes, actions, Number(recap.uptoAt));
+
+// What happened after the recap: scenes and actions newer than its cutoff.
+// A recap that no longer matches the story (an edit or deletion) is ignored.
+export function sinceRecap(scenes, actions, recap) {
+  if (!recapValid(scenes, actions, recap)) return { scenes, actions, recap: null };
+  const cut = Number(recap.uptoAt);
+  return {
+    scenes: scenes.filter(scene => Number(scene.created ?? 0) > cut),
+    actions: actions.filter(action => Number(action.created ?? 0) > cut),
+    recap
+  };
+}
+
+function recapBlock(recap) {
+  return { type: "text", text: "THIS SESSION, EARLIER (a recap of the first part of tonight, written from the transcript):\n" + String(recap.text).trim(), cache_control: { type: "ephemeral", ttl: "1h" } };
+}
+
+// Whether the recap is due, and if so which lines to fold in and the new cutoff.
+export function recapPlan(scenes, actions, recap = null) {
+  const after = sinceRecap(scenes, actions, recap);
+  const entries = storyEntries(after.scenes, after.actions);
+  const size = entries.reduce((total, entry) => total + entryLine(entry).length + 3, 0);
+  if (size <= RECAP_TRIGGER) return { due: false };
+  let kept = 0;
+  let split = entries.length;
+  while (split > 0 && kept + entryLine(entries[split - 1]).length + 3 <= RECAP_KEEP) kept += entryLine(entries[--split]).length + 3;
+  // Never split two lines that happened in the same moment.
+  while (split > 0 && split < entries.length && entries[split].at === entries[split - 1].at) split -= 1;
+  const fold = entries.slice(0, split);
+  if (!fold.length) return { due: false };
+  return { due: true, lines: fold.map(entryLine), uptoAt: fold.at(-1).at };
+}
+
+export function recapRequest(apiKey, previous, lines, party = []) {
+  return {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2026-10-21" },
+    body: JSON.stringify({
+      model: RECAP_MODEL,
+      max_tokens: 4000,
+      output_config: { effort: "low" },
+      system: recapSystem,
+      messages: [{ role: "user", content: "THE PARTY: " + party.map(member => member.name).join(", ")
+        + "\n\nRECAP SO FAR:\n" + (String(previous ?? "").trim() || "(none yet)")
+        + "\n\nNEWEST LINES, oldest first:\n" + lines.map(line => "- " + line).join("\n") }]
+    })
+  };
+}
+
+export async function readRecap(response, onUsage = () => {}) {
+  if (!response.ok) throw new AdviceError("Recap failed (" + response.status + ").");
+  const message = await response.json();
+  onUsage(usageOf(message));
+  const text = (message.content ?? []).filter(block => block.type === "text").map(block => block.text).join("").trim();
+  if (message.stop_reason !== "end_turn" || !text) throw new AdviceError("Recap failed (" + message.stop_reason + ").");
+  return text.slice(0, 6000);
+}
+
+// Brings the recap up to date when it's due. Returns { recap, changed }; on
+// any failure the old recap comes back unchanged.
+// A recap the story no longer matches is rebuilt from the start (and, if that
+// isn't due or fails, none is used).
+export async function refreshRecap(apiKey, scenes, actions, recap = null, party = [], onUsage = () => {}, fetchImpl = fetch) {
+  const current = recapValid(scenes, actions, recap) ? recap : null;
+  const plan = recapPlan(scenes, actions, current);
+  if (!plan.due) return { recap: current, changed: false };
+  try {
+    const text = await readRecap(await fetchImpl(CLAUDE_URL, { ...recapRequest(apiKey, current?.text, plan.lines, party), signal: AbortSignal.timeout(30000) }), onUsage);
+    return { recap: { text, uptoAt: plan.uptoAt, sig: storySignature(scenes, actions, plan.uptoAt) }, changed: true };
+  } catch (error) {
+    console.error("recap", error?.message ?? error);
+    return { recap: current, changed: false };
+  }
 }

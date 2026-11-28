@@ -275,3 +275,126 @@ test("a split party: Claude's latest update is the one this character heard", as
   assert.equal(sceneHeardBy("🔒 To: Dum Dum\nx", "Arcturus"), false);
   assert.equal(sceneHeardBy("Everyone.", "Arcturus"), true);
 });
+
+// ── Cost: the running recap and token counts ──
+const longScenes = (count, size = 400) => Array.from({ length: count }, (_, index) =>
+  ({ id: index + 1, text: "Update " + index + " " + "x".repeat(size), created: 1000 + index * 10 }));
+
+test("the recap is due only once enough has piled up, and keeps the newest lines word for word", async () => {
+  const { recapPlan, storySignature, RECAP_TRIGGER, RECAP_KEEP } = await import("../src/advice.js");
+  assert.equal(recapPlan(longScenes(5), []).due, false);
+  const scenes = longScenes(40);
+  const actions = [{ name: "Roan the Last Shadow", text: "throws a shuriken", created: 1005 }];
+  const plan = recapPlan(scenes, actions);
+  assert.equal(plan.due, true);
+  assert.match(plan.lines[0], /^DM: Update 0 /);
+  assert.equal(plan.lines[1], "Roan the Last Shadow (player): throws a shuriken");
+  const keptText = scenes.filter(scene => scene.created > plan.uptoAt).map(scene => "DM: " + scene.text);
+  assert.ok(keptText.join("   ").length <= RECAP_KEEP && keptText.length > 0);
+  assert.ok(scenes.length * 400 > RECAP_TRIGGER);
+  // After a recap, only what came later counts toward the next one.
+  assert.equal(recapPlan(scenes, actions, { text: "So far.", uptoAt: plan.uptoAt, sig: storySignature(scenes, actions, plan.uptoAt) }).due, false);
+});
+
+test("with a recap, Claude gets it (cached for an hour) and only the lines after it", async () => {
+  const { claudeRequest, dmRequest, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(10, 20);
+  const recap = { text: "The party met the dwarf mage.", uptoAt: scenes[6].created, sig: storySignature(scenes, [], scenes[6].created) };
+  const body = JSON.parse(claudeRequest("k", { name: "Arcturus", role: "ranger", moves: "combat | Longbow — shoot" }, scenes, "History.", [], "", "", recap).body);
+  const blocks = body.messages[0].content;
+  const recapBlock = blocks.find(block => block.text.startsWith("THIS SESSION, EARLIER"));
+  assert.match(recapBlock.text, /dwarf mage/);
+  assert.deepEqual(recapBlock.cache_control, { type: "ephemeral", ttl: "1h" });
+  const since = blocks.find(block => block.text.startsWith("THIS SESSION SINCE THAT RECAP"));
+  assert.doesNotMatch(since.text, /Update 5 /);
+  assert.match(since.text, /Update 7 /);
+  assert.ok(blocks.filter(block => block.cache_control).length <= 4);
+  const dm = JSON.parse(dmRequest("k", "dm", { scenes, recap, prompt: "A twist?" }).body);
+  assert.ok(dm.messages[0].content.some(block => block.text.startsWith("THIS SESSION, EARLIER")));
+  // No recap: the session block is as before.
+  const plain = JSON.parse(claudeRequest("k", { name: "Arcturus", moves: "" }, scenes).body);
+  assert.ok(plain.messages[0].content.some(block => block.text.startsWith("THIS SESSION SO FAR")));
+});
+
+test("the recap uses the cheap model at low effort, reports its tokens, and a failure keeps the old one", async () => {
+  const { refreshRecap, storySignature, RECAP_MODEL } = await import("../src/advice.js");
+  const scenes = longScenes(40);
+  const used = [];
+  const sent = [];
+  const ok = async (url, init) => { sent.push(JSON.parse(init.body)); return Response.json({ model: RECAP_MODEL, stop_reason: "end_turn", content: [{ type: "text", text: "Recap: the vault." }], usage: { input_tokens: 900, output_tokens: 120 } }); };
+  const fresh = await refreshRecap("k", scenes, [], null, [{ name: "Arcturus" }], usage => used.push(usage), ok);
+  assert.equal(fresh.changed, true);
+  assert.equal(fresh.recap.text, "Recap: the vault.");
+  assert.equal(sent[0].model, "claude-haiku-5-5");
+  assert.equal(sent[0].output_config.effort, "low");
+  assert.equal(sent[0].fallbacks, undefined);
+  assert.match(sent[0].messages[0].content, /THE PARTY: Arcturus/);
+  assert.deepEqual(used[0], { model: "claude-haiku-5-5", input_tokens: 900, output_tokens: 120, cache_read: 0, cache_write: 0 });
+  const old = { text: "Old recap.", uptoAt: 0, sig: storySignature(scenes, [], 0) };
+  const failed = await refreshRecap("k", scenes, [], old, [], () => {}, async () => new Response("down", { status: 529 }));
+  assert.deepEqual(failed, { recap: old, changed: false });
+});
+
+test("every answer reports the tokens it used", async () => {
+  const { readAdvice, readDmHelp } = await import("../src/advice.js");
+  const used = [];
+  const usage = { input_tokens: 5000, output_tokens: 700, cache_read_input_tokens: 4000, cache_creation_input_tokens: 300 };
+  await readAdvice(Response.json({ ...reply(), model: "claude-sonnet-5-5", usage }), value => used.push(value));
+  await readDmHelp(Response.json({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: JSON.stringify({ answer: "Yes.", ideas: [] }) }] }), value => used.push(value));
+  assert.deepEqual(used[0], { model: "claude-sonnet-5-5", input_tokens: 5000, output_tokens: 700, cache_read: 4000, cache_write: 300 });
+  assert.equal(used.length, 2);
+});
+
+test("local server: a long session is recapped once by the cheap model, and Ask Claude carries the recap", async () => {
+  const env = { DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" };
+  const { post, host } = await room(env);
+  for (let index = 0; index < 40; index++) await post("/scene", { text: "The vault hums, part " + index + ". " + "y".repeat(400) }, { "x-table-host": host });
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).startsWith("https://api.anthropic.com/")) return realFetch(url, init);
+    const body = JSON.parse(init.body);
+    requests.push({ body });
+    if (body.model === "claude-haiku-5-5") return Response.json({ model: body.model, stop_reason: "end_turn", content: [{ type: "text", text: "Recap: the party crept into the humming vault." }], usage: {} });
+    return Response.json(reply());
+  };
+  const first = await post("/advise", { character: 0 });
+  assert.equal(first.status, 200);
+  assert.deepEqual(requests.map(request => request.body.model), ["claude-haiku-5-5", "claude-sonnet-5-5"]);
+  assert.ok(requests[1].body.messages[0].content.some(block => /humming vault/.test(block.text)));
+  // The next ask reuses the recap: no second recap call.
+  await post("/advise", { character: 1 });
+  assert.deepEqual(requests.map(request => request.body.model), ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-sonnet-5-5"]);
+});
+
+test("after a recap, an action between its cutoff and the next DM update still reaches Claude", async () => {
+  const { claudeRequest, dmRequest, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(6, 20);
+  const cut = scenes[2].created;
+  const recap = { text: "Earlier.", uptoAt: cut, sig: storySignature(scenes, [], cut) };
+  const actions = [{ name: "JPeso", text: "casts Hold Monster", created: cut + 1 }, { name: "Roan the Last Shadow", text: "hides", created: scenes[5].created + 1 }];
+  const text = body => JSON.parse(body).messages[0].content.map(block => block.text).join("\n");
+  assert.match(text(claudeRequest("k", { name: "Arcturus", moves: "" }, scenes, "", actions, "", "", recap).body), /JPeso \(player\): casts Hold Monster/);
+  assert.match(text(dmRequest("k", "dm", { scenes, actions, recap, prompt: "?" }).body), /JPeso \(player\): casts Hold Monster/);
+});
+
+test("editing or deleting a line the recap covers drops it, and the next recap starts over", async () => {
+  const { claudeRequest, refreshRecap, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(40);
+  const cut = scenes[20].created;
+  const recap = { text: "The mage is called Valerian.", uptoAt: cut, sig: storySignature(scenes, [], cut) };
+  const edited = scenes.map(scene => scene.id === 3 ? { ...scene, text: "The mage is called Vael." } : scene);
+  const text = list => JSON.parse(claudeRequest("k", { name: "Arcturus", moves: "" }, list, "", [], "", "", recap).body).messages[0].content.map(block => block.text).join("\n");
+  assert.match(text(scenes), /Valerian/);
+  assert.doesNotMatch(text(edited), /Valerian/);
+  assert.match(text(edited), /called Vael/);
+  assert.doesNotMatch(text(scenes.filter(scene => scene.id !== 3)), /Valerian/);
+  // A rebuild folds from the start, without the stale recap.
+  const sent = [];
+  const fresh = await refreshRecap("k", edited, [], recap, [], () => {}, async (url, init) => {
+    sent.push(JSON.parse(init.body));
+    return Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: "Rebuilt." }], usage: {} });
+  });
+  assert.equal(fresh.changed, true);
+  assert.match(sent[0].messages[0].content, /RECAP SO FAR:\n\(none yet\)/);
+  assert.match(sent[0].messages[0].content, /called Vael/);
+  assert.equal(fresh.recap.sig, storySignature(edited, [], fresh.recap.uptoAt));
+});

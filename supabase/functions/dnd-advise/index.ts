@@ -5,12 +5,17 @@
 // the room is live, and the limits allow it (or returns a cached answer). The
 // Claude call uses this project's ANTHROPIC_API_KEY secret; the answer is cached
 // with the service role. advice.js is a copy of src/advice.js (npm test checks).
-import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice, dmRequest, readEnemies, readDmHelp } from "./advice.js";
+import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice, dmRequest, readEnemies, readDmHelp, refreshRecap } from "./advice.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+// Calls a table may make, a player may make in a day, and the whole app in a
+// day (dnd_advise_begin_v2 in migration 0021 uses the same numbers).
+const TABLE_LIMIT = 150;
+const PLAYER_DAY_LIMIT = 60;
+const DAY_LIMIT = 600;
 const ORIGINS = (Deno.env.get("DND_ALLOWED_ORIGINS") ?? "https://andyrbrett.github.io,http://localhost:4173")
   .split(",").map(origin => origin.trim()).filter(Boolean);
 
@@ -67,28 +72,26 @@ Deno.serve(async req => {
   if (plan.limit) return reply({ error: plan.limit }, 429);
   if (plan.cached) return reply({ ...plan.cached, sceneId: plan.sceneId });
 
+  const tokens = tokenLog(code, "advice");
   try {
     // The whole session, not just the last few updates (claudeRequest trims
     // to its character budget). Read with the service role: the tables have
     // no client grants, and dnd_advise_begin already checked this player.
-    const sessionResponse = await fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=200", {
-      headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY }
-    });
-    const session = sessionResponse.ok
-      ? (await sessionResponse.json()).reverse().map((scene: { id: number; text: string; created_at: string }) =>
-          ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }))
-      : plan.scenes;
+    const story = await loadStory(code);
+    const recap = await currentRecap(code, story);
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, session.length ? session : plan.scenes, plan.history ?? "", plan.actions ?? []),
+      ...claudeRequest(ANTHROPIC_API_KEY, plan.character, story.scenes.length ? story.scenes : plan.scenes, plan.history ?? "", story.actions.length ? story.actions : plan.actions ?? [], "", "", recap),
       signal: AbortSignal.timeout(60000)
-    }));
+    }), tokens.onUsage);
     await fetch(SUPABASE_URL + "/rest/v1/dnd_advice", {
       method: "POST",
       headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
       body: JSON.stringify({ code, character_index: character, scene_id: plan.sceneId, sheet_hash: plan.hash, advice })
     }).catch(error => console.error("cache write failed", error));
+    await tokens.flush();
     return reply({ ...advice, sceneId: plan.sceneId });
   } catch (error) {
+    await tokens.flush();
     if (!(error instanceof AdviceError)) console.error(error);
     return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
   }
@@ -120,6 +123,66 @@ function tokenSubject(req: Request): string {
   }
 }
 
+type Scene = { id: number; text: string; created: number };
+type Action = { name: string; text: string; created: number };
+type Recap = { text: string; uptoAt: number; sig: string } | null;
+
+// Everything a Claude call reads about a table, with the service role: the
+// campaign history, the whole session (DM updates and player actions), the
+// party's names, and the running recap.
+async function loadStory(code: string) {
+  const get = (path: string) => fetch(SUPABASE_URL + "/rest/v1/" + path, { headers: service })
+    .then(response => response.ok ? response.json() : []).catch(() => []);
+  const [historyRows, sceneRows, actionRows, roomRows, recapRows] = await Promise.all([
+    get("dnd_campaigns?select=history&name=eq." + encodeURIComponent("The Onyx Jewel")),
+    get("dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=400"),
+    get("dnd_actions?select=character_name,text,created_at&code=eq." + code + "&order=id.desc&limit=400"),
+    get("dnd_rooms?select=party&code=eq." + code),
+    get("dnd_recaps?select=text,upto_at,sig&code=eq." + code)
+  ]);
+  const at = (value: string) => Date.parse(value);
+  return {
+    history: String(historyRows[0]?.history ?? ""),
+    scenes: (sceneRows as { id: number; text: string; created_at: string }[]).reverse()
+      .map(scene => ({ id: scene.id, text: scene.text, created: at(scene.created_at) })) as Scene[],
+    actions: (actionRows as { character_name: string; text: string; created_at: string }[]).reverse()
+      .map(action => ({ name: action.character_name, text: action.text, created: at(action.created_at) })) as Action[],
+    party: ((roomRows[0]?.party ?? []) as { name: string }[]).map(member => ({ name: String(member?.name ?? "") })),
+    recap: (recapRows[0] ? { text: String(recapRows[0].text), uptoAt: Number(recapRows[0].upto_at), sig: String(recapRows[0].sig) } : null) as Recap
+  };
+}
+
+// The recap, brought up to date (by the cheap model) when enough has happened
+// since it was written. A failure keeps the old one.
+async function currentRecap(code: string, story: Awaited<ReturnType<typeof loadStory>>): Promise<Recap> {
+  const recapTokens = tokenLog(code, "recap");
+  const { recap, changed } = await refreshRecap(ANTHROPIC_API_KEY, story.scenes, story.actions, story.recap, story.party, recapTokens.onUsage);
+  await recapTokens.flush();
+  if (changed && recap) {
+    await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_recap_save", {
+      method: "POST",
+      headers: { ...service, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_code: code, p_text: recap.text, p_upto_at: recap.uptoAt, p_sig: recap.sig })
+    }).catch(error => console.error("recap save failed", error));
+  }
+  return recap;
+}
+
+// Records what each Claude call used (dnd_ai_tokens). Never blocks an answer.
+function tokenLog(code: string, mode: string) {
+  const pending: Promise<unknown>[] = [];
+  return {
+    onUsage(usage: Record<string, unknown>) {
+      pending.push(fetch(SUPABASE_URL + "/rest/v1/dnd_ai_tokens", {
+        method: "POST",
+        headers: { ...service, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ code, mode, ...usage })
+      }).catch(error => console.error("token log failed", error)));
+    },
+    flush: () => Promise.all(pending.splice(0))
+  };
+}
+
 async function answerQuestion(req: Request, reply: (body: unknown, status?: number) => Response, code: string, character: number, question: string, spent: string[] = [], table = "") {
   const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
     method: "POST",
@@ -133,9 +196,9 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
   if (!sheet || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Pick a character." }, 400);
 
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
-  if (await countUsage("created_at=gte." + since(86400000)) >= 600) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
-  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= 120) return reply({ error: "You have used today's Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code) >= 500) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  if (await countUsage("created_at=gte." + since(86400000)) >= DAY_LIMIT) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
+  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
   if (await countUsage("code=eq." + code + "&character_index=eq." + character + "&created_at=gte." + since(8000)) > 0) {
     return reply({ error: "One moment — Claude was just asked for this character." }, 429);
   }
@@ -145,19 +208,18 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
     body: JSON.stringify({ code, character_index: character, user_id: uid })
   });
 
+  const tokens = tokenLog(code, question ? "question" : "advice");
   try {
-    const [historyRows, sceneRows] = await Promise.all([
-      fetch(SUPABASE_URL + "/rest/v1/dnd_campaigns?select=history&name=eq." + encodeURIComponent("The Onyx Jewel"), { headers: service }).then(response => response.ok ? response.json() : []),
-      fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=200", { headers: service }).then(response => response.ok ? response.json() : [])
-    ]);
-    const scenes = sceneRows.reverse().map((scene: { id: number; text: string; created_at: string }) =>
-      ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }));
+    const story = await loadStory(code);
+    const recap = await currentRecap(code, story);
     const advice = await readAdvice(await fetch(CLAUDE_URL, {
-      ...claudeRequest(ANTHROPIC_API_KEY, sheet, scenes.length ? scenes : room.scenes, historyRows[0]?.history ?? "", room.actions ?? [], question, table),
+      ...claudeRequest(ANTHROPIC_API_KEY, sheet, story.scenes.length ? story.scenes : room.scenes, story.history, story.actions.length ? story.actions : room.actions ?? [], question, table, recap),
       signal: AbortSignal.timeout(60000)
-    }));
+    }), tokens.onUsage);
+    await tokens.flush();
     return reply({ ...advice, sceneId: room.scenes?.at(-1)?.id ?? null, ...(question ? { asked: question } : {}) });
   } catch (error) {
+    await tokens.flush();
     if (!(error instanceof AdviceError)) console.error(error);
     return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
   }
@@ -179,9 +241,9 @@ async function answerDm(req: Request, reply: (body: unknown, status?: number) =>
   if (!room.isHost || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Only the DM can ask this." }, 403);
 
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
-  if (await countUsage("created_at=gte." + since(86400000)) >= 600) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
-  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= 120) return reply({ error: "You have used today's Claude suggestions." }, 429);
-  if (await countUsage("code=eq." + code) >= 500) return reply({ error: "This session has used its Claude suggestions." }, 429);
+  if (await countUsage("created_at=gte." + since(86400000)) >= DAY_LIMIT) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
+  if (await countUsage("user_id=eq." + uid + "&created_at=gte." + since(86400000)) >= PLAYER_DAY_LIMIT) return reply({ error: "You have used today's Claude suggestions." }, 429);
+  if (await countUsage("code=eq." + code) >= TABLE_LIMIT) return reply({ error: "This session has used its Claude suggestions." }, 429);
   if (await countUsage("code=eq." + code + "&character_index=eq.-1&created_at=gte." + since(8000)) > 0) {
     return reply({ error: "One moment — Claude was just asked." }, 429);
   }
@@ -191,20 +253,20 @@ async function answerDm(req: Request, reply: (body: unknown, status?: number) =>
     body: JSON.stringify({ code, character_index: -1, user_id: uid })
   });
 
+  const tokens = tokenLog(code, mode);
   try {
-    const [historyRows, sceneRows] = await Promise.all([
-      fetch(SUPABASE_URL + "/rest/v1/dnd_campaigns?select=history&name=eq." + encodeURIComponent("The Onyx Jewel"), { headers: service }).then(response => response.ok ? response.json() : []),
-      fetch(SUPABASE_URL + "/rest/v1/dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=200", { headers: service }).then(response => response.ok ? response.json() : [])
-    ]);
-    const scenes = sceneRows.reverse().map((scene: { id: number; text: string; created_at: string }) =>
-      ({ id: scene.id, text: scene.text, created: Date.parse(scene.created_at) }));
+    const story = await loadStory(code);
+    const recap = await currentRecap(code, story);
     const party = (room.party ?? []).map((member: { name: string; role?: string }) => ({ name: member.name, role: member.role ?? "" }));
     const response = await fetch(CLAUDE_URL, {
-      ...dmRequest(ANTHROPIC_API_KEY, mode, { scenes: scenes.length ? scenes : room.scenes ?? [], history: historyRows[0]?.history ?? "", actions: room.actions ?? [], party, prompt, table }),
+      ...dmRequest(ANTHROPIC_API_KEY, mode, { scenes: story.scenes.length ? story.scenes : room.scenes ?? [], history: story.history, actions: story.actions.length ? story.actions : room.actions ?? [], party, prompt, table, recap }),
       signal: AbortSignal.timeout(60000)
     });
-    return reply(mode === "enemies" ? await readEnemies(response) : await readDmHelp(response));
+    const answer = mode === "enemies" ? await readEnemies(response, tokens.onUsage) : await readDmHelp(response, tokens.onUsage);
+    await tokens.flush();
+    return reply(answer);
   } catch (error) {
+    await tokens.flush();
     if (!(error instanceof AdviceError)) console.error(error);
     return reply({ error: error instanceof AdviceError ? error.message : "Claude could not answer. Try again." }, 502);
   }
