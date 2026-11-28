@@ -585,6 +585,7 @@ body.board-mode .hdr{position:fixed;top:0;right:0;left:auto;background:none;bord
 body.board-mode .hdr .brand,body.board-mode .hdr .role-pill{display:none}
 .board-exit{font:700 .8rem/1 var(--font-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--border2);border-radius:999px;padding:10px 14px;opacity:.5}
 button.board-exit{background:none;cursor:pointer}
+@media (max-width:600px){.board-voice-label{display:none}#board-voice{padding:10px 12px}}
 .board-exit[aria-pressed="true"]{opacity:1;color:var(--text);border-color:var(--gold)}
 .board-exit:hover,.board-exit:focus-visible{color:var(--text);border-color:var(--red);opacity:1}
 .board{position:relative;height:100vh;height:100dvh;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto auto;gap:clamp(10px,2vh,24px);padding:clamp(16px,3vh,40px) clamp(20px,4vw,72px);
@@ -600,7 +601,7 @@ button.board-exit{background:none;cursor:pointer}
 @keyframes ember{0%{transform:translate(0,0);opacity:0}10%{opacity:.7}80%{opacity:.35}100%{transform:translate(4vw,-105vh);opacity:0}}
 .board-top{display:flex;align-items:center;gap:clamp(12px,2vw,28px);min-height:44px}
 .board-title{margin:0;font:700 clamp(.85rem,1.1vw,1.1rem)/1 var(--font-display);letter-spacing:.32em;color:var(--gold);white-space:nowrap}
-.board-round{margin:0 0 0 auto;font:700 clamp(.9rem,1.2vw,1.2rem)/1 var(--font-display);letter-spacing:.24em;color:var(--red);white-space:nowrap;padding-right:140px}
+.board-round{margin:0 0 0 auto;font:700 clamp(.9rem,1.2vw,1.2rem)/1 var(--font-display);letter-spacing:.24em;color:var(--red);white-space:nowrap;padding-right:var(--board-hdr,140px)}
 .board-track{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden;justify-content:safe center;padding:6px 4px;scroll-behavior:smooth}
 .track-chip{display:flex;align-items:baseline;gap:8px;padding:8px 14px;border-radius:999px;background:color-mix(in srgb,var(--card) 80%,transparent);border:1px solid var(--border2);font:700 clamp(.85rem,1.1vw,1.15rem)/1 var(--font-display);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;transition:transform .4s,opacity .4s}
 .track-chip b{color:var(--muted2)}
@@ -666,7 +667,7 @@ body.board-combat .board-previously{display:none}
 @keyframes flash-in{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @keyframes flash-word{from{transform:scale(1.25);letter-spacing:.2em}to{transform:none}}
 .board-flash p{animation:flash-word .8s ease-out}
-@media (max-width:900px){.board-moments{grid-template-columns:repeat(2,minmax(0,1fr))}.board-party{flex-wrap:wrap}.board-top{flex-wrap:wrap}.board-round{padding-right:0;margin-right:110px}.board-track{order:3;flex-basis:100%;overflow-x:auto;scrollbar-width:none;justify-content:flex-start;padding:10px 24px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}.board-track::-webkit-scrollbar{display:none}body.board-mode{overflow:auto}.board{overflow:visible;height:auto;min-height:100vh}}
+@media (max-width:900px){.board-moments{grid-template-columns:repeat(2,minmax(0,1fr))}.board-party{flex-wrap:wrap}.board-top{flex-wrap:wrap}.board-round{padding-right:0;margin-right:var(--board-hdr,110px)}.board-track{order:3;flex-basis:100%;overflow-x:auto;scrollbar-width:none;justify-content:flex-start;padding:10px 24px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}.board-track::-webkit-scrollbar{display:none}body.board-mode{overflow:auto}.board{overflow:visible;height:auto;min-height:100vh}}
 @media (prefers-reduced-motion:reduce){.board-atmos{display:none}.board-scene,.board-scene.is-in{animation:none;opacity:1;transform:none}.moment.is-new,.moment.is-ask,.board-flash,.board-flash p{animation:none}}
 /* Quiet on a TV, but always there: the board hides every other control. */
 /* The story so far: earlier posts in order, newest last, fading out at the

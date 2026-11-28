@@ -800,7 +800,7 @@ export function scenePassages(text, max = 320) {
   for (const paragraph of String(text ?? "").split(/\n\s*\n|\n/).map(part => part.trim()).filter(Boolean)) {
     if (paragraph.length <= max) { passages.push(paragraph); continue; }
     let current = "";
-    const sentences = (paragraph.match(/[^.!?]+[.!?]+["”’)]*\s*|[^.!?]+$/g) ?? [paragraph])
+    const sentences = (paragraph.match(/[^.!?]+[.!?]+["'”’)]*\s*|[^.!?]+$/g) ?? [paragraph])
       // A sentence longer than a passage breaks between words.
       .flatMap(sentence => sentence.length <= max ? [sentence] : sentence.match(new RegExp(".{1," + max + "}(\\s|$)", "g")) ?? [sentence]);
     for (const sentence of sentences) {

@@ -617,6 +617,9 @@ test("roll requests: the DM's ask, the bonus from the sheet, and the answer line
 test("TV board: the scene in screen-sized passages, and story lines as moments", async () => {
   const { scenePassages, boardMoment } = await import("../src/encounter.js");
   assert.deepEqual(scenePassages("One.\n\nTwo."), ["One.", "Two."]);
+  // A closing quote stays with its sentence, curly or straight.
+  const quoted = "A guard " + "bellows over the roar of the crowded hall and ".repeat(6) + "shouts, 'Stop them!' " + "The dealers scatter behind their tables. ".repeat(6);
+  for (const passage of scenePassages(quoted)) assert.doesNotMatch(passage, /^['’"”]/);
   const long = "The wheel spins. ".repeat(40).trim();
   const passages = scenePassages(long);
   assert.ok(passages.length > 1 && passages.every(passage => passage.length <= 320), "long paragraphs split");
