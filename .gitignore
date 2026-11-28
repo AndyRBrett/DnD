@@ -9,3 +9,4 @@ node_modules/
 *.pem
 *.key
 site/
+session-backups/
