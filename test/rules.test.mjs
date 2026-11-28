@@ -59,7 +59,7 @@ test("lists of names split into separate entries, aliases resolve, duplicates me
 
 test("every full sheet is complete and every sheet fits the database limits", async () => {
   const { sheets } = await import("../src/campaign.js");
-  for (const name of ["The White Wizard", "Arcturus", "Logan Ninefingers", "Dum Dum"]) {
+  for (const name of ["The White Wizard", "Arcturus", "Logan Ninefingers", "Dum Dum", "JPeso"]) {
     const full = sheets[name];
     assert.ok(full, name);
     assert.equal(full.abilities.length, 6, name);
