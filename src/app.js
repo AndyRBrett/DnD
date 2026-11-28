@@ -6367,8 +6367,10 @@ function aiDmLog(text) {
   while ($("ai-dm-log").children.length > 8) $("ai-dm-log").lastElementChild.remove();
   $("ai-dm-log").hidden = false;
 }
-function aiDmMark(asked) {
-  storage.set(AI_DM_MARK(), JSON.stringify({ after: maxActionId(), at: Date.now(), asked, round: state?.combat?.round ?? 0 }));
+// after: the newest post Claude saw. Posts that arrive while it's thinking
+// stay new for the next turn; its own roll requests are told apart by text.
+function aiDmMark(asked, after = maxActionId()) {
+  storage.set(AI_DM_MARK(), JSON.stringify({ after, at: Date.now(), asked, round: state?.combat?.round ?? 0 }));
 }
 // Claude's stat blocks join the encounter (as "Add" does for the enemy
 // builder). A new fight starts clean: enemies already down are cleared first.
@@ -6396,6 +6398,7 @@ async function aiDmTurn(steer = "", why = "") {
   button.disabled = true;
   $("ai-dm-status").textContent = "The AI DM is reading the table (up to a minute)…";
   try {
+    const seen = maxActionId(); // what Claude reads: posts up to here
     const turn = await backend.dmAsk(room, "run", steer, dmTableState(), $("ai-dm-notes").value);
     await backend.postScene(room, turn.to.length ? addressScene(turn.narration, turn.to) : turn.narration);
     const asked = [];
@@ -6421,7 +6424,7 @@ async function aiDmTurn(steer = "", why = "") {
     }
     $("ai-dm-steer").value = "";
     await sync();
-    aiDmMark(asked); // after the sync, so its own roll requests aren't new posts
+    aiDmMark(asked, seen);
     if (why) aiDmLog(why);
     $("ai-dm-status").textContent = aiDmAuto() ? "Autopilot is on: the next turn comes when everyone has acted." : "Done. When the players have acted or rolled, tap DM, go again.";
     return true;
@@ -6480,8 +6483,18 @@ function aiDmStoryStep(now) {
 }
 
 // In a fight: hit calls and damage first, then whose turn it is.
+let aiDmWaiting = false;
 function aiDmFightStep(now) {
   if (!encounterLoaded) return false;
+  // An enemy's attack left a ruling for the host (rage, a rider's save): its
+  // buttons live only on the enemy card, so nothing moves or redraws until
+  // the host taps it.
+  if (document.querySelector(".enemy-swing button:not(:disabled)")) {
+    if (!aiDmWaiting) aiDmLog("Waiting for your ruling on an enemy's attack (rage or a save). Tap it and the fight goes on.");
+    aiDmWaiting = true;
+    return false;
+  }
+  aiDmWaiting = false;
   const call = document.querySelector("#hit-list li.hit-ask .hit-buttons button.cta");
   if (call) {
     const what = call.closest("li").querySelector("span")?.textContent ?? "";
@@ -6500,9 +6513,16 @@ function aiDmFightStep(now) {
       } else hit.querySelector(".hit-buttons button.quiet")?.click();
       return true;
     }
+    // Damage sent with a to-hit that doesn't beat the AC (the inbox flags it
+    // "a miss?"): it missed, so it's dismissed, never applied.
+    const what = hit.querySelector("span")?.textContent ?? "";
+    if (/— a miss\?/.test(what)) {
+      [...hit.querySelectorAll(".hit-buttons button")].find(button => button.textContent === "Dismiss")?.click();
+      aiDmLog("Missed the AC, no damage: " + what);
+      return true;
+    }
     const button = hit.querySelector(".hit-buttons button.cta:not(:disabled)") ?? hit.querySelector(".hit-buttons button.danger-soft:not(:disabled)");
     if (button) {
-      const what = hit.querySelector("span")?.textContent ?? "";
       button.click();
       aiDmLog("Applied: " + what);
       return true;

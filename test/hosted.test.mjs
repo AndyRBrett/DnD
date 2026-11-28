@@ -166,3 +166,17 @@ test("the AI DM card finds a practice table from the stored flag, not just this 
   const sql = await read("supabase/migrations/0017_dnd_longer_idle.sql");
   assert.match(sql, /'practice', practice/);
 });
+
+test("the AI DM's autopilot never applies a missed attack, keeps posts sent while it thinks, and waits for open rulings", async () => {
+  const app = await read("src/app.js");
+  const step = app.slice(app.indexOf("function aiDmFightStep(now)"));
+  // A ruling left on an enemy card stops every fight step before anything else.
+  assert.ok(step.indexOf('.enemy-swing button:not(:disabled)') < step.indexOf("#hit-list li.hit-ask"));
+  // Damage flagged "a miss?" is dismissed before any damage button is picked.
+  const miss = step.indexOf("/— a miss\\?/.test(what)");
+  assert.ok(miss > 0 && miss < step.indexOf('button.danger-soft:not(:disabled)'));
+  // The turn's boundary is taken before the request, not after the sync.
+  const turn = app.slice(app.indexOf("async function aiDmTurn("));
+  assert.ok(turn.indexOf("const seen = maxActionId();") < turn.indexOf('backend.dmAsk(room, "run"'));
+  assert.match(turn, /aiDmMark\(asked, seen\);/);
+});
