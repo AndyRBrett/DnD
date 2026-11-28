@@ -699,3 +699,22 @@ test("split-party scenes: an update for some characters, and each phone's curren
   assert.equal(sceneFor([{ id: 1, text: vault }], "Logan Ninefingers"), null);
   assert.equal(sceneIsFor(scenes[0], "anyone"), true);
 });
+
+test("speech fixes: misheard names are corrected as whole words, longest phrase first", async () => {
+  const { correctTranscript, parseCorrections, formatCorrections, DEFAULT_CORRECTIONS } = await import("../src/encounter.js");
+  // Lines from the Nov 27 transcript.
+  assert.equal(correctTranscript("the maze floats down and reveals himself"), "the mage floats down and reveals himself");
+  assert.equal(correctTranscript("as the white maze thinks this"), "as the White Wizard thinks this");
+  assert.equal(correctTranscript("my name charges forward, dumb dumb is caught by the Maze"), "my name charges forward, Dum Dum is caught by the mage");
+  assert.equal(correctTranscript("or Terrace unleashes an arrow"), "or Arcturus unleashes an arrow");
+  assert.equal(correctTranscript("Jay peso rolls a failed check"), "JPeso rolls a failed check");
+  assert.equal(correctTranscript("the maze's orb glows"), "the mage's orb glows");
+  // Never inside other words.
+  assert.equal(correctTranscript("amazed by the mazes on the terraces"), "amazed by the mazes on the terraces");
+  // The DM's own list, in the editor's format.
+  const mine = parseCorrections("valerian → Vaelarian\nbad line\nour tourist -> Arcturus\n = nothing");
+  assert.deepEqual(mine, [["valerian", "Vaelarian"], ["our tourist", "Arcturus"]]);
+  assert.equal(correctTranscript("our  tourist sees valerian", mine), "Arcturus sees Vaelarian");
+  assert.deepEqual(parseCorrections(formatCorrections(DEFAULT_CORRECTIONS)), DEFAULT_CORRECTIONS);
+  assert.equal(correctTranscript("the maze", []), "the maze");
+});

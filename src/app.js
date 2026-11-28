@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -786,7 +786,8 @@ async function publish(automatic = false) {
   const id = editId;
   // A new update goes to the group picked under To (an edit keeps its own line).
   const to = id ? null : sceneTo();
-  const posted = to ? addressScene(text, to) : text;
+  const fixed = correctTranscript(text, speechFixes()); // names the mic misheard ("maze" → mage)
+  const posted = to ? addressScene(fixed, to) : fixed;
   if (posted.length > 1500) {
     $("notice").textContent = "Too long with the To line: trim " + (posted.length - 1500) + " characters.";
     return;
@@ -6580,6 +6581,29 @@ function aiDmFightStep(now) {
   }
   return false;
 }
+
+// ── Speech fixes: the DM's list of names the mic mishears, kept on this
+// phone for every table (src/encounter.js applies it in publish). ──
+const SPEECH_FIXES = "dnd-speech-fixes";
+function speechFixes() {
+  const saved = storage.get(SPEECH_FIXES);
+  return saved === null ? DEFAULT_CORRECTIONS : parseCorrections(saved);
+}
+function drawSpeechFixes() {
+  $("speech-fixes-text").value = formatCorrections(speechFixes());
+  $("speech-fixes-status").textContent = speechFixes().length + " fixes.";
+}
+$("speech-fixes").addEventListener("toggle", () => { if ($("speech-fixes").open) drawSpeechFixes(); });
+$("speech-fixes-text").oninput = () => {
+  storage.set(SPEECH_FIXES, $("speech-fixes-text").value);
+  const count = parseCorrections($("speech-fixes-text").value).length;
+  $("speech-fixes-status").textContent = count + (count === 1 ? " fix" : " fixes") + " saved. Each line needs → (or -> or =) between the heard words and the meant ones.";
+};
+$("speech-fixes-reset").onclick = () => {
+  storage.remove(SPEECH_FIXES);
+  drawSpeechFixes();
+  $("speech-fixes-status").textContent = "Back to the defaults.";
+};
 
 // ── Who an update is for: everyone, or part of a split party. The choice
 // stays until the DM changes it, so a run of updates to the vault all go

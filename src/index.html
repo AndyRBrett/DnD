@@ -348,6 +348,13 @@
             <div id="scene-to" class="chips scene-to" role="group" aria-label="Who this update is for"></div>
             <textarea id="draft" rows="3" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
             <div class="controls"><button id="publish" class="ghost" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
+            <details id="speech-fixes" class="fold">
+              <summary>Speech fixes</summary>
+              <p class="fineprint">Names the mic keeps mishearing, fixed in each update before it posts. One per line: <em>heard → meant</em> (or <em>heard -&gt; meant</em>, or <em>heard = meant</em>). Whole words only, any case. Kept on this phone.</p>
+              <textarea id="speech-fixes-text" rows="6" aria-label="Speech fixes, one per line: heard → meant"></textarea>
+              <div class="controls"><button id="speech-fixes-reset" class="quiet" type="button">Reset to the defaults</button></div>
+              <p id="speech-fixes-status" class="fineprint" role="status"></p>
+            </details>
           </details>
           <details id="narrate" class="fold" hidden>
             <summary>To narrate <span id="narrate-count" class="pill-label"></span></summary>
