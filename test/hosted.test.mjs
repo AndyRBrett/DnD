@@ -195,3 +195,13 @@ test("when Claude is the DM, the host's phone gets the player tools: roll reques
   assert.match(app, /tool\.hidden = !isHost \|\| ended \|\| !backend\.postAction/);
   assert.match(app, /if \(!isHost \|\| !combat \|\| !encounterLoaded\) \{ box\.hidden = true; return; \}/);
 });
+
+test("when Claude is the DM, every open roll request waits on the AI DM card and opens the dice tray on the check", async () => {
+  const app = await read("src/app.js");
+  const rolls = app.slice(app.indexOf("function drawAiDmRolls()"), app.indexOf("function drawRollAsks()"));
+  assert.match(rolls, /isHost && aiDmEnabled\(\)/);
+  assert.match(rolls, /pendingRollAsks\(index\)/);
+  assert.match(rolls, /showTab\("scene"\)/);
+  assert.match(rolls, /\.roll-ask\[data-ask="' \+ action\.id \+ '"\] \.roll-ask-buttons button'\)\?\.click\(\)/);
+  assert.match(app, /function drawRollAsks\(\) \{\n  drawAiDmRolls\(\);/);
+});

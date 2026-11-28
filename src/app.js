@@ -537,6 +537,7 @@ function showTab(name) {
     if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
   }
   if (name === "scene") $("tab-scene").classList.remove("has-news");
+  else if (state) drawAiDmRolls(); // rolls still owed: the Scene tab keeps its dot
   $("char-bar").hidden = name === "dm";
   storage.set(TAB_KEY, name);
   window.scrollTo({ top: 0 });
@@ -1368,7 +1369,37 @@ function pendingRollAsks(index) {
   }
   return asks.filter(({ ask, action, answered }) => !dismissed.has(action.id) && (ask.kind === "attack" || !answered)).slice(-3);
 }
+// The host plays the party when Claude is the DM: every open roll request,
+// for any character, waits on the AI DM card. One tap picks that character
+// and opens the dice tray on the check (its sheet bonus filled in).
+function drawAiDmRolls() {
+  const box = $("ai-dm-rolls");
+  const open = isHost && aiDmEnabled() && state && !ended
+    ? (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack").map(entry => ({ ...entry, index })))
+    : [];
+  box.hidden = !open.length;
+  if (open.length && currentTab !== "scene") $("tab-scene").classList.add("has-news");
+  const key = open.map(({ action }) => action.id).join(",");
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(...(open.length ? [element("p", "eyebrow gold", "WAITING FOR ROLLS")] : []), ...open.map(({ action, ask, index }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = "🎲 " + partyName(index).replace(/^The /, "") + ": " + rollAskLabel(ask);
+    button.onclick = () => {
+      $("character").value = String(index);
+      $("character").dispatchEvent(new Event("change"));
+      drawChips();
+      showTab("scene");
+      drawRollAsks();
+      document.querySelector('#roll-asks .roll-ask[data-ask="' + action.id + '"] .roll-ask-buttons button')?.click();
+    };
+    return button;
+  }));
+}
 function drawRollAsks() {
+  drawAiDmRolls();
   const box = $("roll-asks");
   const me = Number($("character").value);
   const pending = !playsHere() || ended || !state ? [] : pendingRollAsks(me);

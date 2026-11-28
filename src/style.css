@@ -393,6 +393,7 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .claude-enemy{border:1px solid var(--border2);border-radius:12px;padding:12px;background:var(--card)}
 .claude-enemy p{margin:6px 0}
 .dm-ask-out{display:grid;gap:10px}
+.ai-dm-rolls{display:grid;gap:8px;padding:12px;border:2px solid var(--gold);border-radius:12px}
 .ai-dm-log{margin:0;padding-left:18px;display:grid;gap:4px}
 .dm-idea{border-left:3px solid var(--gold);padding:4px 0 4px 12px}
 .dm-idea p{margin:4px 0}
