@@ -2450,6 +2450,9 @@ function drawCombat() {
   const up = foes.filter(entry => entry.status !== "down").length;
   $("combat-foes").textContent = foes.length ? up + " of " + foes.length + " enemies standing" : "No enemies yet";
   $("combat-dm").hidden = !isHost;
+  // The DM can stop a fight at any point (a surrender, a story turn), not
+  // only once every enemy is down.
+  $("combat-stop").hidden = !isHost || !available;
   const myTurn = Boolean(current && current.key === myKey);
   $("combat-ask").hidden = !myTurn || !state?.ai || ended;
   $("combat-end-turn").hidden = !myTurn || !backend.postAction || !Array.isArray(state?.actions);
@@ -4856,6 +4859,9 @@ async function stepTurn(direction) {
   }
 }
 $("combat-advance").onclick = () => stepTurn(1);
+$("combat-stop").onclick = () => {
+  if (state?.combat && confirmTap($("combat-stop"), "Tap again to end combat for everyone")) toggleCombat();
+};
 $("combat-finish").onclick = () => {
   if (state?.combat && confirmTap($("combat-finish"), "Tap again to end combat for everyone")) toggleCombat();
 };
@@ -4890,7 +4896,8 @@ async function toggleCombat() {
     }
     sync();
   } catch (error) {
-    $("enc-combat-status").textContent = error.message;
+    // Shown on both cards: the DM may have tapped either one.
+    $("enc-combat-status").textContent = $("combat-status").textContent = error.message;
   } finally {
     $("enc-combat").disabled = false;
   }
