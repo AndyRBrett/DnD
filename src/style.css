@@ -582,6 +582,8 @@ body.board-mode main{max-width:none;padding:0}
 body.board-mode .hdr{position:fixed;top:0;right:0;left:auto;background:none;border:0;z-index:5}
 body.board-mode .hdr .brand,body.board-mode .hdr .role-pill{display:none}
 .board-exit{font:700 .8rem/1 var(--font-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--border2);border-radius:999px;padding:10px 14px;opacity:.5}
+button.board-exit{background:none;cursor:pointer}
+.board-exit[aria-pressed="true"]{opacity:1;color:var(--text);border-color:var(--gold)}
 .board-exit:hover,.board-exit:focus-visible{color:var(--text);border-color:var(--red);opacity:1}
 .board{position:relative;height:100vh;height:100dvh;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto auto;gap:clamp(10px,2vh,24px);padding:clamp(16px,3vh,40px) clamp(20px,4vw,72px);
   background:radial-gradient(ellipse 80% 60% at 50% 42%,color-mix(in srgb,var(--red) 16%,transparent),transparent 70%),radial-gradient(ellipse 120% 90% at 50% 120%,color-mix(in srgb,var(--gold) 10%,transparent),transparent 60%),var(--bg)}
