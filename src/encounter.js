@@ -966,13 +966,28 @@ export function enemyTargetIndex(targets, difficulty = "medium", random = Math.r
 
 // Fight narration (AI DM autopilot): what has happened since the DM last
 // spoke. actions: [{ name, text }] posted since then. attacks counts resolved
-// attacks either way (a character's hit or miss, an enemy's hit as
-// "🩸 takes N damage"); crits and death saves are big moments.
+// attacks either way (a character's hit or miss, each roll of an enemy's Run
+// turn, or an enemy's hit as "🩸 takes N damage"); crits and death saves are
+// big moments.
 export function fightBeats(actions = []) {
   const beats = { attacks: 0, crits: 0, deathSaves: 0 };
+  // An enemy's Run turn posts a summary ("⚔️ Ogre attacks Roan (Club): 24
+  // (crit), 9 misses · 17 damage") under its target, then "🩸 takes N damage"
+  // when the damage lands: the summary counts each roll, so that target's
+  // damage line isn't counted again.
+  const summarized = new Set();
+  for (const { name, text } of actions) {
+    const swing = String(text ?? "").match(/^⚔️ .+? attacks .+?\): (.+?)(?: · |$)/u);
+    if (!swing) continue;
+    summarized.add(name);
+    const rolls = swing[1].split(", ");
+    beats.attacks += rolls.length;
+    beats.crits += rolls.filter(roll => /\(crit\)/.test(roll)).length;
+  }
   for (const { name, text } of actions) {
     const raw = String(text ?? "");
-    if (/^🩸 takes \d+ damage$/u.test(raw)) { beats.attacks++; continue; }
+    if (/^⚔️ /u.test(raw)) continue;
+    if (/^🩸 takes \d+ damage$/u.test(raw)) { if (!summarized.has(name)) beats.attacks++; continue; }
     if (/^💀 death save/u.test(raw)) { beats.deathSaves++; continue; }
     const line = chronicleLine(name, raw);
     if (line?.kind === "hit" || line?.kind === "miss") {
