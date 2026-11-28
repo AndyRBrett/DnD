@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, AI_DM_DIFFICULTIES, enemyTargetIndex, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, AI_DM_DIFFICULTIES, enemyTargetIndex, fightBeats, fightNarrationDue, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -6383,6 +6383,8 @@ const AI_DM_MARK = () => "dnd-aidm-mark:" + room; // the last DM turn: { after, 
 const AI_DM_LAST = () => "dnd-aidm-last:" + room; // what the last DM turn posted, for Undo
 const AI_DM_DIFFICULTY = () => "dnd-aidm-difficulty:" + room; // per table, on the host's phone
 const aiDmDifficulty = () => (storage.get(AI_DM_DIFFICULTY()) in AI_DM_DIFFICULTIES ? storage.get(AI_DM_DIFFICULTY()) : "medium");
+const AI_DM_NARRATE = "dnd-aidm-narrate"; // fight narration: attacks between updates (0: rounds and big moments only)
+const aiDmNarrateEvery = () => { const value = storage.get(AI_DM_NARRATE); return value === null || !/^\d$/.test(value) ? 3 : Number(value); };
 const AI_DM_PACE = "dnd-aidm-pace"; // the autopilot's pace, for every table on this phone
 const aiDmPace = () => (storage.get(AI_DM_PACE) in AI_DM_PACES ? storage.get(AI_DM_PACE) : "quick");
 let aiDmNotesLoaded = false;
@@ -6416,6 +6418,7 @@ function drawAiDm() {
   $("ai-dm-auto").checked = storage.get(AI_DM_AUTO()) === "1";
   $("ai-dm-pace").value = aiDmPace();
   $("ai-dm-difficulty").value = aiDmDifficulty();
+  $("ai-dm-narrate").value = String(aiDmNarrateEvery());
   drawAiDmDifficulty();
   drawAiDmPace();
   if (!aiDmNotesLoaded) {
@@ -6457,6 +6460,10 @@ const AI_DM_DIFFICULTY_NOTES = {
 function drawAiDmDifficulty() {
   $("ai-dm-difficulty-note").textContent = AI_DM_DIFFICULTY_NOTES[aiDmDifficulty()];
 }
+$("ai-dm-narrate").onchange = () => {
+  storage.set(AI_DM_NARRATE, $("ai-dm-narrate").value);
+  aiDmLog("Fight narration: " + $("ai-dm-narrate").selectedOptions[0].textContent.toLowerCase() + ".");
+};
 $("ai-dm-difficulty").onchange = () => {
   storage.set(AI_DM_DIFFICULTY(), $("ai-dm-difficulty").value);
   drawAiDmDifficulty();
@@ -6477,7 +6484,13 @@ function aiDmLog(text) {
 // after: the newest post Claude saw. Posts that arrive while it's thinking
 // stay new for the next turn; its own roll requests are told apart by text.
 function aiDmMark(asked, after = maxActionId()) {
-  storage.set(AI_DM_MARK(), JSON.stringify({ after, at: Date.now(), asked, round: state?.combat?.round ?? 0 }));
+  storage.set(AI_DM_MARK(), JSON.stringify({ after, at: Date.now(), asked, round: state?.combat?.round ?? 0, down: downNow() }));
+}
+// Who's at 0 HP right now (characters and enemies), so a fight narration
+// knows who has dropped since the DM last spoke.
+function downNow() {
+  const party = (state?.party ?? []).filter((_, index) => hpRecord(index) && hpRecord(index).hp <= 0).map(member => member.name);
+  return [...party, ...(state?.combat ? enemies.filter(enemy => enemy.hp <= 0).map(enemy => enemy.name) : [])];
 }
 // Claude's stat blocks join the encounter (as "Add" does for the enemy
 // builder). A new fight starts clean: enemies already down are cleared first.
@@ -6706,6 +6719,19 @@ function aiDmFightStep(now) {
       return true;
     }
     return false;
+  }
+  // Mid-round narration: after a few attacks, or at once for a big moment
+  // (someone drops, a critical hit, a death save), never sooner than 15
+  // seconds after the DM last spoke.
+  const said = readJson(AI_DM_MARK(), null) ?? { after: 0, round: 0, at: 0, down: [] };
+  if (combat.round <= (said.round ?? 0) && now - (said.at ?? 0) > 15000) {
+    const since = (state.actions ?? []).filter(action => Number(action.id) > said.after);
+    const wasDown = new Set(said.down ?? []);
+    const why = fightNarrationDue({ beats: fightBeats(since), every: aiDmNarrateEvery(), newlyDown: downNow().filter(name => !wasDown.has(name)) });
+    if (why) {
+      aiDmTurn("Narrate the fight since your last update (" + why + "): what happened, how it looks now. Don't end the round or ask for attack rolls.", "Narrated the fight: " + why + ".");
+      return true;
+    }
   }
   const current = order.find(entry => entry.key === combat.turn);
   if (current?.kind === "enemy") {

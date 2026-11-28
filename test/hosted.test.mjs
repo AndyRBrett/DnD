@@ -223,7 +223,9 @@ test("the AI DM narrates each new round of a fight, and a requested roll closes 
   assert.match(step, /Narrate the round that just ended\./);
   assert.match(app, /if \(ask\) setTimeout\(\(\) => \{ if \(rollId === dice\.rollId\) closeDice\(\); \}, 1500\);/);
   const advice = await read("src/advice.js");
-  assert.match(advice, /Narrate the round that just ended like a DM at the table/);
+  assert.match(advice, /Narrate the fight since your last update like a DM at the table/);
+  assert.match(advice, /mid-round after a few attacks or a big moment/);
+  assert.match(step, /fightNarrationDue\(\{ beats: fightBeats\(since\), every: aiDmNarrateEvery\(\)/);
 });
 
 test("the DM tab has a shortcut row: a chip per card that's showing, which scrolls to it and opens it", async () => {
