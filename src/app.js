@@ -571,6 +571,33 @@ function drawRoster() {
     }
     return box;
   }));
+  // A table started before a character joined the campaign (JPeso) can add
+  // them from the roster, up to eight.
+  const here = new Set(state.party.map(member => member.name));
+  const missing = starterParty.filter(member => !here.has(member.name));
+  if (missing.length && state.party.length < 8) {
+    const row = document.createElement("div");
+    row.className = "action-row roster-add";
+    for (const member of missing) {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "ghost";
+      add.textContent = "Add " + member.name + " to this table";
+      add.onclick = async () => {
+        add.disabled = true;
+        try {
+          await backend.saveParty(room, [...state.party.map(({ name, role, moves }) => ({ name, role, moves })), { name: member.name, role: member.role, moves: member.moves }]);
+          $("notice").textContent = member.name + " joined the table.";
+          await sync();
+        } catch (error) {
+          add.disabled = false;
+          $("notice").textContent = /five characters/i.test(error.message) ? "Adding a sixth character needs the latest database update (migration 0019)." : error.message;
+        }
+      };
+      row.append(add);
+    }
+    $("roster").append(row);
+  }
 }
 
 async function sync() {
@@ -954,7 +981,9 @@ $("party-form").onsubmit = async event => {
   const button = event.submitter;
   button.disabled = true;
   try {
-    const party = Array.from({length: 5}, (_, index) => Object.fromEntries(
+    // Every character on the form (one to eight), not a fixed five.
+    const count = [...data.keys()].filter(key => /^name\d+$/.test(key)).length;
+    const party = Array.from({length: count}, (_, index) => Object.fromEntries(
       ["name", "role", "moves"].map(key => [key, data.get(key + index)])
     ));
     // The full sheet, HP, and resources all follow the name: say so before a
@@ -3373,17 +3402,27 @@ function healingBlock(index, sheet, res) {
     const target = document.createElement("select");
     target.setAttribute("aria-label", "Who " + entry.name + " heals");
     target.append(...(state?.party ?? []).map((character, other) => new Option(other === index ? "Yourself" : character.name, String(other))).filter((_, other) => !entry.self || other === index));
-    target.value = String(index);
+    // Mass Cure Wounds: one roll and one slot for everyone in the area.
+    if (entry.multi) target.prepend(new Option("Everyone (up to " + entry.multi + ")", "all"));
+    target.value = entry.multi ? "all" : String(index);
     const button = document.createElement("button");
     button.type = "button";
     button.disabled = Boolean(blocked);
     healButton(button, blocked ? entry.name + ": " + blocked : "💚 " + entry.name + " · " + dice + (level ? " (" + ORDINAL[level] + "-level slot)" : ""), !blocked);
     button.onclick = () => {
-      const who = Number(target.value);
+      const who = target.value === "all"
+        ? (state?.party ?? []).map((_, other) => other).filter(other => !isSittingOut(state?.combat, other)).slice(0, entry.multi)
+        : [Number(target.value)];
       openDice(dice, entry.name, total => {
         // Healing Word and Second Wind take the bonus action; a potion, the action.
         markTurnUse(index, entry.name, /bonus action/i.test(entry.note ?? "") ? "bonus" : /\baction\b/i.test(entry.note ?? "") ? "action" : "", Boolean(entry.slot));
-        heal(who, total, entry.name, entry.slot ? slotKey(level) : entry.spends ?? null);
+        // The cost is paid once, however many it heals.
+        const key = entry.slot ? slotKey(level) : entry.spends ?? null;
+        if (who.length > 1 && key) {
+          if (resourceLeft(sheet, readRes(index), key) < 1) { status.textContent = "None left: " + entry.name + " needs a rest first."; drawHp(); return; }
+          saveRes(index, spendResource(sheet, readRes(index), key));
+        }
+        for (const other of who) heal(other, total, entry.name, who.length > 1 ? null : key);
         setTimeout(closeDice, 1200);
       });
     };

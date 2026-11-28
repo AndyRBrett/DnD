@@ -626,8 +626,8 @@ export const sheets = {
     attackOptions: [],
     heals: [
       { name: "Healing Word", slot: 1, upcast: "1d4", heal: "1d4+4", note: "Bonus action, 60 ft; 1d4 more for each slot level above 1st." },
-      { name: "Mass Cure Wounds", slot: 5, heal: "3d8+4", note: "Action: up to six creatures in a 30-ft sphere each regain this." },
-      { name: "Aura of Vitality", slot: 3, heal: "2d6", note: "Concentration, 1 minute: the slot is spent once; each later turn a bonus action heals one creature within 30 ft for 2d6." }
+      { name: "Mass Cure Wounds", slot: 5, upcast: "1d8", multi: 6, heal: "3d8+4", note: "Action: up to six creatures in a 30-ft sphere each regain this. Everyone heals with one roll and one 5th-level slot; or pick one creature." },
+      { name: "Aura of Vitality", heal: "2d6", note: "Bonus action, each turn while it lasts: heal one creature within 30 ft. Casting it spends one 3rd-level slot (tap it under Spell slots) and concentration for 1 minute; these heals are free." }
     ],
     resources: [
       { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
