@@ -1379,7 +1379,9 @@ function drawAiDmRolls() {
     : [];
   box.hidden = !open.length;
   if (open.length && currentTab !== "scene") $("tab-scene").classList.add("has-news");
-  const key = open.map(({ action }) => action.id).join(",");
+  // The request's text is in the key, so an edited request ("Perception DC 13"
+  // corrected to "Investigation DC 14") redraws its button.
+  const key = open.map(({ action }) => action.id + ":" + action.text).join("\u0001");
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.replaceChildren(...(open.length ? [element("p", "eyebrow gold", "WAITING FOR ROLLS")] : []), ...open.map(({ action, ask, index }) => {

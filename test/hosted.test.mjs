@@ -201,6 +201,7 @@ test("when Claude is the DM, every open roll request waits on the AI DM card and
   const rolls = app.slice(app.indexOf("function drawAiDmRolls()"), app.indexOf("function drawRollAsks()"));
   assert.match(rolls, /isHost && aiDmEnabled\(\)/);
   assert.match(rolls, /pendingRollAsks\(index\)/);
+  assert.match(rolls, /action\.id \+ ":" \+ action\.text/);
   assert.match(rolls, /showTab\("scene"\)/);
   assert.match(rolls, /\.roll-ask\[data-ask="' \+ action\.id \+ '"\] \.roll-ask-buttons button'\)\?\.click\(\)/);
   assert.match(app, /function drawRollAsks\(\) \{\n  drawAiDmRolls\(\);/);
