@@ -480,3 +480,30 @@ test("an AI DM turn can start a fight with tracker-ready enemies, or end one", a
   const over = await readAiDm(answer({ start: false, end: true, enemies: [enemy] }), sheetsFor);
   assert.deepEqual(over.combat, { start: false, end: true, enemies: [] });
 });
+
+test("every request keeps cache lifetimes in order (no 1-hour block after a 5-minute one), recap or not", async () => {
+  const { claudeRequest, dmRequest, aiDmRequest, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(10, 20);
+  const cut = scenes[5].created;
+  const recap = { text: "Earlier: the vault.", uptoAt: cut, sig: storySignature(scenes, [], cut) };
+  const ordered = request => {
+    let short = false;
+    for (const block of JSON.parse(request.body).messages[0].content) {
+      if (!block.cache_control) continue;
+      const hour = block.cache_control.ttl === "1h";
+      if (hour && short) return false;
+      if (!hour) short = true;
+    }
+    return true;
+  };
+  for (const withRecap of [null, recap]) {
+    for (const history of ["", "Campaign notes."]) {
+      assert.ok(ordered(claudeRequest("k", { name: "Arcturus", moves: "" }, scenes, history, [], "", "", withRecap)));
+      assert.ok(ordered(dmRequest("k", "dm", { scenes, history, recap: withRecap, prompt: "?" })));
+      // The case that broke the first AI DM practice table once its recap was written.
+      const turn = aiDmRequest("k", { scenes, history, party: sheetsFor, notes: "Secret.", recap: withRecap });
+      assert.ok(ordered(turn), "AI DM request, recap " + Boolean(withRecap) + ", history " + Boolean(history));
+      assert.ok(JSON.parse(turn.body).messages[0].content.filter(block => block.cache_control).length <= 4);
+    }
+  }
+});

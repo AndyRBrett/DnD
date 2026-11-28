@@ -539,6 +539,7 @@ function showTab(name) {
   if (name === "scene") $("tab-scene").classList.remove("has-news");
   else if (state) drawAiDmRolls(); // rolls still owed: the Scene tab keeps its dot
   $("char-bar").hidden = name === "dm";
+  if (name === "dm") drawDmJump();
   storage.set(TAB_KEY, name);
   window.scrollTo({ top: 0 });
 }
@@ -609,6 +610,7 @@ async function sync() {
     applyRoom(fresh);
     cacheRoom(fresh);
     aiDmTick();
+    if (currentTab === "dm") drawDmJump();
   } catch (error) {
     // The server says the table is gone (ended, or idle for 3 days). It can
     // answer with 404 or 400 depending on the error code, so read the message.
@@ -2212,6 +2214,9 @@ async function landRoll(result, purpose) {
       await backend.postAction(room, Number($("character").value), text);
       $("dice-status").textContent = "Shared with the table.";
       sync();
+      // A roll the DM asked for is done once it's shared: the tray closes
+      // (after a moment to see the number), unless another roll has started.
+      if (ask) setTimeout(() => { if (rollId === dice.rollId) closeDice(); }, 1500);
     } catch (error) {
       $("dice-status").textContent = error.message;
     }
@@ -6612,15 +6617,32 @@ function aiDmFightStep(now) {
     aiDmNextStep = now + 3000; // a beat before the turn moves on
     return true;
   }
-  // A player's turn: theirs to take. Once a round, the DM answers anything
-  // the characters tried besides attacking.
+  // A player's turn: theirs to take. As each new round begins, the DM
+  // narrates the round that just ended (from the attack lines the app
+  // posted) and answers anything the characters tried besides attacking.
   const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, round: 0 };
-  const tried = (state.actions ?? []).filter(action => Number(action.id) > mark.after && declared(action));
-  if (combat.round > (mark.round ?? 0) && tried.length) {
-    aiDmTurn("", "New round: answered what the characters tried.");
+  if (combat.round > (mark.round ?? 0) && (state.actions ?? []).some(action => Number(action.id) > mark.after)) {
+    aiDmTurn("Round " + combat.round + " begins. Narrate the round that just ended.", "Round " + combat.round + ": narrated the last round.");
     return true;
   }
   return false;
+}
+
+// ── DM tab shortcuts: a chip per card that's showing; a tap scrolls to it
+// (and opens it, if it folds), so the DM doesn't scroll past everything. ──
+function drawDmJump() {
+  for (const chip of $("dm-jump").querySelectorAll("[data-jump]")) {
+    const target = $(chip.dataset.jump);
+    chip.hidden = !target || target.hidden;
+  }
+}
+for (const chip of $("dm-jump").querySelectorAll("[data-jump]")) {
+  chip.onclick = () => {
+    const target = $(chip.dataset.jump);
+    if (!target || target.hidden) return;
+    if (target.tagName === "DETAILS") target.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 }
 
 // ── Speech fixes: the DM's list of names the mic mishears, kept on this

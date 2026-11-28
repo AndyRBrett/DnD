@@ -593,7 +593,7 @@ export const aiDmSystem = [
   "rolls: for each roll, character is an exact name from THE PARTY; roll is a skill (Perception, Stealth, Insight, Athletics, Persuasion, Investigation…), \"<Ability> save\", \"<Ability> check\", or \"Attack roll\"; dc is the target you set (about 10 easy, 15 medium, 20 hard; for an Attack roll, the target's AC). At most one roll per character per turn, and none when nothing is uncertain.",
   "Fights: the app runs initiative, enemy attacks, and hit-or-miss calls itself. When violence starts, set combat.start to true and put the enemies in combat.enemies; you can add reinforcements to a fight that's already on the same way. Otherwise combat.start is false and combat.enemies is empty. Set combat.end to true only when the enemies still standing surrender or flee; the app ends the fight itself when they are all down.",
   "Each enemy: name (\"Masked Croupier\"; the app numbers copies), count (1 to 12), cr as a string, ac, hp as dice like \"11d8+22\", init (the Dexterity modifier), speed, saves (exactly six integers: Str, Dex, Con, Int, Wis, Cha), attacks (at most three; put \"(×2)\" in the name for an attack made twice a turn; hit is the to-hit bonus; damage is dice like \"1d10+4\"; fill extra_damage and extra_type and/or save, dc and effect for what a hit also does, otherwise empty strings and dc 0), routine (indexes of the attacks one turn uses), abilities (two to four short sentences: specials, resistances, tactics, in your own words). Use standard 5th edition math for the CR, and balance the fight for THE PARTY: a fair fight unless the story calls for more. At most four kinds of enemy.",
-  "During a fight (TABLE STATE shows the round), keep narration to one to three sentences: how the battle feels and what happens to anything the characters tried besides attacking. The app posts attack results, so don't narrate hits or damage and don't ask for attack rolls.",
+  "During a fight (TABLE STATE shows the round), you take a turn as each new round begins. Narrate the round that just ended like a DM at the table: two to four vivid sentences built from the attack lines the app posted since your last update (who struck whom, who staggered, who went down), how the enemies look now (fresh, bloodied, wavering), and what happens to anything the characters tried besides attacking. Use only the results that were posted: never invent hits, damage numbers, or deaths, and don't ask for attack rolls.",
   "host_note is private to the host, one to three short sentences: what you decided and why, DCs or secrets in play, and anything the host should do in the app. Empty string if nothing.",
   "If HOST SAYS appears, follow that direction for this turn.",
   "Use the character sheets for what each character can do and their skills. Use standard 5th edition rules; the host can overrule you.",
@@ -603,14 +603,17 @@ export const aiDmSystem = [
 // party: the table's characters with their sheets ({ name, role, moves }).
 // notes: the host's secret adventure notes. prompt: optional direction from the
 // host for this turn. The history, the party with the notes, the recap and the
-// session are cached; only TABLE STATE and HOST SAYS change every tap.
+// session are cached; only TABLE STATE and HOST SAYS change every tap. Cache
+// lifetimes only ever get shorter down the request (1 hour, then 5 minutes).
 export function aiDmRequest(apiKey, { scenes = [], history = "", actions = [], party = [], notes = "", prompt = "", table = "", recap = null } = {}) {
   const content = storyBlocks(scenes, history, actions, recap);
   const partyBlock = {
     type: "text",
     text: "ADVENTURE NOTES (secret; from the host):\n" + (String(notes).trim().slice(0, 3000) || "(none: improvise from the story so far)")
       + "\n\nTHE PARTY:\n\n" + party.map(member => sheetText(member)).join("\n\n---\n\n"),
-    cache_control: { type: "ephemeral" }
+    // An hour, like the history and the recap around it: the API refuses a
+    // 1-hour block after a 5-minute one.
+    cache_control: { type: "ephemeral", ttl: "1h" }
   };
   content.splice(String(history).trim() ? 1 : 0, 0, partyBlock);
   content.push({ type: "text", text: (String(table).trim() ? "TABLE STATE (from the host's app, right now):\n" + String(table).trim().slice(0, 3000) + "\n\n" : "")
