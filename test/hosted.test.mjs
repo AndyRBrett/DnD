@@ -142,3 +142,11 @@ test("Claude costs: the token log and recaps are service-only, and every path us
   const worker = await read("src/worker.js");
   assert.match(worker, new RegExp("const AI_ROOM_LIMIT = " + tableLimit + ";"));
 });
+
+test("the AI DM's hosted turn is host-only and practice-only", async () => {
+  const edge = await read("supabase/functions/dnd-advise/index.ts");
+  const dm = edge.slice(edge.indexOf("async function answerDm"));
+  assert.ok(dm.indexOf("Only the DM can ask this.") < dm.indexOf('if (mode === "run")'));
+  assert.match(dm, /if \(rows\[0\]\?\.practice !== true\) return reply\(\{ error: "The AI DM runs on practice tables for now\." \}, 403\);/);
+  assert.ok(dm.indexOf("practice !== true") < dm.indexOf("dnd_ai_usage"));
+});
