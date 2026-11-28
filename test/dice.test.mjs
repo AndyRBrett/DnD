@@ -718,3 +718,12 @@ test("speech fixes: misheard names are corrected as whole words, longest phrase 
   assert.deepEqual(parseCorrections(formatCorrections(DEFAULT_CORRECTIONS)), DEFAULT_CORRECTIONS);
   assert.equal(correctTranscript("the maze", []), "the maze");
 });
+
+test("Claude's text is tidied: missing spaces put back, a runaway tail of tiny sentences cut", async () => {
+  const { tidyModelText } = await import("../src/encounter.js");
+  // The host note from the first AI DM practice table (Nov 28).
+  const note = "Investigation DC 14 finds the warm mirror door.Practice table, nothing saved.Don't forget the amulet backlash rule.Mirror gallery next.Keep pace brisk.Tone eerie.Counting dark.Secrets intact.Hold.Light next.Go.Enjoy.End.Done.Fine.Okay.Yes.Sure.Right.Good.Ok.Alright.Thanks.Bye.Stop.";
+  assert.equal(tidyModelText(note), "Investigation DC 14 finds the warm mirror door. Practice table, nothing saved. Don't forget the amulet backlash rule. Mirror gallery next. Keep pace brisk.");
+  for (const fine of ["The door groans. \"Who goes there?\" A guard steps out. Run!", "Roll Perception, DC 13.", ""]) assert.equal(tidyModelText(fine), fine);
+  assert.equal(tidyModelText("Mr. Vey waits at 3.5 paces."), "Mr. Vey waits at 3.5 paces.");
+});

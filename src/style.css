@@ -53,7 +53,7 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:400 1rem/1.5 var(--font-body);-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font:400 1rem/1.5 var(--font-body);-webkit-tap-highlight-color:transparent;overflow-wrap:break-word}
 body.in-table{padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom,0px) + 16px)}
 main{max-width:720px;margin:0 auto;padding:16px 16px 32px}
 p{margin:0 0 10px}
@@ -393,6 +393,8 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .claude-enemy{border:1px solid var(--border2);border-radius:12px;padding:12px;background:var(--card)}
 .claude-enemy p{margin:6px 0}
 .dm-ask-out{display:grid;gap:10px}
+.ai-dm-rolls{display:grid;gap:8px;padding:12px;border:2px solid var(--gold);border-radius:12px}
+.dm-ask-out,.ai-dm-log,.ai-dm-rolls,#scene,.story-text{overflow-wrap:anywhere}
 .ai-dm-log{margin:0;padding-left:18px;display:grid;gap:4px}
 .dm-idea{border-left:3px solid var(--gold);padding:4px 0 4px 12px}
 .dm-idea p{margin:4px 0}

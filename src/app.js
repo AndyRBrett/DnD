@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -537,6 +537,7 @@ function showTab(name) {
     if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
   }
   if (name === "scene") $("tab-scene").classList.remove("has-news");
+  else if (state) drawAiDmRolls(); // rolls still owed: the Scene tab keeps its dot
   $("char-bar").hidden = name === "dm";
   storage.set(TAB_KEY, name);
   window.scrollTo({ top: 0 });
@@ -1368,7 +1369,39 @@ function pendingRollAsks(index) {
   }
   return asks.filter(({ ask, action, answered }) => !dismissed.has(action.id) && (ask.kind === "attack" || !answered)).slice(-3);
 }
+// The host plays the party when Claude is the DM: every open roll request,
+// for any character, waits on the AI DM card. One tap picks that character
+// and opens the dice tray on the check (its sheet bonus filled in).
+function drawAiDmRolls() {
+  const box = $("ai-dm-rolls");
+  const open = isHost && aiDmEnabled() && state && !ended
+    ? (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack").map(entry => ({ ...entry, index })))
+    : [];
+  box.hidden = !open.length;
+  if (open.length && currentTab !== "scene") $("tab-scene").classList.add("has-news");
+  // The request's text is in the key, so an edited request ("Perception DC 13"
+  // corrected to "Investigation DC 14") redraws its button.
+  const key = open.map(({ action }) => action.id + ":" + action.text).join("\u0001");
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(...(open.length ? [element("p", "eyebrow gold", "WAITING FOR ROLLS")] : []), ...open.map(({ action, ask, index }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = "🎲 " + partyName(index).replace(/^The /, "") + ": " + rollAskLabel(ask);
+    button.onclick = () => {
+      $("character").value = String(index);
+      $("character").dispatchEvent(new Event("change"));
+      drawChips();
+      showTab("scene");
+      drawRollAsks();
+      document.querySelector('#roll-asks .roll-ask[data-ask="' + action.id + '"] .roll-ask-buttons button')?.click();
+    };
+    return button;
+  }));
+}
 function drawRollAsks() {
+  drawAiDmRolls();
   const box = $("roll-asks");
   const me = Number($("character").value);
   const pending = !playsHere() || ended || !state ? [] : pendingRollAsks(me);
@@ -6406,6 +6439,8 @@ async function aiDmTurn(steer = "", why = "") {
   try {
     const seen = maxActionId(); // what Claude reads: posts up to here
     const turn = await backend.dmAsk(room, "run", steer, dmTableState(), $("ai-dm-notes").value);
+    turn.narration = tidyModelText(turn.narration) || turn.narration;
+    turn.hostNote = tidyModelText(turn.hostNote);
     await backend.postScene(room, turn.to.length ? addressScene(turn.narration, turn.to) : turn.narration);
     const asked = [];
     const callOut = [];
@@ -6475,9 +6510,10 @@ function aiDmStoryStep(now) {
   const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, at: 0, asked: [] };
   const fresh = (state.actions ?? []).filter(action => Number(action.id) > mark.after && !String(action.text).startsWith("🎲 DM asks"));
   if (!fresh.length) return false;
-  const rolled = name => fresh.some(action => action.name === name && /^🎲 /u.test(String(action.text)));
-  const waiting = (mark.asked ?? []).filter(name => !rolled(name));
-  if (waiting.length && now - mark.at < 180000) return false;
+  // Every roll still owed, from this turn's requests or an earlier one's,
+  // holds the turn (each for up to three minutes after it was asked).
+  const owed = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack"));
+  if (owed.some(({ action }) => now - (aiDmSeen.get(action.id) ?? now) < 180000)) return false;
   const acted = new Set(fresh.map(action => action.name));
   const present = presentNames();
   const first = Math.min(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
