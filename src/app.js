@@ -1371,7 +1371,7 @@ function pendingRollAsks(index) {
 function drawRollAsks() {
   const box = $("roll-asks");
   const me = Number($("character").value);
-  const pending = isHost || ended || !state ? [] : pendingRollAsks(me);
+  const pending = !playsHere() || ended || !state ? [] : pendingRollAsks(me);
   box.hidden = !pending.length;
   if (!pending.length) { box.replaceChildren(); box.renderedHtml = ""; return; }
   const sheet = sheets[partyName(me)];
@@ -1554,7 +1554,7 @@ $("action-text").addEventListener("input", countAction);
 // Attack card does, so the DM gets a hit-or-miss question instead of a chat line.
 function drawTypedRoll() {
   const total = parseTypedToHit($("action-text").value);
-  const show = total !== null && !isHost && Boolean(state?.combat) && Boolean(typedToHit);
+  const show = total !== null && playsHere() && Boolean(state?.combat) && Boolean(typedToHit);
   $("action-roll").hidden = !show;
   if (!show) return;
   $("action-roll-text").textContent = "That's an attack roll. Send it as one and the DM will say hit or miss.";
@@ -1845,7 +1845,7 @@ function drawDicePresets() {
   // own dice: no presets to swap in an unrelated roll.
   drawSkillPicker();
   if (dice.onResult) { $("dice-presets").hidden = true; return; }
-  const character = isHost ? null : selectedCharacter();
+  const character = !playsHere() ? null : selectedCharacter();
   const sheet = sheets[character?.name];
   const presets = [];
   for (const [label, value] of sheet?.rolls ?? []) {
@@ -1886,7 +1886,7 @@ function drawDicePresets() {
 // Every skill on the sheet, one pick away in the dice tray.
 function drawSkillPicker() {
   const picker = $("dice-skill");
-  const skills = isHost || dice.onResult ? [] : sheets[selectedCharacter()?.name]?.skills ?? [];
+  const skills = !playsHere() || dice.onResult ? [] : sheets[selectedCharacter()?.name]?.skills ?? [];
   picker.hidden = !skills.length;
   if (!skills.length) return;
   picker.replaceChildren(new Option("Skill check…", ""), ...skills.filter(([, , value]) => rollableFrom(value))
@@ -1916,7 +1916,7 @@ function openDice(expression = "", label = "", onResult = null, mode = "normal")
   $("dice-result").hidden = true;
   drawRealDice();
   $("dice-status").textContent = "";
-  const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && !isHost && !ended && !onResult;
+  const canShare = Boolean(backend.postAction) && Array.isArray(state?.actions) && playsHere() && !ended && !onResult;
   $("dice-share-wrap").hidden = !canShare;
   setRollPurpose("");
   $("dice-for").hidden = !$("dice-share").checked;
@@ -2024,7 +2024,7 @@ const ABILITY_NAMES = { STR: "Strength", DEX: "Dexterity", CON: "Constitution", 
 // ask which ability first, so the modifier is never left off.
 function pickRollPurpose(text) {
   setRollPurpose(text);
-  const sheet = isHost ? null : sheets[selectedCharacter()?.name];
+  const sheet = !playsHere() ? null : sheets[selectedCharacter()?.name];
   const box = $("dice-ability");
   if (/^(Saving throw|Check)$/.test(text) && abilityMods(sheet).length) {
     const save = text === "Saving throw";
@@ -2047,7 +2047,7 @@ function pickRollPurpose(text) {
     return;
   }
   // Attack and Damage list the character's own attacks, with their numbers.
-  const attacks = /^(Attack|Damage)$/.test(text) && !isHost ? attacksFor(Number($("character").value)).filter(attack => !attack.heal && (text === "Damage" ? attack.damage : !attack.save && !attack.area && Number.isFinite(Number(attack.hit)))) : [];
+  const attacks = /^(Attack|Damage)$/.test(text) && playsHere() ? attacksFor(Number($("character").value)).filter(attack => !attack.heal && (text === "Damage" ? attack.damage : !attack.save && !attack.area && Number.isFinite(Number(attack.hit)))) : [];
   if (attacks.length) {
     const damage = text === "Damage";
     box.replaceChildren(element("span", "fineprint", damage ? "Which damage?" : "Which attack?"), ...attacks.map(attack => {
@@ -2081,7 +2081,7 @@ $("dice-for-text").oninput = () => {
     $("dice-label").textContent = "";
   }
   for (const chip of $("dice-for").querySelectorAll(":scope > .chip")) chip.classList.toggle("is-active", chip.textContent === typed);
-  const sheet = isHost ? null : sheets[selectedCharacter()?.name];
+  const sheet = !playsHere() ? null : sheets[selectedCharacter()?.name];
   if ((sheet?.skills ?? []).some(([name]) => name.toLowerCase() === typed.toLowerCase())) pickRollPurpose(typed);
 };
 $("dice-share").onchange = () => { $("dice-for").hidden = !$("dice-share").checked; };
@@ -2190,7 +2190,11 @@ async function landRoll(result, purpose) {
 // Bloodied, or Down (never their HP). ──
 const STATUS_TEXT = { ok: "Healthy", bloodied: "Bloodied", down: "Down" };
 let combatTimer;
-function myIndex() { return isHost ? null : Number($("character").value); }
+function myIndex() { return !playsHere() ? null : Number($("character").value); }
+// Player tools (roll requests, the dice tray's sharing and skills, the attack
+// card, death saves) are on for players, and for the host when Claude is the
+// DM: the host plays a character then, often the whole party from one phone.
+function playsHere() { return !isHost || aiDmEnabled(); }
 function liveOrder() {
   if (!state?.combat) return [];
   // The DM's phone uses its own (freshest) enemies.
@@ -2216,9 +2220,9 @@ function combatChanged(previous) {
   drawCombat();
   if (!before && now) {
     // Don't pull a player away from an action they're still typing.
-    if (!isHost && !$("action-text").value.trim()) showTab("combat");
+    if (playsHere() && !$("action-text").value.trim()) showTab("combat");
     $("tab-combat").classList.toggle("has-news", currentTab !== "combat");
-    if (!isHost && $("action-text").value.trim()) $("notice").textContent = "Combat started: post your action, then open the Combat tab.";
+    if (playsHere() && $("action-text").value.trim()) $("notice").textContent = "Combat started: post your action, then open the Combat tab.";
   }
   if (before && !now) {
     if (!isHost && !resShared()) endRages(); // shared resources: the DM's End combat did it
@@ -2227,7 +2231,7 @@ function combatChanged(previous) {
     setTimeout(() => { if ($("notice").textContent === "Combat ended.") $("notice").textContent = ""; }, 6000);
   }
   const mine = "pc:" + myIndex();
-  if (now && !isHost && now.turn === mine && before?.turn !== mine) {
+  if (now && playsHere() && now.turn === mine && before?.turn !== mine) {
     // A new turn starts at Attack: last turn's finished attack (sent, missed)
     // mustn't make the guide jump straight to End turn.
     // An attack still in flight (rolled, waiting for the DM's call, a hit
@@ -2285,7 +2289,7 @@ function drawTurnGuide() {
   const go = $("guide-go");
   const combat = state?.combat;
   $("combat-end-turn").classList.remove("is-next");
-  if (!combat || isHost || ended || boardMode) { guide.hidden = hint.hidden = go.hidden = true; return; }
+  if (!combat || !playsHere() || ended || boardMode) { guide.hidden = hint.hidden = go.hidden = true; return; }
   const me = myIndex();
   const myTurn = combat.turn === "pc:" + me;
   const rolled = Number.isFinite(combat.party?.[me]);
@@ -2462,7 +2466,7 @@ function drawCombat() {
     : current.key === myKey ? "Your turn!" : current.name + (current.kind === "enemy" ? " acts" : "'s turn");
   $("combat-next").textContent = !current ? (isHost ? "Tap Next turn to start round 1. Players can still add their initiative." : "The DM starts the first turn once everyone has rolled.")
     : next ? (next.key === myKey ? "You're up next — get ready." : "Up next: " + next.name) : "";
-  const meOut = !isHost && me !== null && isSittingOut(combat, me);
+  const meOut = playsHere() && me !== null && isSittingOut(combat, me);
   if (meOut && !current) $("combat-turn").textContent = "You're sitting out";
   const foes = order.filter(entry => entry.kind === "enemy");
   const up = foes.filter(entry => entry.status !== "down").length;
@@ -2567,7 +2571,7 @@ function drawCombat() {
     score.textContent = "–";
     const body = document.createElement("div");
     const name = document.createElement("strong");
-    name.textContent = partyName(index) + (index === me && !isHost ? " (you)" : "");
+    name.textContent = partyName(index) + (index === me && playsHere() ? " (you)" : "");
     const meta = document.createElement("div");
     meta.className = "chips";
     const tag = document.createElement("span");
@@ -2671,7 +2675,7 @@ const concentratingHere = index => Boolean(readJson("dnd-conditions:" + room + "
 const pendingKey = () => "dnd-conc-pending:" + room;
 const pendingSaves = () => readJson(pendingKey(), []);
 function concentrationCheck(index, damage, key = "") {
-  if (isHost || damage <= 0 || !concentratingHere(index)) return "";
+  if (!playsHere() || damage <= 0 || !concentratingHere(index)) return "";
   if ((hpRecord(index)?.hp ?? 1) <= 0) return ""; // knocked out: concentration simply ends
   // Each hit once: a story line is processed once by its id.
   if (key && concentrationSeen.keys.has(key)) return "";
@@ -2692,7 +2696,7 @@ function concentrationCheck(index, damage, key = "") {
 // The waiting saves for the picked character, with one Roll button.
 function drawConcentration() {
   const me = Number($("character").value);
-  const mine = isHost ? [] : pendingSaves().filter(save => save.index === me);
+  const mine = !playsHere() ? [] : pendingSaves().filter(save => save.index === me);
   for (const box of document.querySelectorAll(".conc-save")) {
     box.hidden = !mine.length;
     if (!mine.length) { box.replaceChildren(); continue; }
@@ -2727,7 +2731,7 @@ function drawConcentration() {
 const concentrationSeen = { keys: new Set(), lastAction: null };
 // Knocked to 0 HP: concentration ends (5e), wherever the damage came from.
 function concentrationEndsAtZero() {
-  if (isHost || !state?.party?.length) return;
+  if (!playsHere() || !state?.party?.length) return;
   const me = Number($("character").value);
   const record = hpRecord(me);
   if (!record || record.hp > 0 || !activeConditions().Concentrating) return;
@@ -2773,12 +2777,12 @@ async function adjustHp(index, change, status, { sameHit = false } = {}) {
       const stable = saves.successes >= 3;
       writeDeath(index, { successes: stable ? 0 : saves.successes, failures: saves.failures + 1,
         last: "Took " + -change + " damage while down: one failure" + (stable ? " (no longer stable)" : "") });
-      if (!(!isHost && index === Number($("character").value))) tellTable(index, "💀 took " + -change + " damage while down: a death save failure (" + (saves.failures + 1) + " ✗)");
+      if (!(playsHere() && index === Number($("character").value))) tellTable(index, "💀 took " + -change + " damage while down: a death save failure (" + (saves.failures + 1) + " ✗)");
     }
   }
   if (change > 0 && record.hp <= 0) clearDeath(index); // any healing brings them back
   drawCombat();
-  const own = !isHost && index === Number($("character").value);
+  const own = playsHere() && index === Number($("character").value);
   const reminder = change < 0 && own && !sameHit ? concentrationCheck(index, -change) : "";
   // Someone else's HP: a story line, so their phone can ask for a concentration
   // save for this hit (and the table hears about it).
@@ -2900,7 +2904,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
         ? " · " + (saves.failures >= 3 ? "☠️ dead" : saves.successes >= 3 ? "stable" : saves.successes + " ✓ " + saves.failures + " ✗") : "");
       box.append(note);
     }
-    if (health === "down" && !compact && !isHost && index === Number($("character").value)) box.append(deathSaveBox(index));
+    if (health === "down" && !compact && playsHere() && index === Number($("character").value)) box.append(deathSaveBox(index));
   }
   const status = document.createElement("p");
   status.className = "fineprint hp-status";
@@ -2930,7 +2934,7 @@ function hpWidget(index, { compact = false, open = false } = {}) {
     row.onsubmit = event => { event.preventDefault(); go(-1); };
     heal.onclick = () => go(1);
     row.append(amount, damage, heal);
-    if (!compact && !isHost && readRes(index).raging) {
+    if (!compact && playsHere() && readRes(index).raging) {
       const halfDamage = document.createElement("button");
       halfDamage.type = "button";
       halfDamage.className = "danger-soft rage-half";
@@ -3159,7 +3163,7 @@ function endRages() {
 // DM's End combat, or a rest.
 const FRENZY_KEY = index => "dnd-frenzy:" + room + ":" + index;
 function settleFrenzy(index) {
-  if (isHost || !storage.get(FRENZY_KEY(index)) || readRes(index).raging) return;
+  if (!playsHere() || !storage.get(FRENZY_KEY(index)) || readRes(index).raging) return;
   storage.remove(FRENZY_KEY(index));
   setCondition("Exhaustion", (activeConditions().Exhaustion ?? 0) + 1);
   $("condition-status").textContent = "Frenzy's price: one level of exhaustion (a long rest removes one).";
@@ -3202,7 +3206,7 @@ function tableContext(index) {
     ac ? "AC " + ac.text : "",
     res.raging ? "raging" : ""
   ].filter(Boolean);
-  if (Number($("character").value) === index && !isHost) {
+  if (Number($("character").value) === index && playsHere()) {
     const conditionsNow = Object.entries(activeConditions()).map(([condition, level]) => condition + (condition === "Exhaustion" ? " " + level : ""));
     if (conditionsNow.length) me.push("conditions: " + conditionsNow.join(", "));
   }
@@ -3557,7 +3561,7 @@ function drawHp() {
       fillResources($("res-sheet"), me);
       if (!$("res-combat").hidden) fillResources($("res-combat"), me);
     }
-    $("rage-badge").hidden = isHost || !readRes(me).raging;
+    $("rage-badge").hidden = !playsHere() || !readRes(me).raging;
   }
   if (isHost) {
     const list = $("party-hp-list");
@@ -3607,7 +3611,7 @@ function markHit(action, how = "applied") {
 function drawHitReport() {
   const combat = state?.combat;
   const form = $("hit-report");
-  form.hidden = !combat || isHost || ended || !backend.postAction || !Array.isArray(state?.actions);
+  form.hidden = !combat || !playsHere() || ended || !backend.postAction || !Array.isArray(state?.actions);
   drawAttack();
   if (form.hidden) return;
   const targets = (combat.enemies ?? []).filter(enemy => enemy.status !== "down");
@@ -4073,7 +4077,7 @@ function drawAttack() {
   const combat = state?.combat;
   if (!combat) lastingUp.clear();
   const card = $("attack-card");
-  card.hidden = !combat || isHost || ended;
+  card.hidden = !combat || !playsHere() || ended;
   if (card.hidden) return;
   const me = Number($("character").value);
   const sheet = sheets[partyName(me)] ?? {};
@@ -5543,7 +5547,7 @@ function setHost(value) {
   drawAiDm();
   // A DM account that opens a character's view gets no player tools: say why.
   for (const note of document.querySelectorAll(".host-player-note")) {
-    note.hidden = !isHost;
+    note.hidden = playsHere();
     note.textContent = "You're the DM on this device, so the player tools (attack cards, Send to the DM, death saves) are hidden here. "
       + (backend.hosted ? "To play a character, sign in on this device with an email that isn't on the DM list." : "Players open the table link on their own phones.");
   }
@@ -6353,7 +6357,8 @@ $("ai-dm-on").onchange = () => {
   }
   storage.set(AI_DM_ON(), on ? "1" : "0");
   if (!on) storage.set(AI_DM_AUTO(), "0");
-  drawAiDm();
+  setHost(isHost); // the player tools come and go with it
+  if (state) { drawRollAsks(); drawCombat(); }
 };
 $("ai-dm-auto").onchange = () => {
   storage.set(AI_DM_AUTO(), $("ai-dm-auto").checked ? "1" : "0");

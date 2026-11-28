@@ -180,3 +180,14 @@ test("the AI DM's autopilot never applies a missed attack, keeps posts sent whil
   assert.ok(turn.indexOf("const seen = maxActionId();") < turn.indexOf('backend.dmAsk(room, "run"'));
   assert.match(turn, /aiDmMark\(asked, seen\);/);
 });
+
+test("when Claude is the DM, the host's phone gets the player tools: roll requests, sharing rolls, the attack card", async () => {
+  const app = await read("src/app.js");
+  assert.match(app, /function playsHere\(\) \{ return !isHost \|\| aiDmEnabled\(\); \}/);
+  assert.match(app, /const pending = !playsHere\(\) \|\| ended \|\| !state \? \[\] : pendingRollAsks\(me\);/);
+  assert.match(app, /Array\.isArray\(state\?\.actions\) && playsHere\(\) && !ended && !onResult;/);
+  assert.match(app, /form\.hidden = !combat \|\| !playsHere\(\) \|\| ended/);
+  // DM-only tools stay host-only.
+  assert.match(app, /tool\.hidden = !isHost \|\| ended \|\| !backend\.postAction/);
+  assert.match(app, /if \(!isHost \|\| !combat \|\| !encounterLoaded\) \{ box\.hidden = true; return; \}/);
+});
