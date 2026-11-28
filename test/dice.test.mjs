@@ -805,3 +805,23 @@ test("AI DM fight narration: after a few attacks, or at once for a big moment", 
   assert.equal(fightNarrationDue({ beats: fightBeats([]), every: 3, newlyDown: ["Bandit 2"] }), "Bandit 2 is down");
   assert.equal(fightNarrationDue({ beats: fightBeats([]), every: 3, newlyDown: ["The White Wizard", "Bandit 1"] }), "White Wizard and Bandit 1 are down");
 });
+
+test("read aloud: quoted speech gets its own voice; spotlight names who has been quiet", async () => {
+  const { splitSpeech, spotlightLine } = await import("../src/encounter.js");
+  assert.deepEqual(splitSpeech("The croupier smiles. \"Place your bets,\" she purrs, and the guard's whistle shrills. 'Do be quick.'"), [
+    { text: "The croupier smiles.", quoted: false },
+    { text: "Place your bets,", quoted: true },
+    { text: "she purrs, and the guard's whistle shrills.", quoted: false },
+    { text: "Do be quick.", quoted: true }
+  ]);
+  assert.deepEqual(splitSpeech("No one speaks."), [{ text: "No one speaks.", quoted: false }]);
+  assert.deepEqual(splitSpeech("“Halt!” cries the guard."), [{ text: "Halt!", quoted: true }, { text: "cries the guard.", quoted: false }]);
+  const party = ["Roan", "Arcturus", "Logan", "JPeso"];
+  const posts = ["Roan", "Arcturus", "Roan", "Logan", "Arcturus", "Roan", "Logan"].map(name => ({ name, declared: true }));
+  assert.match(spotlightLine(party, posts), /^SPOTLIGHT: JPeso has done little lately/);
+  assert.equal(spotlightLine(party, posts.slice(0, 4)), ""); // not enough to go on
+  assert.equal(spotlightLine(party, posts.map(post => ({ ...post, declared: false }))), ""); // rolls and damage lines don't count
+  const everyone = [...posts, { name: "JPeso", declared: true }, { name: "JPeso", declared: true }];
+  assert.equal(spotlightLine(party, everyone), "");
+  assert.match(spotlightLine(party, [...posts.slice(0, 6), { name: "JPeso", declared: true }]), /Logan and JPeso have/);
+});
