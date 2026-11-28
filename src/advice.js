@@ -120,7 +120,10 @@ export function claudeRequest(apiKey, character, scenes, history = "", actions =
   const latest = [...scenes].reverse().find(scene => sceneHeardBy(scene.text, character.name)) ?? null;
   const earlier = session.filter(scene => scene !== latest);
   const latestAt = Number(latest?.created ?? Infinity);
-  const firstAt = Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity);
+  // Actions before the first update kept here are left out only when older
+  // updates were trimmed; after a recap, everything after its cutoff counts.
+  const trimmed = session.length < after.scenes.length;
+  const firstAt = trimmed ? Number(earlier[0]?.created ?? session[0]?.created ?? -Infinity) : -Infinity;
   const timeline = [
     ...earlier.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
     ...after.actions.filter(action => action.created < latestAt && action.created >= firstAt)
@@ -294,7 +297,7 @@ export const dmSystem = [
 function storyBlocks(scenes, history, actions, recap = null) {
   const after = sinceRecap(scenes, actions, recap);
   const session = sessionWindow(after.scenes);
-  const firstAt = Number(session[0]?.created ?? -Infinity);
+  const firstAt = session.length < after.scenes.length ? Number(session[0]?.created ?? -Infinity) : -Infinity;
   const timeline = [
     ...session.map(scene => ({ at: Number(scene.created ?? 0), line: "DM: " + scene.text })),
     ...after.actions.filter(action => Number(action.created) >= firstAt).map(action => ({ at: Number(action.created), line: action.name + " (player): " + action.text }))
@@ -448,9 +451,24 @@ function storyEntries(scenes, actions) {
   ].sort((a, b) => a.at - b.at || (a.kind === "scene" ? -1 : 1));
 }
 
+// A fingerprint of every line up to a cutoff. A recap keeps the fingerprint
+// of what it covers; if the DM edits or deletes one of those lines, the
+// fingerprint no longer matches and the recap is dropped and rebuilt.
+export function storySignature(scenes, actions, uptoAt) {
+  let hash = 2166136261;
+  for (const entry of storyEntries(scenes, actions)) {
+    if (entry.at > uptoAt) break;
+    for (const char of entry.at + "\u0000" + entryLine(entry) + "\u0001") hash = Math.imul(hash ^ char.codePointAt(0), 16777619) >>> 0;
+  }
+  return hash.toString(36);
+}
+export const recapValid = (scenes, actions, recap) => Boolean(recap?.text) && Number.isFinite(Number(recap.uptoAt))
+  && recap.sig === storySignature(scenes, actions, Number(recap.uptoAt));
+
 // What happened after the recap: scenes and actions newer than its cutoff.
+// A recap that no longer matches the story (an edit or deletion) is ignored.
 export function sinceRecap(scenes, actions, recap) {
-  if (!recap?.text || !Number.isFinite(Number(recap.uptoAt))) return { scenes, actions, recap: null };
+  if (!recapValid(scenes, actions, recap)) return { scenes, actions, recap: null };
   const cut = Number(recap.uptoAt);
   return {
     scenes: scenes.filter(scene => Number(scene.created ?? 0) > cut),
@@ -506,14 +524,17 @@ export async function readRecap(response, onUsage = () => {}) {
 
 // Brings the recap up to date when it's due. Returns { recap, changed }; on
 // any failure the old recap comes back unchanged.
+// A recap the story no longer matches is rebuilt from the start (and, if that
+// isn't due or fails, none is used).
 export async function refreshRecap(apiKey, scenes, actions, recap = null, party = [], onUsage = () => {}, fetchImpl = fetch) {
-  const plan = recapPlan(scenes, actions, recap);
-  if (!plan.due) return { recap, changed: false };
+  const current = recapValid(scenes, actions, recap) ? recap : null;
+  const plan = recapPlan(scenes, actions, current);
+  if (!plan.due) return { recap: current, changed: false };
   try {
-    const text = await readRecap(await fetchImpl(CLAUDE_URL, { ...recapRequest(apiKey, recap?.text, plan.lines, party), signal: AbortSignal.timeout(30000) }), onUsage);
-    return { recap: { text, uptoAt: plan.uptoAt }, changed: true };
+    const text = await readRecap(await fetchImpl(CLAUDE_URL, { ...recapRequest(apiKey, current?.text, plan.lines, party), signal: AbortSignal.timeout(30000) }), onUsage);
+    return { recap: { text, uptoAt: plan.uptoAt, sig: storySignature(scenes, actions, plan.uptoAt) }, changed: true };
   } catch (error) {
     console.error("recap", error?.message ?? error);
-    return { recap, changed: false };
+    return { recap: current, changed: false };
   }
 }

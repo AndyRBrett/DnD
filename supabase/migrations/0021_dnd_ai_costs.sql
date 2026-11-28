@@ -6,10 +6,11 @@
 -- Claude reported. No link to dnd_rooms, so the costs outlive the table.
 -- Written and read only with the service role.
 --
--- dnd_recaps: the running recap of a table's session (text, plus the time of
--- the last line it covers). Removed with the table. Saved through
--- dnd_recap_save, which never moves a recap backwards when two phones ask at
--- once. Service role only.
+-- dnd_recaps: the running recap of a table's session (text, the time of the
+-- last line it covers, and a fingerprint of those lines so an edit or deletion
+-- makes it rebuild). Removed with the table. Saved through dnd_recap_save,
+-- which never moves a recap backwards when two phones ask at once, except to
+-- replace one the story no longer matches. Service role only.
 --
 -- dnd_advise_begin_v2: unchanged except the per-table limit, 200 to 150 calls,
 -- the same as the edge function and the local server now use.
@@ -34,19 +35,20 @@ create table if not exists public.dnd_recaps (
   code text primary key references public.dnd_rooms(code) on delete cascade,
   text text not null,
   upto_at bigint not null,
+  sig text not null default '',
   updated_at timestamptz not null default now()
 );
 alter table public.dnd_recaps enable row level security;
 revoke all on public.dnd_recaps from anon, authenticated;
 
-create or replace function public.dnd_recap_save(p_code text, p_text text, p_upto_at bigint) returns void
+create or replace function public.dnd_recap_save(p_code text, p_text text, p_upto_at bigint, p_sig text) returns void
 language sql security definer set search_path = public as $$
-  insert into public.dnd_recaps (code, text, upto_at) values (p_code, left(p_text, 6000), p_upto_at)
-  on conflict (code) do update set text = excluded.text, upto_at = excluded.upto_at, updated_at = now()
-  where public.dnd_recaps.upto_at < excluded.upto_at;
+  insert into public.dnd_recaps (code, text, upto_at, sig) values (p_code, left(p_text, 6000), p_upto_at, p_sig)
+  on conflict (code) do update set text = excluded.text, upto_at = excluded.upto_at, sig = excluded.sig, updated_at = now()
+  where public.dnd_recaps.upto_at < excluded.upto_at or public.dnd_recaps.sig is distinct from excluded.sig;
 $$;
-revoke all on function public.dnd_recap_save(text, text, bigint) from public, anon, authenticated;
-grant execute on function public.dnd_recap_save(text, text, bigint) to service_role;
+revoke all on function public.dnd_recap_save(text, text, bigint, text) from public, anon, authenticated;
+grant execute on function public.dnd_recap_save(text, text, bigint, text) to service_role;
 
 create or replace function public.dnd_advise_begin_v2(p_code text, p_character int) returns jsonb
 language plpgsql security definer set search_path = public as $$

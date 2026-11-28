@@ -132,7 +132,7 @@ test("Claude costs: the token log and recaps are service-only, and every path us
   const sql = await read("supabase/migrations/0021_dnd_ai_costs.sql");
   assert.match(sql, /revoke all on public\.dnd_ai_tokens from anon, authenticated;/);
   assert.match(sql, /revoke all on public\.dnd_recaps from anon, authenticated;/);
-  assert.match(sql, /grant execute on function public\.dnd_recap_save\(text, text, bigint\) to service_role;/);
+  assert.match(sql, /grant execute on function public\.dnd_recap_save\(text, text, bigint, text\) to service_role;/);
   assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
   const edge = await read("supabase/functions/dnd-advise/index.ts");
   const tableLimit = Number(edge.match(/const TABLE_LIMIT = (\d+);/)[1]);

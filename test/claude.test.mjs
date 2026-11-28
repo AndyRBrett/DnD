@@ -281,7 +281,7 @@ const longScenes = (count, size = 400) => Array.from({ length: count }, (_, inde
   ({ id: index + 1, text: "Update " + index + " " + "x".repeat(size), created: 1000 + index * 10 }));
 
 test("the recap is due only once enough has piled up, and keeps the newest lines word for word", async () => {
-  const { recapPlan, RECAP_TRIGGER, RECAP_KEEP } = await import("../src/advice.js");
+  const { recapPlan, storySignature, RECAP_TRIGGER, RECAP_KEEP } = await import("../src/advice.js");
   assert.equal(recapPlan(longScenes(5), []).due, false);
   const scenes = longScenes(40);
   const actions = [{ name: "Roan the Last Shadow", text: "throws a shuriken", created: 1005 }];
@@ -293,13 +293,13 @@ test("the recap is due only once enough has piled up, and keeps the newest lines
   assert.ok(keptText.join("   ").length <= RECAP_KEEP && keptText.length > 0);
   assert.ok(scenes.length * 400 > RECAP_TRIGGER);
   // After a recap, only what came later counts toward the next one.
-  assert.equal(recapPlan(scenes, actions, { text: "So far.", uptoAt: plan.uptoAt }).due, false);
+  assert.equal(recapPlan(scenes, actions, { text: "So far.", uptoAt: plan.uptoAt, sig: storySignature(scenes, actions, plan.uptoAt) }).due, false);
 });
 
 test("with a recap, Claude gets it (cached for an hour) and only the lines after it", async () => {
-  const { claudeRequest, dmRequest } = await import("../src/advice.js");
+  const { claudeRequest, dmRequest, storySignature } = await import("../src/advice.js");
   const scenes = longScenes(10, 20);
-  const recap = { text: "The party met the dwarf mage.", uptoAt: scenes[6].created };
+  const recap = { text: "The party met the dwarf mage.", uptoAt: scenes[6].created, sig: storySignature(scenes, [], scenes[6].created) };
   const body = JSON.parse(claudeRequest("k", { name: "Arcturus", role: "ranger", moves: "combat | Longbow — shoot" }, scenes, "History.", [], "", "", recap).body);
   const blocks = body.messages[0].content;
   const recapBlock = blocks.find(block => block.text.startsWith("THIS SESSION, EARLIER"));
@@ -317,7 +317,7 @@ test("with a recap, Claude gets it (cached for an hour) and only the lines after
 });
 
 test("the recap uses the cheap model at low effort, reports its tokens, and a failure keeps the old one", async () => {
-  const { refreshRecap, RECAP_MODEL } = await import("../src/advice.js");
+  const { refreshRecap, storySignature, RECAP_MODEL } = await import("../src/advice.js");
   const scenes = longScenes(40);
   const used = [];
   const sent = [];
@@ -330,7 +330,7 @@ test("the recap uses the cheap model at low effort, reports its tokens, and a fa
   assert.equal(sent[0].fallbacks, undefined);
   assert.match(sent[0].messages[0].content, /THE PARTY: Arcturus/);
   assert.deepEqual(used[0], { model: "claude-haiku-5-5", input_tokens: 900, output_tokens: 120, cache_read: 0, cache_write: 0 });
-  const old = { text: "Old recap.", uptoAt: 0 };
+  const old = { text: "Old recap.", uptoAt: 0, sig: storySignature(scenes, [], 0) };
   const failed = await refreshRecap("k", scenes, [], old, [], () => {}, async () => new Response("down", { status: 529 }));
   assert.deepEqual(failed, { recap: old, changed: false });
 });
@@ -363,4 +363,38 @@ test("local server: a long session is recapped once by the cheap model, and Ask 
   // The next ask reuses the recap: no second recap call.
   await post("/advise", { character: 1 });
   assert.deepEqual(requests.map(request => request.body.model), ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-sonnet-5-5"]);
+});
+
+test("after a recap, an action between its cutoff and the next DM update still reaches Claude", async () => {
+  const { claudeRequest, dmRequest, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(6, 20);
+  const cut = scenes[2].created;
+  const recap = { text: "Earlier.", uptoAt: cut, sig: storySignature(scenes, [], cut) };
+  const actions = [{ name: "JPeso", text: "casts Hold Monster", created: cut + 1 }, { name: "Roan the Last Shadow", text: "hides", created: scenes[5].created + 1 }];
+  const text = body => JSON.parse(body).messages[0].content.map(block => block.text).join("\n");
+  assert.match(text(claudeRequest("k", { name: "Arcturus", moves: "" }, scenes, "", actions, "", "", recap).body), /JPeso \(player\): casts Hold Monster/);
+  assert.match(text(dmRequest("k", "dm", { scenes, actions, recap, prompt: "?" }).body), /JPeso \(player\): casts Hold Monster/);
+});
+
+test("editing or deleting a line the recap covers drops it, and the next recap starts over", async () => {
+  const { claudeRequest, refreshRecap, storySignature } = await import("../src/advice.js");
+  const scenes = longScenes(40);
+  const cut = scenes[20].created;
+  const recap = { text: "The mage is called Valerian.", uptoAt: cut, sig: storySignature(scenes, [], cut) };
+  const edited = scenes.map(scene => scene.id === 3 ? { ...scene, text: "The mage is called Vael." } : scene);
+  const text = list => JSON.parse(claudeRequest("k", { name: "Arcturus", moves: "" }, list, "", [], "", "", recap).body).messages[0].content.map(block => block.text).join("\n");
+  assert.match(text(scenes), /Valerian/);
+  assert.doesNotMatch(text(edited), /Valerian/);
+  assert.match(text(edited), /called Vael/);
+  assert.doesNotMatch(text(scenes.filter(scene => scene.id !== 3)), /Valerian/);
+  // A rebuild folds from the start, without the stale recap.
+  const sent = [];
+  const fresh = await refreshRecap("k", edited, [], recap, [], () => {}, async (url, init) => {
+    sent.push(JSON.parse(init.body));
+    return Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: "Rebuilt." }], usage: {} });
+  });
+  assert.equal(fresh.changed, true);
+  assert.match(sent[0].messages[0].content, /RECAP SO FAR:\n\(none yet\)/);
+  assert.match(sent[0].messages[0].content, /called Vael/);
+  assert.equal(fresh.recap.sig, storySignature(edited, [], fresh.recap.uptoAt));
 });

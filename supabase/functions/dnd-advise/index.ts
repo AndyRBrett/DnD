@@ -125,7 +125,7 @@ function tokenSubject(req: Request): string {
 
 type Scene = { id: number; text: string; created: number };
 type Action = { name: string; text: string; created: number };
-type Recap = { text: string; uptoAt: number } | null;
+type Recap = { text: string; uptoAt: number; sig: string } | null;
 
 // Everything a Claude call reads about a table, with the service role: the
 // campaign history, the whole session (DM updates and player actions), the
@@ -138,7 +138,7 @@ async function loadStory(code: string) {
     get("dnd_scenes?select=id,text,created_at&code=eq." + code + "&order=id.desc&limit=400"),
     get("dnd_actions?select=character_name,text,created_at&code=eq." + code + "&order=id.desc&limit=400"),
     get("dnd_rooms?select=party&code=eq." + code),
-    get("dnd_recaps?select=text,upto_at&code=eq." + code)
+    get("dnd_recaps?select=text,upto_at,sig&code=eq." + code)
   ]);
   const at = (value: string) => Date.parse(value);
   return {
@@ -148,7 +148,7 @@ async function loadStory(code: string) {
     actions: (actionRows as { character_name: string; text: string; created_at: string }[]).reverse()
       .map(action => ({ name: action.character_name, text: action.text, created: at(action.created_at) })) as Action[],
     party: ((roomRows[0]?.party ?? []) as { name: string }[]).map(member => ({ name: String(member?.name ?? "") })),
-    recap: (recapRows[0] ? { text: String(recapRows[0].text), uptoAt: Number(recapRows[0].upto_at) } : null) as Recap
+    recap: (recapRows[0] ? { text: String(recapRows[0].text), uptoAt: Number(recapRows[0].upto_at), sig: String(recapRows[0].sig) } : null) as Recap
   };
 }
 
@@ -162,7 +162,7 @@ async function currentRecap(code: string, story: Awaited<ReturnType<typeof loadS
     await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_recap_save", {
       method: "POST",
       headers: { ...service, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_code: code, p_text: recap.text, p_upto_at: recap.uptoAt })
+      body: JSON.stringify({ p_code: code, p_text: recap.text, p_upto_at: recap.uptoAt, p_sig: recap.sig })
     }).catch(error => console.error("recap save failed", error));
   }
   return recap;
