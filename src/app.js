@@ -5793,8 +5793,18 @@ const BOARD_VOICE = "dnd-board-voice";
 const boardVoiceOn = () => storage.get(BOARD_VOICE) === "1";
 function drawBoardVoice() {
   $("board-voice").setAttribute("aria-pressed", String(boardVoiceOn()));
-  $("board-voice").textContent = boardVoiceOn() ? "🔊 Reading aloud" : "🔈 Read aloud";
+  $("board-voice").setAttribute("aria-label", boardVoiceOn() ? "Reading aloud: tap to stop" : "Read aloud");
+  $("board-voice").replaceChildren(boardVoiceOn() ? "🔊" : "🔈", element("span", "board-voice-label", boardVoiceOn() ? " Reading aloud" : " Read aloud"));
+  fitBoardHeader();
 }
+// The header's buttons float over the board's top row: the round badge keeps
+// clear of however wide they are on this screen.
+function fitBoardHeader() {
+  if (!boardMode) return;
+  const buttons = document.querySelector(".hdr-right");
+  document.documentElement.style.setProperty("--board-hdr", Math.ceil((buttons?.getBoundingClientRect().width ?? 120) + 24) + "px");
+}
+window.addEventListener("resize", () => fitBoardHeader());
 $("board-voice").onclick = () => {
   storage.set(BOARD_VOICE, boardVoiceOn() ? "0" : "1");
   if (!boardVoiceOn()) speechSynthesis.cancel();
