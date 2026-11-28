@@ -6502,9 +6502,12 @@ async function aiDmTurn(steer = "", why = "") {
     $("ai-dm-steer").value = "";
     await sync();
     aiDmMark(asked, seen);
-    // What this turn posted, for Undo: its update and its roll requests.
-    const posted = state.scenes.filter(scene => Number(scene.id) > lastScene && String(scene.text).includes(turn.narration.trim().slice(0, 40))).at(-1);
-    const requests = (state.actions ?? []).filter(action => Number(action.id) > seen && String(action.text).startsWith("🎲 DM asks") && asked.includes(action.name));
+    // What this turn posted, for Undo: its update and its roll requests,
+    // read from a fresh snapshot (sync() skips when a poll is in flight, and
+    // that poll may predate these writes).
+    const after = await backend.room(room).catch(() => null);
+    const posted = (after?.scenes ?? []).filter(scene => Number(scene.id) > lastScene && String(scene.text).includes(turn.narration.trim().slice(0, 40))).at(-1);
+    const requests = (after?.actions ?? []).filter(action => Number(action.id) > seen && String(action.text).startsWith("🎲 DM asks") && asked.includes(action.name));
     storage.set(AI_DM_LAST(), JSON.stringify({ scene: posted?.id ?? null, actions: requests.map(action => action.id), seen: prevMark }));
     $("ai-dm-undo").hidden = !posted;
     if (why) aiDmLog(why);
@@ -6525,11 +6528,21 @@ async function aiDmTurn(steer = "", why = "") {
 // it started stays (End combat now does that).
 $("ai-dm-undo").onclick = async () => {
   const last = readJson(AI_DM_LAST(), null);
-  if (!last?.scene || !window.confirm("Undo Claude's last DM turn? Its update and roll requests are removed for everyone.")) return;
+  if (!last || (last.scene === null && !last.actions?.length) || !window.confirm("Undo Claude's last DM turn? Its update and roll requests are removed for everyone.")) return;
   $("ai-dm-undo").disabled = true;
   try {
-    await backend.deleteScene(room, last.scene);
-    for (const id of last.actions ?? []) if (backend.deleteAction) await backend.deleteAction(room, id);
+    // Each piece is checked against a fresh snapshot and crossed off as it
+    // goes, so a retry after a failure finishes the rest.
+    const now = await backend.room(room);
+    const save = () => storage.set(AI_DM_LAST(), JSON.stringify(last));
+    if (last.scene !== null && (now.scenes ?? []).some(scene => String(scene.id) === String(last.scene))) await backend.deleteScene(room, last.scene);
+    last.scene = null;
+    save();
+    for (const id of [...(last.actions ?? [])]) {
+      if (backend.deleteAction && (now.actions ?? []).some(action => String(action.id) === String(id))) await backend.deleteAction(room, id);
+      last.actions = last.actions.filter(other => other !== id);
+      save();
+    }
     if (last.seen) storage.set(AI_DM_MARK(), JSON.stringify(last.seen)); else storage.remove(AI_DM_MARK());
     storage.remove(AI_DM_LAST());
     aiDmNextStep = Date.now() + 60000;
