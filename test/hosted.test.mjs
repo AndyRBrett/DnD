@@ -215,3 +215,13 @@ test("the AI DM's autopilot waits for every roll still owed, not only the last t
   const css = await read("src/style.css");
   assert.match(css, /\.dm-ask-out,\.ai-dm-log,\.ai-dm-rolls,#scene,\.story-text\{overflow-wrap:anywhere\}/);
 });
+
+test("the AI DM narrates each new round of a fight, and a requested roll closes the dice tray once shared", async () => {
+  const app = await read("src/app.js");
+  const step = app.slice(app.indexOf("function aiDmFightStep(now)"));
+  assert.match(step, /combat\.round > \(mark\.round \?\? 0\) && \(state\.actions \?\? \[\]\)\.some\(action => Number\(action\.id\) > mark\.after\)/);
+  assert.match(step, /Narrate the round that just ended\./);
+  assert.match(app, /if \(ask\) setTimeout\(\(\) => \{ if \(rollId === dice\.rollId\) closeDice\(\); \}, 1500\);/);
+  const advice = await read("src/advice.js");
+  assert.match(advice, /Narrate the round that just ended like a DM at the table/);
+});

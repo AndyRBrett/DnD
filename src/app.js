@@ -2212,6 +2212,9 @@ async function landRoll(result, purpose) {
       await backend.postAction(room, Number($("character").value), text);
       $("dice-status").textContent = "Shared with the table.";
       sync();
+      // A roll the DM asked for is done once it's shared: the tray closes
+      // (after a moment to see the number), unless another roll has started.
+      if (ask) setTimeout(() => { if (rollId === dice.rollId) closeDice(); }, 1500);
     } catch (error) {
       $("dice-status").textContent = error.message;
     }
@@ -6612,12 +6615,12 @@ function aiDmFightStep(now) {
     aiDmNextStep = now + 3000; // a beat before the turn moves on
     return true;
   }
-  // A player's turn: theirs to take. Once a round, the DM answers anything
-  // the characters tried besides attacking.
+  // A player's turn: theirs to take. As each new round begins, the DM
+  // narrates the round that just ended (from the attack lines the app
+  // posted) and answers anything the characters tried besides attacking.
   const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, round: 0 };
-  const tried = (state.actions ?? []).filter(action => Number(action.id) > mark.after && declared(action));
-  if (combat.round > (mark.round ?? 0) && tried.length) {
-    aiDmTurn("", "New round: answered what the characters tried.");
+  if (combat.round > (mark.round ?? 0) && (state.actions ?? []).some(action => Number(action.id) > mark.after)) {
+    aiDmTurn("Round " + combat.round + " begins. Narrate the round that just ended.", "Round " + combat.round + ": narrated the last round.");
     return true;
   }
   return false;
