@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, AI_DM_DIFFICULTIES, enemyTargetIndex, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -6381,6 +6381,8 @@ const AI_DM_ON = () => "dnd-aidm-on:" + room;
 const AI_DM_AUTO = () => "dnd-aidm-auto:" + room;
 const AI_DM_MARK = () => "dnd-aidm-mark:" + room; // the last DM turn: { after, at, asked, round }
 const AI_DM_LAST = () => "dnd-aidm-last:" + room; // what the last DM turn posted, for Undo
+const AI_DM_DIFFICULTY = () => "dnd-aidm-difficulty:" + room; // per table, on the host's phone
+const aiDmDifficulty = () => (storage.get(AI_DM_DIFFICULTY()) in AI_DM_DIFFICULTIES ? storage.get(AI_DM_DIFFICULTY()) : "medium");
 const AI_DM_PACE = "dnd-aidm-pace"; // the autopilot's pace, for every table on this phone
 const aiDmPace = () => (storage.get(AI_DM_PACE) in AI_DM_PACES ? storage.get(AI_DM_PACE) : "quick");
 let aiDmNotesLoaded = false;
@@ -6413,6 +6415,8 @@ function drawAiDm() {
   $("ai-dm-body").hidden = !aiDmEnabled();
   $("ai-dm-auto").checked = storage.get(AI_DM_AUTO()) === "1";
   $("ai-dm-pace").value = aiDmPace();
+  $("ai-dm-difficulty").value = aiDmDifficulty();
+  drawAiDmDifficulty();
   drawAiDmPace();
   if (!aiDmNotesLoaded) {
     $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
@@ -6445,6 +6449,19 @@ const AI_DM_PACE_NOTES = {
 function drawAiDmPace() {
   $("ai-dm-pace-note").textContent = AI_DM_PACE_NOTES[aiDmPace()];
 }
+const AI_DM_DIFFICULTY_NOTES = {
+  easy: "Easy: checks around DC 8–12, smaller fights, enemies flee once hurt and spread their attacks.",
+  medium: "Medium: checks around DC 10–15, fair fights, enemies pick targets at random.",
+  hard: "Hard: checks around DC 13–18, tough fights with tactics; enemies focus the most wounded."
+};
+function drawAiDmDifficulty() {
+  $("ai-dm-difficulty-note").textContent = AI_DM_DIFFICULTY_NOTES[aiDmDifficulty()];
+}
+$("ai-dm-difficulty").onchange = () => {
+  storage.set(AI_DM_DIFFICULTY(), $("ai-dm-difficulty").value);
+  drawAiDmDifficulty();
+  aiDmLog("Difficulty: " + $("ai-dm-difficulty").selectedOptions[0].textContent + ". It applies from the next DM turn.");
+};
 $("ai-dm-pace").onchange = () => {
   storage.set(AI_DM_PACE, $("ai-dm-pace").value);
   drawAiDmPace();
@@ -6491,7 +6508,8 @@ async function aiDmTurn(steer = "", why = "") {
     const seen = maxActionId(); // what Claude reads: posts up to here
     const lastScene = Math.max(0, ...(state?.scenes ?? []).map(scene => Number(scene.id) || 0));
     const prevMark = readJson(AI_DM_MARK(), null);
-    const turn = await backend.dmAsk(room, "run", steer, dmTableState(), $("ai-dm-notes").value);
+    const table = AI_DM_DIFFICULTIES[aiDmDifficulty()] + "\n" + dmTableState();
+    const turn = await backend.dmAsk(room, "run", steer, table.slice(0, 3000), $("ai-dm-notes").value);
     turn.narration = tidyModelText(turn.narration) || turn.narration;
     turn.hostNote = tidyModelText(turn.hostNote);
     await backend.postScene(room, turn.to.length ? addressScene(turn.narration, turn.to) : turn.narration);
@@ -6700,7 +6718,7 @@ function aiDmFightStep(now) {
     }
     aiDmEnemyTurn = key;
     const targets = order.filter(entry => entry.kind === "pc" && (hpRecord(entry.character)?.hp ?? 1) > 0);
-    const target = targets[Math.floor(Math.random() * targets.length)];
+    const target = targets[enemyTargetIndex(targets.map(entry => ({ hp: hpRecord(entry.character)?.hp ?? 1, max: hpRecord(entry.character)?.max ?? 1 })), aiDmDifficulty())];
     if (!target || !enemy.attacks?.length) {
       aiDmLog(enemy.name + " holds back this turn.");
       return true;

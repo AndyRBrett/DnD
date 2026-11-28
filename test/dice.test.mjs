@@ -755,3 +755,21 @@ test("the AI DM autopilot answers requested rolls at once and doesn't wait on a 
   assert.equal(aiDmReady({ present, fresh: [{ name: "Roan", age: 31000 }] }).go, true);
   assert.equal(aiDmReady({ present, fresh: [{ name: "Roan", age: 31000 }], pace: "patient" }).go, false);
 });
+
+test("AI DM difficulty: a self-explaining TABLE STATE line, and who the autopilot's enemies attack", async () => {
+  const { AI_DM_DIFFICULTIES, enemyTargetIndex } = await import("../src/encounter.js");
+  assert.deepEqual(Object.keys(AI_DM_DIFFICULTIES), ["easy", "medium", "hard"]);
+  for (const [name, line] of Object.entries(AI_DM_DIFFICULTIES)) {
+    assert.match(line, new RegExp("^DIFFICULTY: " + name, "i"));
+    assert.match(line, /DCs \d+ to \d+/);
+  }
+  const party = [{ hp: 40, max: 40 }, { hp: 6, max: 30 }, { hp: 20, max: 24 }];
+  assert.equal(enemyTargetIndex(party, "hard", 0.99), 1); // the most wounded
+  for (const r of [0, 0.4, 0.99]) assert.notEqual(enemyTargetIndex(party, "easy", r), 1); // leaves the bloodied one alone
+  assert.equal(enemyTargetIndex([{ hp: 3, max: 30 }], "easy", 0.5), 0); // unless nobody else is standing
+  assert.deepEqual([0, 0.5, 0.99].map(r => enemyTargetIndex(party, "medium", r)), [0, 1, 2]);
+  assert.equal(enemyTargetIndex([], "hard"), -1);
+  // The AI DM prompt tells Claude to follow it.
+  const { aiDmSystem } = await import("../src/advice.js");
+  assert.match(aiDmSystem, /DIFFICULTY line set by the host/);
+});

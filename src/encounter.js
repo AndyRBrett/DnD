@@ -940,3 +940,26 @@ export function aiDmReady({ fresh = [], owed = [], asked = [], present = [], pac
   if (oldest >= p.others) return settle("Waited long enough: took a DM turn.");
   return { go: false, wait: "waiting for " + quiet.map(short).join(", ") + " to act (or " + Math.ceil((p.others - oldest) / 1000) + "s)." };
 }
+
+// AI DM difficulty, set by the host per table. The line goes at the top of
+// TABLE STATE on every AI DM turn, so it takes effect at once and explains
+// itself to Claude.
+export const AI_DM_DIFFICULTIES = {
+  easy: "DIFFICULTY: Easy. Set most DCs 8 to 12. Build fights below a fair fight for the party (fewer or weaker enemies). Enemies fight plainly, spread their attacks, and flee or surrender once bloodied. Be generous with clues and second chances; a failed roll costs little.",
+  medium: "DIFFICULTY: Medium. Set most DCs 10 to 15. Build fair fights for the party. Enemies fight sensibly. A failed roll has a real but modest cost.",
+  hard: "DIFFICULTY: Hard. Set most DCs 13 to 18. Build hard fights for the party (more enemies, reinforcements, terrain that favours them). Enemies use tactics: focus the wounded and spellcasters, use cover, and break concentration. Resources run short and failures carry real consequences. Stay fair: every challenge can be overcome, and never kill a character outright without death saves."
+};
+// Which standing character an enemy attacks on the autopilot. targets:
+// [{ hp, max }]. Easy goes after someone not yet bloodied when it can; Hard
+// focuses the most wounded; Medium picks at random. random: 0 to 1.
+export function enemyTargetIndex(targets, difficulty = "medium", random = Math.random()) {
+  if (!targets.length) return -1;
+  const ratio = target => target.max > 0 ? target.hp / target.max : 1;
+  if (difficulty === "hard") return targets.reduce((best, target, index) => ratio(target) < ratio(targets[best]) ? index : best, 0);
+  let pool = targets.map((_, index) => index);
+  if (difficulty === "easy") {
+    const healthy = pool.filter(index => ratio(targets[index]) > 0.5);
+    if (healthy.length) pool = healthy;
+  }
+  return pool[Math.min(pool.length - 1, Math.floor(random * pool.length))];
+}
