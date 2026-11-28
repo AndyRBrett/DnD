@@ -2192,6 +2192,9 @@ function combatChanged(previous) {
   // A new fight (or one that ended), or a round lower than a saved one: the
   // death-save round lock belongs to the old fight.
   if (!before !== !now || (before && now && now.round < before.round)) forgetDeathRounds();
+  // A fight starting or ending (or its round going back) on this page, or no
+  // fight at all on opening the table: last fight's turn records don't apply.
+  if (previous ? !before !== !now || (before && now && now.round < before.round) : !now) forgetTurns();
   drawCombat();
   if (!before && now) {
     // Don't pull a player away from an action they're still typing.
@@ -3788,27 +3791,34 @@ const lastingCast = new Map(); // "<index>:<name>" → the turn it was cast
 // What each character has used this turn is kept on this phone too, so a
 // reload mid-turn (a locked phone, switching apps while the DM calls the hit)
 // doesn't forget the action is spent: the turn guide still says End my turn.
-// Only the current turn's entries count (each carries its turn tag).
+// Only the current turn's entries count (each carries its turn tag). Turn
+// tags restart at round 1 in every fight, so the records are wiped when a
+// fight starts or ends (forgetTurns), and an entry older than half an hour is
+// dropped on load: a reload mid-turn is minutes, not a fight later.
+const TURN_MEMORY_AGE = 30 * 60 * 1000;
+const turnMemories = [];
 function turnMemory(name) {
   const key = "dnd-turn-" + name + ":" + room;
   let saved = {};
   try { saved = JSON.parse(storage.get(key) ?? "{}") ?? {}; } catch {}
-  const map = new Map(Object.entries(saved).map(([index, value]) => [Number(index), value]));
+  const fresh = Object.entries(saved).filter(([, value]) => Date.now() - Number(value?.at ?? 0) < TURN_MEMORY_AGE);
+  const map = new Map(fresh.map(([index, value]) => [Number(index), value]));
   const set = map.set.bind(map);
-  map.set = (index, value) => {
-    set(index, value);
-    try { storage.set(key, JSON.stringify(Object.fromEntries(map))); } catch {}
-    return map;
-  };
+  const clear = map.clear.bind(map);
+  const save = () => { try { storage.set(key, JSON.stringify(Object.fromEntries(map))); } catch {} };
+  map.set = (index, value) => { set(index, { ...value, at: Date.now() }); save(); return map; };
+  map.clear = () => { clear(); save(); };
+  turnMemories.push(map);
   return map;
 }
+function forgetTurns() { for (const map of turnMemories) map.clear(); }
 const attacksMade = turnMemory("attacks");
 const turnTag = () => state?.combat ? state.combat.round + ":" + state.combat.turn : "";
 // Resource features used this turn (Living Shadow…), shown as used.
 const usedFeatures = turnMemory("features"); // character index → { turn, names }
 const featuresThisTurn = index => { const entry = usedFeatures.get(index); return entry && entry.turn === turnTag() ? entry.names : []; };
 // Action Surge this turn: each one adds a whole Attack action.
-const surges = new Map(); // character index → { turn, count }
+const surges = turnMemory("surges"); // character index → { turn, count }
 const surgesThisTurn = index => { const entry = surges.get(index); return entry && entry.turn === turnTag() ? entry.count : 0; };
 const attackCap = (index, per) => per * (1 + surgesThisTurn(index));
 function attacksThisTurn(index) {
