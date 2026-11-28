@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recommend, characterAbilities, coachingPrompt } from "../src/scene-options.js";
+import { recommend, characterAbilities, coachingPrompt, partyPrompt } from "../src/scene-options.js";
 
 const cleric = { name: "The White Wizard", role: "Half-Elf Light Domain cleric", moves: [
   "combat | Sacred Flame — cantrip.",
@@ -69,6 +69,22 @@ test("the coaching prompt carries character, the last twenty updates, and asks f
   assert.match(prompt, /^- u5$/m);
   assert.match(prompt, /^- u24$/m);
   assert.match(prompt, /what you think the DM is building toward/);
+});
+
+test("the whole-party prompt carries every sheet and the whole session, DM and players in order", () => {
+  const story = [{ id: 1, text: "u0", created: 0 }, ...scenes(Array.from({ length: 30 }, (_, index) => "u" + (index + 1))).map(scene => ({ ...scene, created: scene.created + 1 })),
+    { id: 99, text: "🔒 To: Roan the Last Shadow\nA whisper only Roan hears", created: 40 }];
+  const actions = [{ id: 1, name: "The White Wizard", text: "casts Detect Magic", created: 5 }];
+  const me = { ...shadow, moves: "combat | Shadow Slash — only mine" };
+  const prompt = partyPrompt(me, [cleric, shadow], story, actions);
+  assert.match(prompt, /^### The White Wizard \(Half-Elf Light Domain cleric\)$/m);
+  assert.match(prompt, /^### Roan the Last Shadow .*\(this is me\)$/m);
+  assert.match(prompt, /only mine/);
+  assert.match(prompt, /^- DM: u0$/m);
+  assert.match(prompt, /- DM: u5\n- The White Wizard: casts Detect Magic\n- DM: u6/);
+  assert.match(prompt, /^- DM: \(only to Roan the Last Shadow\) A whisper only Roan hears$/m);
+  assert.match(prompt, /what you think the DM is building toward/);
+  assert.match(prompt, /leave outcomes to the DM/);
 });
 
 test("everyday combat narration from real sessions reads as combat", () => {

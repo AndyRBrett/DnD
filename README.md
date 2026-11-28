@@ -2,7 +2,7 @@
 
 A companion for our in-person D&D campaign. The DM speaks into one microphone on the host laptop; the host browser transcribes and publishes updates after pauses. Players join on their phones over the same Wi-Fi, pick their character, and see the current scene, earlier updates, their abilities, and two suggested actions.
 
-The two suggestions come from local rules in `src/scene-options.js`. They only suggest abilities recorded on the character's sheet, list `check` abilities without suggesting them, and leave outcomes to the DM. Players can also copy a prompt with their character and recent scenes into their own AI chat.
+The two suggestions come from local rules in `src/scene-options.js`. They only suggest abilities recorded on the character's sheet, list `check` abilities without suggesting them, and leave outcomes to the DM. Players can also copy a prompt into their own AI chat: their character and recent scenes, or the scene plus the whole party (every character's sheet and everything said and done at the table this session).
 
 ### Optional: Ask Claude
 

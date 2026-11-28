@@ -1,4 +1,4 @@
-import { recommend, coachingPrompt, characterAbilities, withoutSpent } from "./scene-options.js";
+import { recommend, coachingPrompt, partyPrompt, characterAbilities, withoutSpent } from "./scene-options.js";
 // A practice table is marked by its opening update (no database change), and
 // the device that started it also remembers it, in case 30+ updates push the
 // opening line out of view.
@@ -944,17 +944,20 @@ $("cancel").onclick = () => {
 };
 $("character").onchange = () => { showOptions(); sayHere(); if (state && !isHost) renderStory(); }; // a split party: each character has its own scene
 $("ask-claude").onclick = () => askClaude();
-$("copy-coach").onclick = async () => {
+async function copyForChat(wholeParty) {
   const character = selectedCharacter();
   if (!character || ended) return;
-  const prompt = coachingPrompt(withoutSpent(character, spentFor(Number($("character").value))), state.scenes);
+  const me = withoutSpent(character, spentFor(Number($("character").value)));
+  const prompt = wholeParty ? partyPrompt(me, state.party, state.scenes, state.actions ?? []) : coachingPrompt(me, state.scenes);
   try {
     await navigator.clipboard.writeText(prompt);
-    $("coach-status").textContent = "Copied. Paste into your D&D chat for a deeper answer.";
+    $("coach-status").textContent = (wholeParty ? "Copied the scene and the whole party." : "Copied.") + " Paste into your D&D chat for a deeper answer.";
   } catch {
     window.prompt("Copy this prompt into your D&D chat", prompt);
   }
-};
+}
+$("copy-coach").onclick = () => copyForChat(false);
+$("copy-party").onclick = () => copyForChat(true);
 $("copy").onclick = async () => {
   const shareLink = async href => {
     if (!navigator.share || !matchMedia("(pointer: coarse)").matches) return false;
