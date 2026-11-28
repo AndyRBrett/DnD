@@ -108,3 +108,12 @@ test("the site can be added to the home screen: manifest, icons, service worker"
   for (const url of wanted) assert.ok(shell.includes(url), url + " is precached");
   for (const url of shell.filter(url => url !== "./")) assert.ok((await readdir(new URL("../site/" + url.split("?")[0].replace(/[^/]+$/, ""), import.meta.url))).includes(url.split("?")[0].split("/").pop()), url + " exists");
 });
+
+test("the app starts last, after every constant a cached table draws with", async () => {
+  const app = await read("src/app.js");
+  const start = app.indexOf("if (room && (!backend.hosted || backend.user())) enterRoom();");
+  assert.ok(start > 0);
+  // A top-level const or let after the start is in its temporal dead zone when
+  // a cached snapshot is drawn at startup (round 6: the DM lost the DM tab).
+  assert.doesNotMatch(app.slice(start), /^(const|let) /m);
+});

@@ -705,7 +705,15 @@ function showCachedRoom() {
   if (state) return;
   const saved = readJson(roomCacheKey(), null);
   if (!saved?.state?.party || Date.now() - saved.at > tableAge) return;
-  try { applyRoom(saved.state, { cached: true }); } catch { state = undefined; }
+  try {
+    applyRoom(saved.state, { cached: true });
+  } catch (error) {
+    // Start over from the server's answer, host controls included: leaving
+    // isHost set would stop the live answer from showing the DM tab.
+    console.error(error);
+    state = undefined;
+    setHost(false);
+  }
 }
 
 function flashScene() {
@@ -6098,11 +6106,6 @@ $("home").onclick = () => {
   location.href = "./";
 };
 
-// Home-screen app (manifest.json + sw.js): installable, and opens offline.
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-
-if (room && (!backend.hosted || backend.user())) enterRoom();
-else showLobby(room ? "Sign in to join the table." : "");
 
 
 // ── Claude for the DM: enemies from a description, and the DM assistant ──
@@ -6275,3 +6278,12 @@ function drawSceneTo() {
   $("scene-to-note").hidden = !to;
   if (to) $("scene-to-note").textContent = "🔒 Updates go only to " + to.map(name => name.replace(/^The /, "")).join(", ") + " until you tap Everyone.";
 }
+
+// ── Start ── Last in the file: everything above (including constants a
+// cached table draws with at once, like the split-party To setting) must be
+// defined before the first draw.
+// Home-screen app (manifest.json + sw.js): installable, and opens offline.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+if (room && (!backend.hosted || backend.user())) enterRoom();
+else showLobby(room ? "Sign in to join the table." : "");
