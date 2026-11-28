@@ -3785,10 +3785,27 @@ const lastingUp = new Map();
 const lastingCast = new Map(); // "<index>:<name>" → the turn it was cast
 // Weapon attacks made this turn, per character, so the card can say "1 more
 // attack in this Attack action" (Extra Attack is easy to forget).
-const attacksMade = new Map();
+// What each character has used this turn is kept on this phone too, so a
+// reload mid-turn (a locked phone, switching apps while the DM calls the hit)
+// doesn't forget the action is spent: the turn guide still says End my turn.
+// Only the current turn's entries count (each carries its turn tag).
+function turnMemory(name) {
+  const key = "dnd-turn-" + name + ":" + room;
+  let saved = {};
+  try { saved = JSON.parse(storage.get(key) ?? "{}") ?? {}; } catch {}
+  const map = new Map(Object.entries(saved).map(([index, value]) => [Number(index), value]));
+  const set = map.set.bind(map);
+  map.set = (index, value) => {
+    set(index, value);
+    try { storage.set(key, JSON.stringify(Object.fromEntries(map))); } catch {}
+    return map;
+  };
+  return map;
+}
+const attacksMade = turnMemory("attacks");
 const turnTag = () => state?.combat ? state.combat.round + ":" + state.combat.turn : "";
 // Resource features used this turn (Living Shadow…), shown as used.
-const usedFeatures = new Map(); // character index → { turn, names }
+const usedFeatures = turnMemory("features"); // character index → { turn, names }
 const featuresThisTurn = index => { const entry = usedFeatures.get(index); return entry && entry.turn === turnTag() ? entry.names : []; };
 // Action Surge this turn: each one adds a whole Attack action.
 const surges = new Map(); // character index → { turn, count }
@@ -3806,7 +3823,7 @@ const turnsRunning = () => Boolean(state?.combat?.turn);
 // swing is another Attack action. free: part of another attack (the shadow's
 // copied throw) and costs nothing.
 let turnEndShown = ""; // "<character>@<turn>" already taken up to the turn card
-const turnUses = new Map(); // index → { tag, spells, attackActions, bonus, last, lastBonus }
+const turnUses = turnMemory("uses"); // index → { tag, spells, attackActions, bonus, last, lastBonus }
 const isBonusAction = attack => /bonus action/i.test(attack.note ?? "");
 function usesThisTurn(index) {
   const entry = turnUses.get(index);
