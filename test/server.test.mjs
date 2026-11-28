@@ -37,9 +37,9 @@ test("room lifecycle: create, read, publish, correct, edit party, close", async 
   const room = "/api/rooms/" + code;
 
   const first = await call(room);
-  assert.equal(first.body.party.length, 5);
+  assert.equal(first.body.party.length, 6);
   assert.deepEqual(first.body.party.map(member => member.name),
-    ["The White Wizard", "Arcturus", "Logan Ninefingers", "Dum Dum", "Roan the Last Shadow"]);
+    ["The White Wizard", "Arcturus", "Logan Ninefingers", "Dum Dum", "Roan the Last Shadow", "JPeso"]);
   assert.equal(first.body.scenes.length, 1);
 
   assert.equal((await post(room + "/scene", { text: "Roll initiative." })).status, 403);
@@ -59,7 +59,8 @@ test("room lifecycle: create, read, publish, correct, edit party, close", async 
   party[3].moves += "\ncombat | Grapple — confirmed by the DM.";
   assert.equal((await post(room + "/party", { party }, { "x-table-host": host })).status, 200);
   assert.match((await call(room)).body.party[3].moves, /Grapple/);
-  assert.equal((await post(room + "/party", { party: party.slice(0, 4) }, { "x-table-host": host })).status, 400);
+  assert.equal((await post(room + "/party", { party: [] }, { "x-table-host": host })).status, 400);
+  assert.equal((await post(room + "/party", { party: [...party, ...party] }, { "x-table-host": host })).status, 400, "up to eight");
 
   assert.equal((await post(room + "/close", {}, { "x-table-host": host })).status, 200);
   assert.equal((await call(room)).status, 404);
@@ -143,13 +144,13 @@ test("the player whose turn it is can pass it, in initiative order", async () =>
   assert.deepEqual((await post(room + "/pass-turn", { character: 0 })).body, { turn: "en:a", round: 1 }); // skips downed Bandit 3
   await post(room + "/combat", { round: 1, turn: "pc:2", enemies }, { "x-table-host": host });
   assert.deepEqual((await post(room + "/pass-turn", { character: 2 })).body, { turn: "en:b", round: 1 }); // party first on ties
-  await post(room + "/combat", { round: 3, turn: "pc:4", enemies }, { "x-table-host": host });
-  assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "pc:0", round: 4 }); // new round
+  await post(room + "/combat", { round: 3, turn: "pc:5", enemies }, { "x-table-host": host });
+  assert.deepEqual((await post(room + "/pass-turn", { character: 5 })).body, { turn: "pc:0", round: 4 }); // new round
   assert.equal((await call(room)).body.combat.turn, "pc:0");
   // A character sitting out is skipped.
   await post(room + "/combat", { sitOut: { character: 0, out: true } }, { "x-table-host": host });
-  await post(room + "/combat", { round: 4, turn: "pc:4", enemies }, { "x-table-host": host });
-  assert.deepEqual((await post(room + "/pass-turn", { character: 4 })).body, { turn: "en:a", round: 5 });
+  await post(room + "/combat", { round: 4, turn: "pc:5", enemies }, { "x-table-host": host });
+  assert.deepEqual((await post(room + "/pass-turn", { character: 5 })).body, { turn: "en:a", round: 5 });
 });
 
 test("tables stay open while there's activity, and close after 3 idle days", async () => {

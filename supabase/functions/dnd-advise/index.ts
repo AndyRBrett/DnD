@@ -47,7 +47,7 @@ Deno.serve(async req => {
     return await answerDm(req, reply, code, input.mode, prompt, typeof input.table === "string" ? input.table.slice(0, 3000) : "");
   }
   const character = Number(input.character);
-  if (!code || !Number.isInteger(character) || character < 0 || character > 4) return reply({ error: "Invalid request." }, 400);
+  if (!code || !Number.isInteger(character) || character < 0 || character > 7) return reply({ error: "Invalid request." }, 400);
   const question = typeof input.question === "string" ? input.question.trim().slice(0, 300) : "";
   // Abilities the player's phone says are out of uses ("Fireball: no 3rd-level
   // or higher spell slot left"). Advice that depends on them skips the cache.

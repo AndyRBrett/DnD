@@ -106,7 +106,7 @@ npm run table   # rooms saved to table.sqlite, so a restart mid-session keeps th
 
 1. Set the DM's mic as the laptop's input. In Chrome on the laptop, open `http://localhost:4173`, choose **Start a table**, then **Start listening**. Allow the mic and say a test line; it should appear under **Current scene**.
 2. Send players the **Share player link** URL. It uses the laptop's LAN address; if the laptop has several connections, use the matching **Players** address printed in the terminal and keep the `?room=…` part.
-3. Use **Character sheets and abilities** to edit the five profiles (The White Wizard, Arcturus, Logan Ninefingers, Dum Dum, Roan the Last Shadow). One ability per line: `tag | Name — cost, limits`. Tags: `combat`, `danger`, `explore`, `social`, `aid`, `any`, or `check` for anything not yet confirmed.
+3. Use **Character sheets and abilities** to edit the party (one to eight characters; the roster is The White Wizard, Arcturus, Logan Ninefingers, Dum Dum, Roan the Last Shadow, and JPeso). One ability per line: `tag | Name — cost, limits`. Tags: `combat`, `danger`, `explore`, `social`, `aid`, `any`, or `check` for anything not yet confirmed.
 4. Host controls: pause listening, type an update, correct the latest transcript, or turn off auto-publish. Host control survives closing and reopening the tab on the host laptop.
 5. **End room and delete session** when finished. Rooms close after eight hours with no new updates either way.
 

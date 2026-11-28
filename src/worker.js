@@ -281,7 +281,7 @@ const endpoints = {
   },
   async party(request, db, code) {
     const body = await request.json();
-    if (!Array.isArray(body.party) || body.party.length !== 5) return json({ error: "Enter five characters." }, 400);
+    if (!Array.isArray(body.party) || body.party.length < 1 || body.party.length > 8) return json({ error: "Enter one to eight characters." }, 400);
     const updated = body.party.map(entry => ({
       name: typeof entry?.name === "string" ? entry.name.trim().slice(0, 70) : "",
       role: typeof entry?.role === "string" ? entry.role.trim().slice(0, 90) : "",

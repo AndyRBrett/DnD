@@ -125,6 +125,35 @@ export const party = [
     "explore | Shadow vision — Bonus action: see (not hear) through the Living Shadow until the start of his next turn, his own eyes shut meanwhile. Not through closed doors.",
     "explore | Thieves' tools — +9, proficient: locks and traps.",
     "social | Languages — Common, Dwarvish, and Thieves' Cant."
+  ]),
+  profile("JPeso", "Hill Dwarf College of Lore bard · Level 10 · AC 14 · spell DC 16, +8", [
+    "combat | Vicious Mockery — Cantrip, 60 ft: DC 16 Wis save, 2d4 psychic and disadvantage on its next attack; nothing on a save. His favorite weapon.",
+    "combat | Dissonant Whispers — 1st-level slot: DC 16 Wis save, 3d6 psychic and it flees with its reaction; half and no flee on a save.",
+    "combat | Cutting Words — Reaction, 60 ft: spend a Bardic Inspiration, subtract a d10 from an enemy's attack, check, or damage roll after it rolls.",
+    "combat | Hideous Laughter, Hypnotic Pattern, Hold Monster — DC 16 Wis saves, concentration: take enemies out of the fight instead of fighting them.",
+    "combat | Haste, Greater Invisibility — Concentration: make an ally the dangerous one. Haste is a Magical Secret.",
+    "combat | Rapier — +6 to hit, 1d8+2 piercing. One attack per Attack action; he'd much rather talk.",
+    "combat | Dagger — +6 to hit, 1d4+2, thrown 20/60 ft.",
+    "danger | Counterspell — Magical Secret: reaction, stop a spell being cast within 60 ft.",
+    "danger | Invisibility, Dimension Door — For leaving a fight, or a bar tab, in a hurry.",
+    "danger | Dwarven Resilience — Advantage on saves against poison and resistance to poison damage: nobody drinks him under the table.",
+    "aid | Bardic Inspiration — Bonus action, 60 ft: an ally gets a d10 for one check, attack, or save in the next 10 minutes. 4 uses, back on a short rest.",
+    "aid | Healing Word — Bonus action, 60 ft, 1d4+4.",
+    "aid | Mass Cure Wounds — 5th-level slot: up to six creatures in a 30-ft sphere regain 3d8+4.",
+    "aid | Aura of Vitality — Magical Secret, 3rd-level, concentration: a bonus action each turn heals one creature within 30 ft for 2d6.",
+    "aid | Revivify — Magical Secret: needs 300 gp of diamonds.",
+    "aid | Song of Rest — Short rest: allies who spend Hit Dice regain an extra 1d8.",
+    "aid | Countercharm — Action: allies within 30 ft have advantage on saves against being frightened or charmed.",
+    "social | Persuasion, Deception, Performance — Expertise: +12 each. He has talked his way into, and out of, every bar in the city.",
+    "social | Insight — Expertise: +9. Knows when someone is bluffing at the table.",
+    "social | Charm Person, Suggestion, Calm Emotions, Friends — Talk magic. Suggestion lasts up to 8 hours.",
+    "social | Jack of All Trades — +2 to any ability check he isn't proficient in, initiative included.",
+    "explore | Perception, History, Investigation, Sleight of Hand — Proficient: +5, +4, +4, +6 (passive Perception 15).",
+    "explore | Minor Illusion, Prestidigitation — Cantrips. Prestidigitation chills a drink or warms it.",
+    "explore | Brewer's supplies — Proficient: names any drink's origin, strength, and whether someone has doctored it.",
+    "explore | Darkvision, Stonecunning — Hill dwarf traits.",
+    "any | Magical Secrets — Four spells from other classes: Counterspell, Haste, Revivify, Aura of Vitality.",
+    "any | Expertise — Persuasion, Deception, Performance, and Insight at double proficiency."
   ])
 ];
 
@@ -584,6 +613,109 @@ export const sheets = {
       "Shadow-made attacks (the copied Q, Shadow Slash, Death Mark) count as magical; his own wrist blades and shurikens don't.",
       "Languages: Common and Dwarvish (from the dwarf mage). Thieves' tools proficient (+9) and carried. 20 shurikens, picked up after a fight. No magic items.",
       "Shadow Energy stays at the recorded 3/6 until a rest."
+    ]
+  },
+  "JPeso": {
+    turnHint: "JPeso isn't a fighter: Vicious Mockery (action) plus Bardic Inspiration or Healing Word (bonus action) is a good turn, and Cutting Words is his reaction.",
+    attacks: [
+      { name: "Vicious Mockery", ability: "CHA", save: "Wis", dc: 16, addMod: false, damage: "2d4", type: "psychic", note: "Cantrip, 60 ft, the target must hear him. A failed save also gives it disadvantage on its next attack. Nothing on a save." },
+      { name: "Dissonant Whispers", ability: "CHA", slot: 1, upcast: "1d6", save: "Wis", dc: 16, addMod: false, damage: "3d6", type: "psychic", half: true, note: "1st-level slot, 60 ft. On a fail the target uses its reaction to run from him." },
+      { name: "Rapier", ability: "DEX", hit: 6, damage: "1d8+2", type: "piercing", note: "Finesse. One attack per Attack action: no Extra Attack." },
+      { name: "Dagger (thrown)", ability: "DEX", ranged: true, hit: 6, damage: "1d4+2", type: "piercing", note: "Thrown 20/60 ft; two carried." }
+    ],
+    attackOptions: [],
+    heals: [
+      { name: "Healing Word", slot: 1, upcast: "1d4", heal: "1d4+4", note: "Bonus action, 60 ft; 1d4 more for each slot level above 1st." },
+      { name: "Mass Cure Wounds", slot: 5, upcast: "1d8", multi: 6, heal: "3d8+4", note: "Action: up to six creatures in a 30-ft sphere each regain this. Everyone heals with one roll and one 5th-level slot; or pick one creature." },
+      { name: "Aura of Vitality", heal: "2d6", note: "Bonus action, each turn while it lasts: heal one creature within 30 ft. Casting it spends one 3rd-level slot (tap it under Spell slots) and concentration for 1 minute; these heals are free." }
+    ],
+    resources: [
+      { name: "Spell slots", slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, per: "long" },
+      { name: "Bardic Inspiration", max: 4, per: "short", covers: ["Bardic Inspiration", "Cutting Words"], note: "d10. Font of Inspiration: back on a short or long rest. Cutting Words uses the same dice." },
+      { name: "Healing potions", max: 2, per: "never", note: "2d4+2 each. Tap a dot back when you find more." }
+    ],
+    rolls: [["Spell save DC", "16"], ["Spell attack", "+8"], ["Vicious Mockery", "2d4"], ["Inspiration", "d10"], ["AC", "14"], ["Initiative", "+4"], ["Persuasion", "+12"], ["Deception", "+12"]],
+    title: "JPeso — College of Lore Bard",
+    note: "Built for his first game (2014 rules): standard array, Charisma raised at levels 4 and 8. A talker and a drinker, not a fighter.",
+    identity: [
+      ["Species", "Hill Dwarf: Darkvision 60 ft, Dwarven Resilience, Dwarven Toughness, Stonecunning; speed 25"],
+      ["Class", "Bard 10 (College of Lore)"],
+      ["Background", "Charlatan: the lounge singer at the Onyx Jewel casino, who knows every dealer, bartender, and debt in the building"],
+      ["Languages", "Common, Dwarvish, Halfling"],
+      ["Tools", "Brewer's supplies, lute, disguise kit, forgery kit"],
+      ["Role", "Face, support caster, crowd control, healer; avoids melee"],
+      ["Appearance", "A broad, red-bearded dwarf in a velvet waistcoat with more pockets than coins, a battered lute on his back, and a flask he swears is empty"],
+      ["Personality", "Never sober, never short of a story, never seen losing a drinking contest. Owes money to half the casino, and the other half owes him favors."],
+      ["Motto", "First round's on me. Second round's on whoever lost the bet."]
+    ],
+    abilities: [["STR", 8, -1], ["DEX", 14, 2], ["CON", 16, 3], ["INT", 10, 0], ["WIS", 13, 1], ["CHA", 18, 4]],
+    combat: [
+      ["Proficiency", "+4"],
+      ["AC", "14 (studded leather, Dex +2)"],
+      ["HP", "93 max (Dwarven Toughness)"],
+      ["Speed", "25 ft (heavy armor doesn't slow him)"],
+      ["Initiative", "+4 (Dex +2, Jack of All Trades +2)"],
+      ["Hit Dice", "10d8"],
+      ["Passive", "Perception 15 · Insight 19 · Investigation 14"],
+      ["Bardic Inspiration", "d10 · 4 per short rest"]
+    ],
+    saves: [["STR", "−1", ""], ["DEX", "+6", "proficient"], ["CON", "+3", ""], ["INT", "+0", ""], ["WIS", "+1", ""], ["CHA", "+8", "proficient"]],
+    skills: [
+      ["Acrobatics", "DEX", "+4", ""], ["Animal Handling", "WIS", "+3", ""], ["Arcana", "INT", "+2", ""],
+      ["Athletics", "STR", "+1", ""], ["Deception", "CHA", "+12", "expertise"], ["History", "INT", "+4", "proficient"],
+      ["Insight", "WIS", "+9", "expertise"], ["Intimidation", "CHA", "+6", ""], ["Investigation", "INT", "+4", "proficient"],
+      ["Medicine", "WIS", "+3", ""], ["Nature", "INT", "+2", ""], ["Perception", "WIS", "+5", "proficient"],
+      ["Performance", "CHA", "+12", "expertise"], ["Persuasion", "CHA", "+12", "expertise"], ["Religion", "INT", "+2", ""],
+      ["Sleight of Hand", "DEX", "+6", "proficient"], ["Stealth", "DEX", "+4", ""], ["Survival", "WIS", "+3", ""]
+    ],
+    spellcasting: [
+      ["Ability", "Charisma (+4)"],
+      ["Save DC", "16"],
+      ["Spell attack", "+8"],
+      ["Slots", "1st ×4 · 2nd ×3 · 3rd ×3 · 4th ×3 · 5th ×2"],
+      ["Cantrips", "Vicious Mockery, Friends, Minor Illusion, Prestidigitation"],
+      ["Spells known", "16 (14 bard, plus 2 more Magical Secrets from College of Lore)"],
+      ["Magical Secrets", "Counterspell, Haste, Revivify, Aura of Vitality"],
+      ["Bardic Inspiration", "d10, 4 per short rest; Cutting Words spends the same dice"]
+    ],
+    items: [
+      ["Studded leather armor", "AC 12 + Dex."],
+      ["Rapier and two daggers", "He owns them. He has rarely used them."],
+      ["Lute (\"Old Debts\")", "His spellcasting focus. Every scratch on it is a story he'll tell you."],
+      ["Bottomless-looking flask", "Dwarven stout. Not magical, however it seems. His Dwarven Resilience does the real work."],
+      ["IOU ledger", "Who owes JPeso, and whom JPeso owes. The second list is longer."],
+      ["Healing potions", "2 (2d4+2 each), tracked under Resources."]
+    ],
+    lists: [
+      ["Spells known (16)", [
+        "1st: Charm Person, Dissonant Whispers, Healing Word, Hideous Laughter",
+        "2nd: Calm Emotions, Invisibility, Suggestion",
+        "3rd: Hypnotic Pattern, Counterspell*, Haste*, Revivify*, Aura of Vitality*",
+        "4th: Dimension Door, Greater Invisibility",
+        "5th: Hold Monster, Mass Cure Wounds",
+        "* Magical Secrets"
+      ]],
+      ["A good turn", [
+        "Action: Vicious Mockery the biggest hitter (DC 16 Wis, 2d4 and disadvantage on its next attack).",
+        "Bonus action: Bardic Inspiration to whoever goes next, or Healing Word to whoever's down.",
+        "Reaction: Cutting Words when an enemy's attack would land (subtract a d10).",
+        "Big fight: Hypnotic Pattern on a crowd, or Haste on Logan or Dum Dum.",
+        "Only one concentration spell at a time: Haste, Hypnotic Pattern, Hold Monster, Greater Invisibility, Aura of Vitality, Suggestion, Hideous Laughter."
+      ]],
+      ["Out of combat", [
+        "Persuasion, Deception, and Performance at +12; Insight +9.",
+        "Suggestion: a reasonable request, followed for up to 8 hours on a failed Wis save.",
+        "Brewer's supplies: knows a drink, its strength, and whether someone has doctored it.",
+        "Song of Rest: allies spending Hit Dice on a short rest regain an extra 1d8."
+      ]]
+    ],
+    // Table defaults chosen where the sheet was open; the DM can change any of them.
+    defaults: [
+      "New player, built as a level 10 bard to match the party: standard array (15, 14, 13, 12, 10, 8) with hill dwarf bonuses, Charisma +2 at level 4 and Charisma +1 / Constitution +1 at level 8.",
+      "Max HP 93: d8 Hit Dice with Constitution +3, plus Dwarven Toughness.",
+      "College of Lore: three extra skills (Perception, History, Investigation), Cutting Words, and two extra Magical Secrets at level 6.",
+      "Full spell slots, 4 Bardic Inspiration, 2 healing potions. No magic items until the DM hands one out.",
+      "How he joins (the DM's call): the casino's lounge singer, he knows the croupiers by name and might talk the house into a deal."
     ]
   }
 };
