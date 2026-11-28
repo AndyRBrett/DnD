@@ -905,3 +905,38 @@ export function tidyModelText(text) {
   }
   return spaced;
 }
+
+// AI DM autopilot pace (out of a fight). Quick is the default: the DM
+// answers as soon as the rolls it asked for are in, or once a few posts have
+// come in, after a short beat. Patient waits for everyone at the table.
+export const AI_DM_PACES = {
+  quick: { others: 30000, beat: 3000, rollWait: 120000, posts: 3, rollsFirst: true },
+  normal: { others: 60000, beat: 6000, rollWait: 180000, posts: 4, rollsFirst: true },
+  patient: { others: 90000, beat: 12000, rollWait: 180000, posts: Infinity, rollsFirst: false }
+};
+// What the autopilot does now. owed: rolls still owed, each { who, label, age }
+// (ms since it was asked); fresh: new posts since the last DM turn, each
+// { name, roll, age } (roll: it answers a roll request); asked: who the last
+// DM turn asked to roll; present: who's at the table.
+// Returns { go: true, why } or { go: false, wait } (a line for the card).
+export function aiDmReady({ fresh = [], owed = [], asked = [], present = [], pace = "quick" }) {
+  const p = AI_DM_PACES[pace] ?? AI_DM_PACES.quick;
+  const short = name => String(name).replace(/^The /, "");
+  if (!fresh.length) {
+    return { go: false, wait: owed.length ? "waiting for " + owed.map(o => short(o.who) + "'s " + o.label).join(", ") + "." : "waiting for the players to act." };
+  }
+  const holding = owed.filter(o => o.age < p.rollWait);
+  if (holding.length) return { go: false, wait: "waiting for " + holding.map(o => short(o.who) + "'s " + o.label).join(", ") + "." };
+  const newest = Math.min(...fresh.map(post => post.age));
+  const oldest = Math.max(...fresh.map(post => post.age));
+  const settle = why => newest >= p.beat ? { go: true, why } : { go: false, wait: why.replace(/:.*/, "") + ": answering in a moment." };
+  // The rolls it asked for are all in: answer them now.
+  const rolled = new Set(fresh.filter(post => post.roll).map(post => post.name));
+  if (p.rollsFirst && asked.length && asked.every(name => rolled.has(name))) return settle("The rolls are in: took a DM turn.");
+  const acted = new Set(fresh.map(post => post.name));
+  const quiet = present.filter(name => !acted.has(name));
+  if (!quiet.length) return settle("Everyone had acted: took a DM turn.");
+  if (fresh.length >= p.posts) return settle(fresh.length + " new posts: took a DM turn.");
+  if (oldest >= p.others) return settle("Waited long enough: took a DM turn.");
+  return { go: false, wait: "waiting for " + quiet.map(short).join(", ") + " to act (or " + Math.ceil((p.others - oldest) / 1000) + "s)." };
+}

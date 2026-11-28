@@ -393,6 +393,8 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .claude-enemy{border:1px solid var(--border2);border-radius:12px;padding:12px;background:var(--card)}
 .claude-enemy p{margin:6px 0}
 .dm-ask-out{display:grid;gap:10px}
+.ai-dm-pace{display:grid;gap:6px;font-weight:600}
+.ai-dm-pace select{width:100%;max-width:100%}
 .ai-dm-rolls{display:grid;gap:8px;padding:12px;border:2px solid var(--gold);border-radius:12px}
 .dm-ask-out,.ai-dm-log,.ai-dm-rolls,#scene,.story-text{overflow-wrap:anywhere}
 .dm-jump{position:sticky;top:60px;z-index:40;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 12px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--border)}

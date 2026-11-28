@@ -473,6 +473,14 @@
               <textarea id="ai-dm-notes" rows="5" maxlength="3000" aria-label="Adventure notes" placeholder="The secret, the villain's goal, the scenes, what's behind each door. Leave empty and Claude improvises from the story."></textarea>
             </details>
             <label class="check"><input type="checkbox" id="ai-dm-auto"> Autopilot: take DM turns when everyone has acted, and run fights</label>
+            <label class="ai-dm-pace">Pace
+              <select id="ai-dm-pace">
+                <option value="quick">Quick</option>
+                <option value="normal">Normal</option>
+                <option value="patient">Patient</option>
+              </select>
+            </label>
+            <p id="ai-dm-pace-note" class="fineprint"></p>
             <p class="fineprint">Autopilot runs from this phone: keep this page open. In a fight it calls hits and misses, applies damage, runs the enemies' turns, and ends the fight when they're all down; anything that needs a ruling (rage, a save against an enemy's rider) waits for you.</p>
             <div id="ai-dm-rolls" class="ai-dm-rolls" hidden aria-live="polite"></div>
             <form id="ai-dm-form" class="stack">
