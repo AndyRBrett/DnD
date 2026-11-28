@@ -187,6 +187,10 @@ test("when Claude is the DM, the host's phone gets the player tools: roll reques
   assert.match(app, /const pending = !playsHere\(\) \|\| ended \|\| !state \? \[\] : pendingRollAsks\(me\);/);
   assert.match(app, /Array\.isArray\(state\?\.actions\) && playsHere\(\) && !ended && !onResult;/);
   assert.match(app, /form\.hidden = !combat \|\| !playsHere\(\) \|\| ended/);
+  // Damage to another of the host's characters still queues its concentration save; Rage, Action Surge, slots and rests are there too.
+  assert.match(app, /if \(previous && !previousCached && playsHere\(\)\) checkRemoteDamage\(previous, fresh\);/);
+  assert.match(app, /const hasResources = playsHere\(\);/);
+  assert.match(app, /box\.hidden = !items\.length \|\| !playsHere\(\);/);
   // DM-only tools stay host-only.
   assert.match(app, /tool\.hidden = !isHost \|\| ended \|\| !backend\.postAction/);
   assert.match(app, /if \(!isHost \|\| !combat \|\| !encounterLoaded\) \{ box\.hidden = true; return; \}/);

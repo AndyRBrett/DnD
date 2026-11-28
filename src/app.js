@@ -661,7 +661,7 @@ function applyRoom(fresh, { cached = false } = {}) {
   stateCached = cached;
   // Hurt by someone else while concentrating (the DM applied an enemy's hit).
   // Not against a cached snapshot: that damage may be hours old.
-  if (previous && !previousCached && !isHost) checkRemoteDamage(previous, fresh);
+  if (previous && !previousCached && playsHere()) checkRemoteDamage(previous, fresh);
   if (!cached) concentrationEndsAtZero();
   if (boardMode) queueMicrotask(drawBoard);
   if (JSON.stringify(previous?.combat) !== JSON.stringify(fresh.combat)) combatChanged(previous);
@@ -3553,7 +3553,7 @@ function drawHp() {
     $("hp-badge").textContent = "❤️ " + (record ? (health === "down" ? "DOWN" : record.hp + "/" + record.max + (record.temp ? " +" + record.temp : "")) : "Set HP");
     fillHp($("hp-sheet"), me);
     if (!$("hp-combat").hidden) fillHp($("hp-combat"), me);
-    const hasResources = !isHost; // rests for everyone, plus any limited features on the sheet
+    const hasResources = playsHere(); // rests for everyone, plus any limited features on the sheet
     $("res-sheet").hidden = !hasResources;
     $("res-combat").hidden = !hasResources || $("hp-combat").hidden;
     $("res-combat-fold").hidden = $("res-combat").hidden; // folded in a fight: the Attack card comes first
@@ -4052,7 +4052,7 @@ function drawTurnFeatures(me, sheet, res) {
       setTimeout(closeDice, 1200);
     }), !left));
   }
-  box.hidden = !items.length || isHost;
+  box.hidden = !items.length || !playsHere();
   if (!items.length) { box.replaceChildren(); return; }
   const label = document.createElement("span");
   label.className = "turn-features-label";
