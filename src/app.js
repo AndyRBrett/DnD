@@ -5535,6 +5535,12 @@ function setHost(value) {
   const claudeDm = isHost && Boolean(state?.ai) && !ended && Boolean(backend.dmAsk);
   $("claude-enemies").hidden = !claudeDm;
   $("dm-assistant").hidden = !claudeDm;
+  $("ai-dm").hidden = !claudeDm || !isPractice();
+  if (claudeDm && !isPractice()) checkPractice();
+  if (!$("ai-dm").hidden && !aiDmNotesLoaded) {
+    $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
+    aiDmNotesLoaded = true;
+  }
   // A DM account that opens a character's view gets no player tools: say why.
   for (const note of document.querySelectorAll(".host-player-note")) {
     note.hidden = !isHost;
@@ -6095,7 +6101,7 @@ $("signout").onclick = async () => {
 };
 $("join").onclick = () => enterRoom();
 function isPractice() {
-  return storage.get("practice:" + room) === "1" || Boolean(state?.scenes[0]?.text.startsWith(PRACTICE_MARK));
+  return state?.practice === true || storage.get("practice:" + room) === "1" || Boolean(state?.scenes[0]?.text.startsWith(PRACTICE_MARK));
 }
 $("create-practice").onclick = async () => {
   $("create-practice").disabled = true;
@@ -6294,6 +6300,60 @@ $("dm-ask-form").onsubmit = async event => {
   }
 };
 
+
+// ── AI DM (step 1): on a practice table, Claude takes one DM turn each time
+// the host taps "DM, go". Its narration and roll requests go out through the
+// same paths as the host's own update and "Ask for a roll"; its note to the
+// host stays on this phone. The adventure notes are kept on this phone too.
+const AI_DM_NOTES = () => "dnd-aidm-notes:" + room;
+let aiDmNotesLoaded = false;
+// The hosted room read doesn't say whether a table is a practice table, and
+// its opening "PRACTICE TABLE" update drops out of the latest 30 on a long
+// night. The host's own table list has the stored flag: ask it once.
+let practiceChecked = false;
+function checkPractice() {
+  if (practiceChecked || !backend.myRooms) return;
+  practiceChecked = true;
+  backend.myRooms().then(rooms => {
+    if (!rooms.find(entry => entry.code === room)?.practice) return;
+    storage.set("practice:" + room, "1");
+    setHost(isHost);
+  }).catch(() => { practiceChecked = false; });
+}
+$("ai-dm-notes").oninput = () => storage.set(AI_DM_NOTES(), $("ai-dm-notes").value);
+$("ai-dm-form").onsubmit = async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  $("ai-dm-status").textContent = "The AI DM is reading the table (up to a minute)…";
+  try {
+    const turn = await backend.dmAsk(room, "run", $("ai-dm-steer").value.trim(), dmTableState(), $("ai-dm-notes").value);
+    await backend.postScene(room, turn.to.length ? addressScene(turn.narration, turn.to) : turn.narration);
+    const asked = [];
+    const callOut = [];
+    for (const roll of turn.rolls) {
+      const index = (state?.party ?? []).findIndex(member => member.name === roll.character);
+      const label = roll.character.replace(/^The /, "") + ": " + roll.roll + (roll.dc ? " (" + (roll.roll === "Attack roll" ? "AC " : "DC ") + roll.dc + ")" : "");
+      if (index >= 0 && backend.postAction) {
+        await backend.postAction(room, index, rollAskText(roll.roll, roll.dc ? { kind: roll.roll === "Attack roll" ? "AC" : "DC", value: roll.dc } : null));
+        asked.push(label);
+      } else callOut.push(label);
+    }
+    $("ai-dm-steer").value = "";
+    $("ai-dm-out").replaceChildren(
+      element("p", "", "Posted" + (turn.to.length ? " to " + turn.to.map(name => name.replace(/^The /, "")).join(", ") : " to everyone") + ": “" + turn.narration + "”"),
+      ...(asked.length ? [element("p", "", "Asked for rolls: " + asked.join(" · "))] : []),
+      ...(callOut.length ? [element("p", "", "Call out these rolls: " + callOut.join(" · "))] : []),
+      ...(turn.hostNote ? [element("blockquote", "", "Only you see this: " + turn.hostNote)] : []));
+    $("ai-dm-out").hidden = false;
+    $("ai-dm-status").textContent = "Done. When the players have acted or rolled, tap DM, go again.";
+    await sync();
+  } catch (error) {
+    $("ai-dm-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
 
 // ── Who an update is for: everyone, or part of a split party. The choice
 // stays until the DM changes it, so a run of updates to the vault all go

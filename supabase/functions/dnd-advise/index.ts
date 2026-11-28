@@ -5,7 +5,7 @@
 // the room is live, and the limits allow it (or returns a cached answer). The
 // Claude call uses this project's ANTHROPIC_API_KEY secret; the answer is cached
 // with the service role. advice.js is a copy of src/advice.js (npm test checks).
-import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice, dmRequest, readEnemies, readDmHelp, refreshRecap } from "./advice.js";
+import { CLAUDE_URL, AdviceError, claudeRequest, readAdvice, dmRequest, readEnemies, readDmHelp, refreshRecap, aiDmRequest, readAiDm } from "./advice.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -37,19 +37,21 @@ Deno.serve(async req => {
   if (req.method !== "POST") return reply({ error: "Method unavailable." }, 405);
   if (!ANTHROPIC_API_KEY) return reply({ error: "Claude suggestions are off on this server." }, 503);
 
-  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown; table?: unknown; mode?: unknown; prompt?: unknown };
+  let input: { code?: unknown; character?: unknown; question?: unknown; spent?: unknown; table?: unknown; mode?: unknown; prompt?: unknown; notes?: unknown };
   try {
     input = await req.json();
   } catch {
     return reply({ error: "Invalid request." }, 400);
   }
   const code = typeof input.code === "string" && /^[a-f0-9]{24}$/.test(input.code) ? input.code : "";
-  // The DM's asks: enemies from a description, or the DM assistant.
-  if (input.mode === "enemies" || input.mode === "dm") {
+  // The DM's asks: enemies from a description, the DM assistant, or an AI DM
+  // turn ("run": practice tables only; the prompt is optional direction).
+  if (input.mode === "enemies" || input.mode === "dm" || input.mode === "run") {
     if (!code) return reply({ error: "Invalid request." }, 400);
     const prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 600) : "";
-    if (!prompt) return reply({ error: input.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
-    return await answerDm(req, reply, code, input.mode, prompt, typeof input.table === "string" ? input.table.slice(0, 3000) : "");
+    if (!prompt && input.mode !== "run") return reply({ error: input.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
+    const notes = typeof input.notes === "string" ? input.notes.slice(0, 3000) : "";
+    return await answerDm(req, reply, code, input.mode, prompt, typeof input.table === "string" ? input.table.slice(0, 3000) : "", notes);
   }
   const character = Number(input.character);
   if (!code || !Number.isInteger(character) || character < 0 || character > 7) return reply({ error: "Invalid request." }, 400);
@@ -229,7 +231,7 @@ async function answerQuestion(req: Request, reply: (body: unknown, status?: numb
 // Only the table's host: the player's token reads the room (dnd_room_v2 checks
 // they're signed in and the table is live, and says whether they host it).
 // Same daily and per-table limits as questions, counted as character -1.
-async function answerDm(req: Request, reply: (body: unknown, status?: number) => Response, code: string, mode: string, prompt: string, table: string) {
+async function answerDm(req: Request, reply: (body: unknown, status?: number) => Response, code: string, mode: string, prompt: string, table: string, notes = "") {
   const roomResponse = await fetch(SUPABASE_URL + "/rest/v1/rpc/dnd_room_v2", {
     method: "POST",
     headers: { apikey: ANON_KEY, Authorization: req.headers.get("Authorization") ?? "", "Content-Type": "application/json" },
@@ -239,6 +241,11 @@ async function answerDm(req: Request, reply: (body: unknown, status?: number) =>
   if (!roomResponse.ok) return reply({ error: room.message ?? "Could not reach the room." }, roomResponse.status);
   const uid = tokenSubject(req);
   if (!room.isHost || !/^[0-9a-f-]{36}$/.test(uid)) return reply({ error: "Only the DM can ask this." }, 403);
+  if (mode === "run") {
+    const rows = await fetch(SUPABASE_URL + "/rest/v1/dnd_rooms?select=practice&code=eq." + code, { headers: service })
+      .then(response => response.ok ? response.json() : []).catch(() => []);
+    if (rows[0]?.practice !== true) return reply({ error: "The AI DM runs on practice tables for now." }, 403);
+  }
 
   const since = (ms: number) => encodeURIComponent(new Date(Date.now() - ms).toISOString());
   if (await countUsage("created_at=gte." + since(86400000)) >= DAY_LIMIT) return reply({ error: "Claude suggestions are paused for today. Try again tomorrow." }, 429);
@@ -258,8 +265,21 @@ async function answerDm(req: Request, reply: (body: unknown, status?: number) =>
     const story = await loadStory(code);
     const recap = await currentRecap(code, story);
     const party = (room.party ?? []).map((member: { name: string; role?: string }) => ({ name: member.name, role: member.role ?? "" }));
+    const scenes = story.scenes.length ? story.scenes : room.scenes ?? [];
+    const actions = story.actions.length ? story.actions : room.actions ?? [];
+    if (mode === "run") {
+      // The AI DM reads the full sheets: what each character can do and their skills.
+      const sheets = (room.party ?? []).map((member: { name: string; role?: string; moves?: string }) => ({ name: member.name, role: member.role ?? "", moves: member.moves ?? "" }));
+      const response = await fetch(CLAUDE_URL, {
+        ...aiDmRequest(ANTHROPIC_API_KEY, { scenes, history: story.history, actions, party: sheets, notes, prompt, table, recap }),
+        signal: AbortSignal.timeout(90000)
+      });
+      const turn = await readAiDm(response, sheets, tokens.onUsage);
+      await tokens.flush();
+      return reply(turn);
+    }
     const response = await fetch(CLAUDE_URL, {
-      ...dmRequest(ANTHROPIC_API_KEY, mode, { scenes: story.scenes.length ? story.scenes : room.scenes ?? [], history: story.history, actions: story.actions.length ? story.actions : room.actions ?? [], party, prompt, table, recap }),
+      ...dmRequest(ANTHROPIC_API_KEY, mode, { scenes, history: story.history, actions, party, prompt, table, recap }),
       signal: AbortSignal.timeout(60000)
     });
     const answer = mode === "enemies" ? await readEnemies(response, tokens.onUsage) : await readDmHelp(response, tokens.onUsage);

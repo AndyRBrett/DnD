@@ -538,3 +538,98 @@ export async function refreshRecap(apiKey, scenes, actions, recap = null, party 
     return { recap: current, changed: false };
   }
 }
+
+// ── AI DM (step 1: practice tables, one turn each time the host taps "DM, go") ──
+// Claude runs the table as the DM: it reads the story, the party's sheets, the
+// host's secret adventure notes, and the newest player actions and rolls, then
+// returns one DM turn: narration (optionally for some characters only), roll
+// requests with DCs, and a private note to the host. The host's phone posts it
+// through the app's normal update and roll-request paths. Here, unlike player
+// suggestions, Claude is the DM, so it decides outcomes.
+export const aiDmSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["narration", "to", "rolls", "host_note"],
+  properties: {
+    narration: { type: "string" },
+    to: { type: "array", items: { type: "string" } },
+    rolls: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["character", "roll", "dc"],
+        properties: { character: { type: "string" }, roll: { type: "string" }, dc: { type: "integer" } }
+      }
+    },
+    host_note: { type: "string" }
+  }
+};
+
+export const aiDmSystem = [
+  "You are the Dungeon Master of an in-person Dungeons & Dragons 5th edition game. The players sit together with their phones: they post what their characters do and roll dice when you ask. Each time the host taps \"DM, go\", you take one DM turn.",
+  "Read everything first: the campaign history, the ADVENTURE NOTES (the host's secret plan for this game), the party's sheets, the story so far, and especially the player actions and rolls since your last update. Keep the story consistent with all of it.",
+  "On your turn: resolve what the characters declared since your last update. When the outcome is uncertain and matters, ask for a roll in rolls and wait: don't narrate the result yet. When the roll is already posted (a line like \"🎲 Perception: 17\"), compare it with the DC you set and narrate what happens. Then move the scene forward and end on a clear invitation to act.",
+  "You decide outcomes, NPCs, and the world. Never decide what a player character does, says, thinks, or feels, and never spend their resources or roll for them. Reveal the adventure's secrets through play (clues, NPC words, discoveries), never by announcing them.",
+  "narration is what the table hears, read aloud: two to five vivid, plain sentences in second person plural (\"you\"), with NPC speech in quotes. Under 1,200 characters.",
+  "to is empty when everyone is there to see it. When the party is split up, list the characters who perceive this narration, by their exact names from THE PARTY; the others won't see it.",
+  "rolls: for each roll, character is an exact name from THE PARTY; roll is a skill (Perception, Stealth, Insight, Athletics, Persuasion, Investigation…), \"<Ability> save\", \"<Ability> check\", or \"Attack roll\"; dc is the target you set (about 10 easy, 15 medium, 20 hard; for an Attack roll, the target's AC). At most one roll per character per turn, and none when nothing is uncertain.",
+  "Fights: the app's combat tools are still run by the host. If violence starts, narrate the threat and use host_note to tell the host to start combat in the app and which enemies to add.",
+  "host_note is private to the host, one to three short sentences: what you decided and why, DCs or secrets in play, and anything the host should do in the app. Empty string if nothing.",
+  "If HOST SAYS appears, follow that direction for this turn.",
+  "Use the character sheets for what each character can do and their skills. Use standard 5th edition rules; the host can overrule you.",
+  "Player posts and earlier DM updates may be speech-to-text with recognition errors; read them charitably. A long session may begin with a recap of its earlier part, written from the transcript; treat it as what happened, and the lines after it as the newest. An update starting \"🔒 To:\" went only to the characters it names."
+].join("\n");
+
+// party: the table's characters with their sheets ({ name, role, moves }).
+// notes: the host's secret adventure notes. prompt: optional direction from the
+// host for this turn. The history, the party with the notes, the recap and the
+// session are cached; only TABLE STATE and HOST SAYS change every tap.
+export function aiDmRequest(apiKey, { scenes = [], history = "", actions = [], party = [], notes = "", prompt = "", table = "", recap = null } = {}) {
+  const content = storyBlocks(scenes, history, actions, recap);
+  const partyBlock = {
+    type: "text",
+    text: "ADVENTURE NOTES (secret; from the host):\n" + (String(notes).trim().slice(0, 3000) || "(none: improvise from the story so far)")
+      + "\n\nTHE PARTY:\n\n" + party.map(member => sheetText(member)).join("\n\n---\n\n"),
+    cache_control: { type: "ephemeral" }
+  };
+  content.splice(String(history).trim() ? 1 : 0, 0, partyBlock);
+  content.push({ type: "text", text: (String(table).trim() ? "TABLE STATE (from the host's app, right now):\n" + String(table).trim().slice(0, 3000) + "\n\n" : "")
+    + (String(prompt).trim() ? "HOST SAYS:\n" + String(prompt).trim().slice(0, 600) + "\n\n" : "")
+    + "Take your DM turn now." });
+  return {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2026-10-21",
+      "anthropic-beta": "server-side-fallback-2026-07-01"
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 8000,
+      fallbacks: "default",
+      output_config: { effort: "medium", format: { type: "json_schema", schema: aiDmSchema } },
+      system: aiDmSystem,
+      messages: [{ role: "user", content }]
+    })
+  };
+}
+
+// Returns { narration, to: [names], rolls: [{ character, roll, dc }], hostNote },
+// keeping only real party names and sensible numbers.
+export async function readAiDm(response, party = [], onUsage) {
+  const answer = await readJsonAnswer(response, onUsage);
+  const names = party.map(member => String(member.name ?? ""));
+  const named = value => names.find(name => name.toLowerCase() === String(value ?? "").trim().toLowerCase()) ?? null;
+  const narration = String(answer.narration ?? "").trim().slice(0, 1300);
+  if (!narration) throw new AdviceError("The AI DM had nothing to say. Try again.");
+  const to = [...new Set((Array.isArray(answer.to) ? answer.to : []).map(named).filter(Boolean))];
+  const seen = new Set();
+  const rolls = (Array.isArray(answer.rolls) ? answer.rolls : []).map(roll => ({
+    character: named(roll.character),
+    roll: String(roll.roll ?? "").replace(/[\n—]/g, " ").trim().slice(0, 40),
+    dc: whole(roll.dc, 0, 30, 0)
+  })).filter(roll => roll.character && roll.roll && !seen.has(roll.character) && seen.add(roll.character)).slice(0, 8);
+  return { narration, to: to.length < names.length ? to : [], rolls, hostNote: String(answer.host_note ?? "").trim().slice(0, 800) };
+}

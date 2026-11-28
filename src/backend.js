@@ -73,7 +73,7 @@ function localBackend() {
           const state = await call("/" + code);
           const times = state.scenes.map(scene => scene.created);
           return { code, created: Math.min(...times), active: Math.max(...times),
-            practice: storage.get("practice:" + code) === "1" || state.scenes[0]?.text.startsWith("PRACTICE TABLE") };
+            practice: state.practice === true || storage.get("practice:" + code) === "1" || state.scenes[0]?.text.startsWith("PRACTICE TABLE") };
         } catch (error) {
           if (error.status === 404) storage.remove("host:" + code);
           return null;
@@ -99,7 +99,7 @@ function localBackend() {
     combatPassTurn: (code, character) => post(code, "pass-turn", { character }, false),
     combatSitOut: (code, character, out) => post(code, "combat", { sitOut: { character, out: Boolean(out) } }),
     // The DM's Claude asks: "enemies" (stat blocks from a description) or "dm" (the assistant).
-    dmAsk: (code, mode, prompt, table = "") => post(code, "advise", { mode, prompt, table }),
+    dmAsk: (code, mode, prompt, table = "", notes = "") => post(code, "advise", { mode, prompt, table, notes }),
     combatInitiative: (code, character, value) => post(code, "initiative", { character, value }, false)
   };
 }
@@ -235,11 +235,11 @@ function hostedBackend({ url, anonKey }) {
       catch (error) { if (/could not find the function/i.test(error.message)) return null; throw error; }
     },
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
-    async dmAsk(code, mode, prompt, table = "") {
+    async dmAsk(code, mode, prompt, table = "", notes = "") {
       const response = await fetch(url + "/functions/v1/dnd-advise", {
         method: "POST",
         headers: { apikey: anonKey, Authorization: "Bearer " + await token(), "content-type": "application/json" },
-        body: JSON.stringify({ code, mode, prompt, table })
+        body: JSON.stringify({ code, mode, prompt, table, notes })
       });
       const data = await readJson(response);
       if (!response.ok) throw failure(data?.error ?? data?.message, response.status);

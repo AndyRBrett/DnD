@@ -59,7 +59,8 @@ async function askClaude(apiKey, code, character, scenes, party, question = "", 
 async function dmAsk(request, db, room, code, env, body) {
   if (request.headers.get("x-table-host") !== room.host) return json({ error: "Only the DM can ask this." }, 403);
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 600) : "";
-  if (!prompt) return json({ error: body.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
+  if (!prompt && body.mode !== "run") return json({ error: body.mode === "enemies" ? "Describe the enemies you want." : "Ask the assistant something." }, 400);
+  if (body.mode === "run" && !room.practice) return json({ error: "The AI DM runs on practice tables for now." }, 403);
   const usage = aiUsage.get(code) ?? { count: 0, last: new Map() };
   if (usage.count >= AI_ROOM_LIMIT) return json({ error: "This session has used its Claude suggestions." }, 429);
   if (Date.now() - (usage.last.get(-1) ?? 0) < AI_COOLDOWN) return json({ error: "One moment — Claude was just asked." }, 429);
@@ -72,6 +73,12 @@ async function dmAsk(request, db, room, code, env, body) {
   try {
     const scenes = results.reverse();
     const recap = await currentRecap(env.ANTHROPIC_API_KEY, code, scenes, party);
+    if (body.mode === "run") {
+      const sheets = importHistory(JSON.parse(room.party)).map(member => ({ name: member.name, role: member.role, moves: member.moves }));
+      const notes = typeof body.notes === "string" ? body.notes.slice(0, 3000) : "";
+      const response = await fetch(CLAUDE_URL, { ...aiDmRequest(env.ANTHROPIC_API_KEY, { scenes, party: sheets, notes, prompt, table, recap }), signal: AbortSignal.timeout(90000) });
+      return json(await readAiDm(response, sheets, logTokens("run")));
+    }
     const response = await fetch(CLAUDE_URL, { ...dmRequest(env.ANTHROPIC_API_KEY, body.mode, { scenes, party, prompt, table, recap }), signal: AbortSignal.timeout(60000) });
     return json(body.mode === "enemies" ? await readEnemies(response, logTokens(body.mode)) : await readDmHelp(response, logTokens(body.mode)));
   } catch (error) {
@@ -119,14 +126,14 @@ const endpoints = {
       .map(entry => ({ character: entry.character, seconds: Math.round((now - entry.at) / 1000) }))
       .sort((a, b) => a.character - b.character);
     return json({
-      party, hp, resources, here, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      party, hp, resources, here, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY), practice: Boolean(room.practice),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
     });
   },
   async advise(request, db, room, code, env) {
     if (!env.ANTHROPIC_API_KEY) return json({ error: "Claude suggestions are off on this server." }, 404);
     const body = await request.json();
-    if (body.mode === "enemies" || body.mode === "dm") return await dmAsk(request, db, room, code, env, body);
+    if (body.mode === "enemies" || body.mode === "dm" || body.mode === "run") return await dmAsk(request, db, room, code, env, body);
     const index = Number(body.character);
     const party = importHistory(JSON.parse(room.party));
     const character = party[index];

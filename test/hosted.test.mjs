@@ -142,3 +142,20 @@ test("Claude costs: the token log and recaps are service-only, and every path us
   const worker = await read("src/worker.js");
   assert.match(worker, new RegExp("const AI_ROOM_LIMIT = " + tableLimit + ";"));
 });
+
+test("the AI DM's hosted turn is host-only and practice-only", async () => {
+  const edge = await read("supabase/functions/dnd-advise/index.ts");
+  const dm = edge.slice(edge.indexOf("async function answerDm"));
+  assert.ok(dm.indexOf("Only the DM can ask this.") < dm.indexOf('if (mode === "run")'));
+  assert.match(dm, /if \(rows\[0\]\?\.practice !== true\) return reply\(\{ error: "The AI DM runs on practice tables for now\." \}, 403\);/);
+  assert.ok(dm.indexOf("practice !== true") < dm.indexOf("dnd_ai_usage"));
+});
+
+test("the AI DM card finds a practice table from the stored flag, not just this phone or the opening update", async () => {
+  const app = await read("src/app.js");
+  assert.match(app, /return state\?\.practice === true \|\| storage\.get\("practice:" \+ room\) === "1"/);
+  const check = app.slice(app.indexOf("function checkPractice()"));
+  assert.match(check.slice(0, 600), /backend\.myRooms\(\)\.then\(rooms => \{\n    if \(!rooms\.find\(entry => entry\.code === room\)\?\.practice\) return;/);
+  const sql = await read("supabase/migrations/0017_dnd_longer_idle.sql");
+  assert.match(sql, /'practice', practice/);
+});

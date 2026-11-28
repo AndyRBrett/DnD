@@ -398,3 +398,65 @@ test("editing or deleting a line the recap covers drops it, and the next recap s
   assert.match(sent[0].messages[0].content, /called Vael/);
   assert.equal(fresh.recap.sig, storySignature(edited, [], fresh.recap.uptoAt));
 });
+
+// ── AI DM (step 1) ──
+const sheetsFor = ["The White Wizard", "Arcturus"].map(name => ({ name, role: "Level 10", moves: "explore | Perception — +8" }));
+
+test("an AI DM turn carries the sheets and secret notes (cached), the newest rolls, and the host's direction", async () => {
+  const { aiDmRequest, aiDmSystem } = await import("../src/advice.js");
+  const scenes = [{ id: 1, text: "You stand before the vault door.", created: 10 }];
+  const actions = [{ name: "Arcturus", text: "🎲 Perception: 17 (table dice: 11 + 6)", created: 20 }];
+  const body = JSON.parse(aiDmRequest("k", { scenes, history: "Earlier: the casino.", actions, party: sheetsFor, notes: "The mage is behind the mirror.", prompt: "Make it tense.", table: "Round 1" }).body);
+  const blocks = body.messages[0].content;
+  assert.equal(body.system, aiDmSystem);
+  assert.equal(body.output_config.format.schema.required.join(), "narration,to,rolls,host_note");
+  assert.match(blocks[0].text, /^CAMPAIGN HISTORY/);
+  assert.match(blocks[1].text, /^ADVENTURE NOTES \(secret; from the host\):\nThe mage is behind the mirror\./);
+  assert.match(blocks[1].text, /Character: Arcturus \(Level 10\)/);
+  assert.ok(blocks[1].cache_control);
+  assert.match(blocks.map(block => block.text).join("\n"), /Arcturus \(player\): 🎲 Perception: 17/);
+  assert.match(blocks.at(-1).text, /HOST SAYS:\nMake it tense\./);
+  assert.ok(blocks.filter(block => block.cache_control).length <= 4);
+  assert.match(aiDmSystem, /You decide outcomes/);
+  assert.match(aiDmSystem, /Never decide what a player character does/);
+});
+
+test("an AI DM turn keeps only real names, one roll each, and sensible DCs", async () => {
+  const { readAiDm } = await import("../src/advice.js");
+  const used = [];
+  const answer = { narration: "The door groans. \"Who goes there?\"", to: ["arcturus", "Nobody"], host_note: "DC 15: the guard is bribable.",
+    rolls: [{ character: "Arcturus", roll: "Insight", dc: 15 }, { character: "Arcturus", roll: "Stealth", dc: 12 }, { character: "Ghost", roll: "Perception", dc: 10 }, { character: "The White Wizard", roll: "Wisdom save", dc: 99 }] };
+  const turn = await readAiDm(Response.json({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { output_tokens: 300 }, content: [{ type: "text", text: JSON.stringify(answer) }] }), sheetsFor, usage => used.push(usage));
+  assert.deepEqual(turn.to, ["Arcturus"]);
+  assert.deepEqual(turn.rolls, [{ character: "Arcturus", roll: "Insight", dc: 15 }, { character: "The White Wizard", roll: "Wisdom save", dc: 30 }]);
+  assert.equal(turn.hostNote, "DC 15: the guard is bribable.");
+  assert.equal(used[0].output_tokens, 300);
+  // Everyone named is the same as everyone.
+  const all = await readAiDm(Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ ...answer, to: ["Arcturus", "The White Wizard"] }) }] }), sheetsFor);
+  assert.deepEqual(all.to, []);
+  await assert.rejects(readAiDm(Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ ...answer, narration: " " }) }] }), sheetsFor), /nothing to say/);
+});
+
+test("local server: the AI DM is host-only and practice-only", async () => {
+  const env = { DB: openDatabase(), ANTHROPIC_API_KEY: "test-key" };
+  const call = async (path, init = {}) => {
+    const response = await worker.fetch(new Request("http://localhost" + path, init), env);
+    return { status: response.status, body: await response.json() };
+  };
+  const ask = (code, headers = {}) => call("/api/rooms/" + code + "/advise", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ mode: "run", prompt: "", notes: "Secret: the mirror." }) });
+  reply = () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ narration: "The vault hums.", to: [], rolls: [{ character: "Arcturus", roll: "Perception", dc: 15 }], host_note: "" }) }] });
+  const campaign = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  assert.equal((await ask(campaign.code, { "x-table-host": campaign.host })).status, 403);
+  const practice = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create", "x-table-practice": "1" } })).body;
+  // The room says whether it's a practice table, whatever its first update was.
+  assert.equal((await call("/api/rooms/" + practice.code)).body.practice, true);
+  assert.equal((await call("/api/rooms/" + campaign.code)).body.practice, false);
+  assert.equal((await ask(practice.code)).status, 403);
+  const turn = await ask(practice.code, { "x-table-host": practice.host });
+  assert.equal(turn.status, 200);
+  assert.equal(turn.body.narration, "The vault hums.");
+  assert.deepEqual(turn.body.rolls, [{ character: "Arcturus", roll: "Perception", dc: 15 }]);
+  const sent = requests.at(-1).body;
+  assert.equal(sent.system.startsWith("You are the Dungeon Master"), true);
+  assert.match(sent.messages[0].content.map(block => block.text).join("\n"), /Secret: the mirror\./);
+});
