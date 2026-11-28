@@ -339,7 +339,7 @@ export default {
     try {
       if (!env.DB) return json({ error: "Room storage is unavailable." }, 503);
       if (url.pathname === "/api/rooms" && request.method === "POST") return await endpoints.create(request, env.DB);
-      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn|here))?$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([a-f0-9]{24})(?:\/(scene|party|close|advise|combat|initiative|hp|hp-adjust|resources|pass-turn|here|session))?$/);
       if (!match) return json({ error: "Invalid room link." }, 404);
       const [, code, operation] = match;
       // Open until 3 days after the last activity (any change that succeeds).
@@ -348,6 +348,11 @@ export default {
       if (!room) return json({ error: "This room has ended or expired." }, 404);
       room.code = code;
       if (!operation && request.method === "GET") return await endpoints.state(env.DB, room, code, env);
+      // The whole session for "Copy scene + whole party"; reading isn't activity.
+      if (operation === "session" && request.method === "GET") {
+        const { results } = await env.DB.prepare("SELECT id, text, created FROM scenes WHERE code = ? ORDER BY id DESC LIMIT 2000").bind(code).all();
+        return json({ scenes: results.reverse(), actions: [] });
+      }
       // A phone saying who it's playing isn't table activity: it doesn't keep the table open.
       if (operation === "here" && request.method === "POST") return await endpoints.here(request, room, code);
       const response = await roomChange(request, env, room, code, operation);

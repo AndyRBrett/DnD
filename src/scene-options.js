@@ -244,3 +244,26 @@ export function coachingPrompt(character, scenes) {
     "First tell me in a sentence or two what you think the DM is building toward, using our campaign history and these updates (as a theory, not a fact). Then give me two or three concrete options for this scene that also move us toward that bigger picture, including action economy, cost, concentration, or range where relevant. Flag assumptions, distinguish possible actions from DM-confirmed outcomes, and do not invent resources or rules."
   ].join("\n\n");
 }
+
+// The whole table in one prompt: every character's sheet and the whole
+// session so far, DM updates and what each character did, oldest first.
+// `me` is the player's own character (already trimmed of spent abilities).
+// A split-party update keeps its "🔒 To: …" audience so the AI knows who saw it.
+export function partyPrompt(me, party, scenes, actions = [], { partial = false } = {}) {
+  const sheet = character => "### " + character.name + (character.role ? " (" + character.role + ")" : "")
+    + (character.name === me.name ? " (this is me)" : "") + "\n"
+    + (String(character.moves ?? "").trim() || "(no abilities recorded)");
+  const story = [
+    ...(scenes ?? []).map(scene => ({ at: Number(scene.created) || 0, order: 0, line: "DM: " + String(scene.text ?? "").replace(/^🔒 To: ([^\n]*)\n/u, "(only to $1) ") })),
+    ...(actions ?? []).map(action => ({ at: Number(action.created) || 0, order: 1, line: (action.name || "A player") + ": " + action.text }))
+  ].sort((a, b) => a.at - b.at || a.order - b.order).map(entry => "- " + entry.line);
+  return [
+    "Help me decide what my D&D character can do next. Use our campaign context if you have it.",
+    "I play " + me.name + ". Everyone at the table:",
+    party.map(character => sheet(character.name === me.name ? me : character)).join("\n\n"),
+    (partial ? "The latest of this session (earlier updates aren't included), oldest to newest" : "This session so far, oldest to newest")
+      + " (DM updates and what each character did; live speech-to-text, may have errors):\n"
+      + (story.length ? story.join("\n") : "(nothing yet)"),
+    "First tell me in a sentence or two what you think the DM is building toward, using our campaign history and this session (as a theory, not a fact). Then give me two or three concrete options for " + me.name + " in this scene that also move us toward that bigger picture, and say how they work with what the rest of the party can do. Include action economy, cost, concentration, or range where relevant. Only suggest abilities on a sheet above, flag assumptions, distinguish possible actions from DM-confirmed outcomes, and leave outcomes to the DM."
+  ].join("\n\n");
+}
