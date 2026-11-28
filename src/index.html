@@ -341,11 +341,11 @@
           <a id="board-link" class="board-link" target="_blank" rel="noopener">📺 Open the TV board</a>
           <button id="mic" class="cta" type="button">Start listening</button>
           <p id="mic-status" role="status">Set the phone or mic close to the DM. Keep this page open and in front while listening; the screen stays on.</p>
+          <div id="scene-to-note" class="scene-to-note" role="status" hidden></div>
           <details id="manual-controls" class="fold">
             <summary>Transcript and manual updates</summary>
             <label class="check"><input type="checkbox" id="auto" checked> Publish automatically</label>
             <div id="scene-to" class="chips scene-to" role="group" aria-label="Who this update is for"></div>
-            <p id="scene-to-note" class="fineprint scene-to-note" hidden></p>
             <textarea id="draft" rows="3" maxlength="1500" aria-label="Scene update" placeholder="Live transcript or a quick scene update"></textarea>
             <div class="controls"><button id="publish" class="ghost" type="button">Publish update</button><button id="cancel" class="quiet" type="button" hidden>Cancel edit</button></div>
           </details>

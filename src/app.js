@@ -759,7 +759,7 @@ function clearPublishTimers() {
 // been quiet for a while, and cap continuous speech at one update every ~9 s.
 function queuePublish(delay) {
   clearTimeout(publishTimer);
-  if ($("auto").checked && !editId && !ended) {
+  if ($("auto").checked && !editId && !ended && !sceneTo()) {
     const words = $("draft").value.trim().split(/\s+/).filter(Boolean).length;
     const short = words < 5;
     publishTimer = setTimeout(() => publish(true), short ? Math.max(delay, 7000) : delay);
@@ -769,6 +769,9 @@ function queuePublish(delay) {
 
 async function publish(automatic = false) {
   if (writing || ended || (automatic && (!$("auto").checked || editId))) return;
+  // Speech never goes out privately on its own: with To set to part of the
+  // party, the transcript waits in the draft for the DM's Publish update.
+  if (automatic && sceneTo()) { $("manual-controls").open = true; return; }
   const text = $("draft").value.trim();
   if (!text) {
     if (!automatic) {
@@ -6294,7 +6297,9 @@ $("dm-ask-form").onsubmit = async event => {
 
 // ── Who an update is for: everyone, or part of a split party. The choice
 // stays until the DM changes it, so a run of updates to the vault all go
-// there, and a note above the draft says so. ──
+// there. While it's private, a banner by the mic says so (with a one-tap way
+// back to everyone), and speech isn't published on its own: the DM taps
+// Publish update for each private update. ──
 const SCENE_TO = () => "dnd-scene-to:" + room;
 function sceneTo() {
   const picked = readJson(SCENE_TO(), []);
@@ -6322,8 +6327,19 @@ function drawSceneTo() {
       const on = Boolean(to?.includes(name));
       return chip(name.replace(/^The /, ""), on, () => set(on ? to.filter(other => other !== name) : [...(to ?? []), name]), (on ? "Stop sending to " : "Send only to ") + name);
     }));
-  $("scene-to-note").hidden = !to;
-  if (to) $("scene-to-note").textContent = "🔒 Updates go only to " + to.map(name => name.replace(/^The /, "")).join(", ") + " until you tap Everyone.";
+  // Shown by the mic, outside the fold, so a private To is never missed.
+  const note = $("scene-to-note");
+  note.hidden = !to;
+  if (!to) return;
+  clearPublishTimers();
+  $("manual-controls").open = true;
+  const everyone = document.createElement("button");
+  everyone.type = "button";
+  everyone.className = "ghost";
+  everyone.textContent = "Send to everyone";
+  everyone.onclick = () => set([]);
+  note.replaceChildren(element("span", "", "🔒 Private: updates go only to " + to.map(name => name.replace(/^The /, "")).join(", ")
+    + ". Speech waits in the draft until you tap Publish update."), everyone);
 }
 
 // ── Start ── Last in the file: everything above (including constants a
