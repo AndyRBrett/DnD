@@ -539,6 +539,7 @@ function showTab(name) {
   if (name === "scene") $("tab-scene").classList.remove("has-news");
   else if (state) drawAiDmRolls(); // rolls still owed: the Scene tab keeps its dot
   $("char-bar").hidden = name === "dm";
+  if (name === "dm") drawDmJump();
   storage.set(TAB_KEY, name);
   window.scrollTo({ top: 0 });
 }
@@ -609,6 +610,7 @@ async function sync() {
     applyRoom(fresh);
     cacheRoom(fresh);
     aiDmTick();
+    if (currentTab === "dm") drawDmJump();
   } catch (error) {
     // The server says the table is gone (ended, or idle for 3 days). It can
     // answer with 404 or 400 depending on the error code, so read the message.
@@ -6624,6 +6626,23 @@ function aiDmFightStep(now) {
     return true;
   }
   return false;
+}
+
+// ── DM tab shortcuts: a chip per card that's showing; a tap scrolls to it
+// (and opens it, if it folds), so the DM doesn't scroll past everything. ──
+function drawDmJump() {
+  for (const chip of $("dm-jump").querySelectorAll("[data-jump]")) {
+    const target = $(chip.dataset.jump);
+    chip.hidden = !target || target.hidden;
+  }
+}
+for (const chip of $("dm-jump").querySelectorAll("[data-jump]")) {
+  chip.onclick = () => {
+    const target = $(chip.dataset.jump);
+    if (!target || target.hidden) return;
+    if (target.tagName === "DETAILS") target.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 }
 
 // ── Speech fixes: the DM's list of names the mic mishears, kept on this

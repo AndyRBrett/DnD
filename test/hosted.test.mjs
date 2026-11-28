@@ -225,3 +225,15 @@ test("the AI DM narrates each new round of a fight, and a requested roll closes 
   const advice = await read("src/advice.js");
   assert.match(advice, /Narrate the round that just ended like a DM at the table/);
 });
+
+test("the DM tab has a shortcut row: a chip per card that's showing, which scrolls to it and opens it", async () => {
+  const html = await read("src/index.html");
+  const nav = html.slice(html.indexOf('<nav id="dm-jump"'), html.indexOf("</nav>", html.indexOf('<nav id="dm-jump"')));
+  for (const id of ["ai-dm", "host", "roll-ask-tool", "party-hp", "encounter", "dm-assistant", "party-editor", "history-editor"]) {
+    assert.match(nav, new RegExp('data-jump="' + id + '"'));
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
+  const app = await read("src/app.js");
+  assert.match(app, /chip\.hidden = !target \|\| target\.hidden;/);
+  assert.match(app, /if \(target\.tagName === "DETAILS"\) target\.open = true;/);
+});
