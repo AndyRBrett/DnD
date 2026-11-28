@@ -857,3 +857,35 @@ export function sceneFor(scenes, name) {
   for (let index = (scenes ?? []).length - 1; index >= 0; index--) if (sceneIsFor(scenes[index], name)) return scenes[index];
   return null;
 }
+
+// ── Speech fixes: names the browser's speech-to-text keeps mishearing ──
+// Applied on the DM's phone to each update before it's posted. Whole words
+// or phrases only, any case, longest first, in one pass (so "white maze"
+// becomes "White Wizard", not "white mage"); "maze's" becomes "mage's".
+export const DEFAULT_CORRECTIONS = [
+  ["white maze", "White Wizard"],
+  ["white may", "White Wizard"],
+  ["dumb dumb", "Dum Dum"],
+  ["dumdum", "Dum Dum"],
+  ["jay peso", "JPeso"],
+  ["j peso", "JPeso"],
+  ["terrace", "Arcturus"],
+  ["maze", "mage"]
+];
+// "heard → meant" lines (→, ->, or =), one per line, as the DM edits them.
+export function parseCorrections(text) {
+  return String(text ?? "").split("\n").map(line => line.split(/\s*(?:→|->|=)\s*/))
+    .filter(parts => parts.length === 2 && parts[0].trim() && parts[1].trim())
+    .map(([heard, meant]) => [heard.trim(), meant.trim()]);
+}
+export const formatCorrections = list => list.map(([heard, meant]) => heard + " → " + meant).join("\n");
+export function correctTranscript(text, corrections = DEFAULT_CORRECTIONS) {
+  const pairs = corrections.filter(([heard, meant]) => String(heard).trim() && String(meant).trim())
+    .map(([heard, meant]) => [String(heard).trim().toLowerCase().replace(/\s+/g, " "), String(meant).trim()])
+    .sort((a, b) => b[0].length - a[0].length);
+  if (!pairs.length) return String(text ?? "");
+  const meant = new Map(pairs);
+  const escape = phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+");
+  const pattern = new RegExp("(?<![\\p{L}\\p{N}'])(?:" + pairs.map(([heard]) => escape(heard)).join("|") + ")(?![\\p{L}\\p{N}])", "giu");
+  return String(text ?? "").replace(pattern, match => meant.get(match.toLowerCase().replace(/\s+/g, " ")) ?? match);
+}
