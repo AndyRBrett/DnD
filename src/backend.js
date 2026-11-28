@@ -73,7 +73,7 @@ function localBackend() {
           const state = await call("/" + code);
           const times = state.scenes.map(scene => scene.created);
           return { code, created: Math.min(...times), active: Math.max(...times),
-            practice: storage.get("practice:" + code) === "1" || state.scenes[0]?.text.startsWith("PRACTICE TABLE") };
+            practice: state.practice === true || storage.get("practice:" + code) === "1" || state.scenes[0]?.text.startsWith("PRACTICE TABLE") };
         } catch (error) {
           if (error.status === 404) storage.remove("host:" + code);
           return null;

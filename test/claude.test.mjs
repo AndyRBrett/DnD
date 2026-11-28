@@ -448,6 +448,9 @@ test("local server: the AI DM is host-only and practice-only", async () => {
   const campaign = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
   assert.equal((await ask(campaign.code, { "x-table-host": campaign.host })).status, 403);
   const practice = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create", "x-table-practice": "1" } })).body;
+  // The room says whether it's a practice table, whatever its first update was.
+  assert.equal((await call("/api/rooms/" + practice.code)).body.practice, true);
+  assert.equal((await call("/api/rooms/" + campaign.code)).body.practice, false);
   assert.equal((await ask(practice.code)).status, 403);
   const turn = await ask(practice.code, { "x-table-host": practice.host });
   assert.equal(turn.status, 200);

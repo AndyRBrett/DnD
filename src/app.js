@@ -5536,6 +5536,7 @@ function setHost(value) {
   $("claude-enemies").hidden = !claudeDm;
   $("dm-assistant").hidden = !claudeDm;
   $("ai-dm").hidden = !claudeDm || !isPractice();
+  if (claudeDm && !isPractice()) checkPractice();
   if (!$("ai-dm").hidden && !aiDmNotesLoaded) {
     $("ai-dm-notes").value = storage.get(AI_DM_NOTES()) ?? "";
     aiDmNotesLoaded = true;
@@ -6100,7 +6101,7 @@ $("signout").onclick = async () => {
 };
 $("join").onclick = () => enterRoom();
 function isPractice() {
-  return storage.get("practice:" + room) === "1" || Boolean(state?.scenes[0]?.text.startsWith(PRACTICE_MARK));
+  return state?.practice === true || storage.get("practice:" + room) === "1" || Boolean(state?.scenes[0]?.text.startsWith(PRACTICE_MARK));
 }
 $("create-practice").onclick = async () => {
   $("create-practice").disabled = true;
@@ -6306,6 +6307,19 @@ $("dm-ask-form").onsubmit = async event => {
 // host stays on this phone. The adventure notes are kept on this phone too.
 const AI_DM_NOTES = () => "dnd-aidm-notes:" + room;
 let aiDmNotesLoaded = false;
+// The hosted room read doesn't say whether a table is a practice table, and
+// its opening "PRACTICE TABLE" update drops out of the latest 30 on a long
+// night. The host's own table list has the stored flag: ask it once.
+let practiceChecked = false;
+function checkPractice() {
+  if (practiceChecked || !backend.myRooms) return;
+  practiceChecked = true;
+  backend.myRooms().then(rooms => {
+    if (!rooms.find(entry => entry.code === room)?.practice) return;
+    storage.set("practice:" + room, "1");
+    setHost(isHost);
+  }).catch(() => { practiceChecked = false; });
+}
 $("ai-dm-notes").oninput = () => storage.set(AI_DM_NOTES(), $("ai-dm-notes").value);
 $("ai-dm-form").onsubmit = async event => {
   event.preventDefault();

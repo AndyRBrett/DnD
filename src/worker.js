@@ -126,7 +126,7 @@ const endpoints = {
       .map(entry => ({ character: entry.character, seconds: Math.round((now - entry.at) / 1000) }))
       .sort((a, b) => a.character - b.character);
     return json({
-      party, hp, resources, here, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY),
+      party, hp, resources, here, scenes: results.reverse(), ai: Boolean(env.ANTHROPIC_API_KEY), practice: Boolean(room.practice),
       combat: combat ? { round: combat.round, turn: combat.turn, enemies: JSON.parse(combat.enemies), party: JSON.parse(combat.party_init) } : null
     });
   },
