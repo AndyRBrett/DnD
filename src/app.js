@@ -5786,6 +5786,30 @@ function momentCard(entry) {
   }
   return item;
 }
+// Read aloud (TV board, opt-in per screen): each new DM update is spoken once
+// with the browser's own voice. Updates meant for only some characters
+// ("🔒 To: …") are never read out: the TV is for everyone.
+const BOARD_VOICE = "dnd-board-voice";
+const boardVoiceOn = () => storage.get(BOARD_VOICE) === "1";
+function drawBoardVoice() {
+  $("board-voice").setAttribute("aria-pressed", String(boardVoiceOn()));
+  $("board-voice").textContent = boardVoiceOn() ? "🔊 Reading aloud" : "🔈 Read aloud";
+}
+$("board-voice").onclick = () => {
+  storage.set(BOARD_VOICE, boardVoiceOn() ? "0" : "1");
+  if (!boardVoiceOn()) speechSynthesis.cancel();
+  else speechSynthesis.speak(new SpeechSynthesisUtterance("Reading the DM's updates aloud.")); // a tap unlocks speech
+  drawBoardVoice();
+};
+function readAloud(scene) {
+  if (!boardVoiceOn() || !("speechSynthesis" in window) || sceneAudience(scene.text)) return;
+  const text = String(scene.text).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").trim();
+  if (!text) return;
+  speechSynthesis.cancel();
+  const voice = new SpeechSynthesisUtterance(text);
+  voice.rate = 0.95;
+  speechSynthesis.speak(voice);
+}
 function drawBoard() {
   if (!boardMode || !state) return;
   const first = board.seen === null;
@@ -5793,6 +5817,7 @@ function drawBoard() {
   const latest = state.scenes.at(-1);
   const sceneKey = ended ? "ended" : latest ? latest.id + ":" + latest.text : "none";
   if (sceneKey !== board.sceneId) {
+    if (!first && latest && !ended) readAloud(latest);
     board.sceneId = sceneKey;
     // A split-party update opens with who it's for ("To White Wizard: …").
     board.passages = ended ? ["The session has ended."] : scenePassages(sceneText(latest) || "Waiting for the DM.");
@@ -5924,6 +5949,8 @@ function enterRoom() {
     // The one way out: back to this table's normal view.
     $("board-exit").href = "?room=" + room;
     $("board-exit").hidden = false;
+    $("board-voice").hidden = !("speechSynthesis" in window);
+    drawBoardVoice();
   }
   setHost(false);
   showCachedRoom();
@@ -6353,6 +6380,7 @@ const AI_DM_NOTES = () => "dnd-aidm-notes:" + room;
 const AI_DM_ON = () => "dnd-aidm-on:" + room;
 const AI_DM_AUTO = () => "dnd-aidm-auto:" + room;
 const AI_DM_MARK = () => "dnd-aidm-mark:" + room; // the last DM turn: { after, at, asked, round }
+const AI_DM_LAST = () => "dnd-aidm-last:" + room; // what the last DM turn posted, for Undo
 let aiDmNotesLoaded = false;
 let aiDmBusy = false;
 let aiDmNextStep = 0;
@@ -6403,6 +6431,7 @@ $("ai-dm-auto").onchange = () => {
   // Starting the autopilot doesn't answer what came before: it waits for new posts.
   if ($("ai-dm-auto").checked && !readJson(AI_DM_MARK(), null)) aiDmMark([]);
   aiDmLog($("ai-dm-auto").checked ? "Autopilot on." : "Autopilot off.");
+  if (!$("ai-dm-auto").checked && $("ai-dm-status").textContent.startsWith("Autopilot: ")) $("ai-dm-status").textContent = "";
 };
 $("ai-dm-notes").oninput = () => storage.set(AI_DM_NOTES(), $("ai-dm-notes").value);
 function aiDmLog(text) {
@@ -6443,6 +6472,8 @@ async function aiDmTurn(steer = "", why = "") {
   $("ai-dm-status").textContent = "The AI DM is reading the table (up to a minute)…";
   try {
     const seen = maxActionId(); // what Claude reads: posts up to here
+    const lastScene = Math.max(0, ...(state?.scenes ?? []).map(scene => Number(scene.id) || 0));
+    const prevMark = readJson(AI_DM_MARK(), null);
     const turn = await backend.dmAsk(room, "run", steer, dmTableState(), $("ai-dm-notes").value);
     turn.narration = tidyModelText(turn.narration) || turn.narration;
     turn.hostNote = tidyModelText(turn.hostNote);
@@ -6471,6 +6502,11 @@ async function aiDmTurn(steer = "", why = "") {
     $("ai-dm-steer").value = "";
     await sync();
     aiDmMark(asked, seen);
+    // What this turn posted, for Undo: its update and its roll requests.
+    const posted = state.scenes.filter(scene => Number(scene.id) > lastScene && String(scene.text).includes(turn.narration.trim().slice(0, 40))).at(-1);
+    const requests = (state.actions ?? []).filter(action => Number(action.id) > seen && String(action.text).startsWith("🎲 DM asks") && asked.includes(action.name));
+    storage.set(AI_DM_LAST(), JSON.stringify({ scene: posted?.id ?? null, actions: requests.map(action => action.id), seen: prevMark }));
+    $("ai-dm-undo").hidden = !posted;
     if (why) aiDmLog(why);
     $("ai-dm-status").textContent = aiDmAuto() ? "Autopilot is on: the next turn comes when everyone has acted." : "Done. When the players have acted or rolled, tap DM, go again.";
     return true;
@@ -6484,6 +6520,30 @@ async function aiDmTurn(steer = "", why = "") {
     button.disabled = false;
   }
 }
+// Undo the last DM turn: its update and roll requests come off the table, and
+// the autopilot holds for a minute so the host can steer or redo it. A fight
+// it started stays (End combat now does that).
+$("ai-dm-undo").onclick = async () => {
+  const last = readJson(AI_DM_LAST(), null);
+  if (!last?.scene || !window.confirm("Undo Claude's last DM turn? Its update and roll requests are removed for everyone.")) return;
+  $("ai-dm-undo").disabled = true;
+  try {
+    await backend.deleteScene(room, last.scene);
+    for (const id of last.actions ?? []) if (backend.deleteAction) await backend.deleteAction(room, id);
+    if (last.seen) storage.set(AI_DM_MARK(), JSON.stringify(last.seen)); else storage.remove(AI_DM_MARK());
+    storage.remove(AI_DM_LAST());
+    aiDmNextStep = Date.now() + 60000;
+    $("ai-dm-undo").hidden = true;
+    $("ai-dm-out").hidden = true;
+    $("ai-dm-status").textContent = "Undone. Steer it and tap DM, go" + (aiDmAuto() ? ", or the autopilot tries again in a minute." : ".");
+    aiDmLog("Undid the last DM turn.");
+    await sync();
+  } catch (error) {
+    $("ai-dm-status").textContent = error.message;
+  } finally {
+    $("ai-dm-undo").disabled = false;
+  }
+};
 $("ai-dm-form").onsubmit = event => {
   event.preventDefault();
   aiDmTurn($("ai-dm-steer").value.trim());
@@ -6511,20 +6571,41 @@ function aiDmTick() {
 // Out of a fight: a DM turn once there's something new, the rolls asked for
 // are in (or three minutes have passed), and everyone at the table has posted
 // (or a minute and a half has passed), after 12 quiet seconds.
+// What the autopilot is waiting on, on the card, so a quiet table never
+// looks stuck.
+function aiDmWaitingFor(text) {
+  const line = "Autopilot: " + text;
+  if (!aiDmBusy && $("ai-dm-status").textContent !== line) $("ai-dm-status").textContent = line;
+}
 function aiDmStoryStep(now) {
   const mark = readJson(AI_DM_MARK(), null) ?? { after: 0, at: 0, asked: [] };
   const fresh = (state.actions ?? []).filter(action => Number(action.id) > mark.after && !String(action.text).startsWith("🎲 DM asks"));
-  if (!fresh.length) return false;
+  const owedNow = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack")
+    .map(({ ask }) => String(partyName(index) ?? "").replace(/^The /, "") + "'s " + rollAskLabel(ask)));
+  if (!fresh.length) {
+    aiDmWaitingFor(owedNow.length ? "waiting for " + owedNow.join(", ") + "." : "waiting for the players to act.");
+    return false;
+  }
   // Every roll still owed, from this turn's requests or an earlier one's,
   // holds the turn (each for up to three minutes after it was asked).
   const owed = (state.party ?? []).flatMap((_, index) => pendingRollAsks(index).filter(({ ask }) => ask.kind !== "attack"));
-  if (owed.some(({ action }) => now - (aiDmSeen.get(action.id) ?? now) < 180000)) return false;
+  if (owed.some(({ action }) => now - (aiDmSeen.get(action.id) ?? now) < 180000)) {
+    aiDmWaitingFor("waiting for " + owedNow.join(", ") + ".");
+    return false;
+  }
   const acted = new Set(fresh.map(action => action.name));
   const present = presentNames();
   const first = Math.min(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
   const last = Math.max(...fresh.map(action => aiDmSeen.get(action.id) ?? now));
-  if ([...present].some(name => !acted.has(name)) && now - first < 90000) return false;
-  if (now - last < 12000) return false;
+  const quiet = [...present].filter(name => !acted.has(name));
+  if (quiet.length && now - first < 90000) {
+    aiDmWaitingFor("waiting for " + quiet.map(name => name.replace(/^The /, "")).join(", ") + " to act (or " + Math.ceil((90000 - (now - first)) / 1000) + "s).");
+    return false;
+  }
+  if (now - last < 12000) {
+    aiDmWaitingFor("everyone's in. Taking a turn in a few seconds.");
+    return false;
+  }
   aiDmTurn("", "Everyone had acted: took a DM turn.");
   return true;
 }
@@ -6538,6 +6619,7 @@ function aiDmFightStep(now) {
   // the host taps it.
   if (document.querySelector(".enemy-swing button:not(:disabled)")) {
     if (!aiDmWaiting) aiDmLog("Waiting for your ruling on an enemy's attack (rage or a save). Tap it and the fight goes on.");
+    aiDmWaitingFor("waiting for your ruling on an enemy's attack.");
     aiDmWaiting = true;
     return false;
   }
@@ -6584,6 +6666,8 @@ function aiDmFightStep(now) {
   const combat = state.combat;
   if (!combat.turn) {
     const players = order.filter(entry => entry.kind === "pc");
+    const missing = players.filter(entry => entry.initiative === null).map(entry => entry.name.replace(/^The /, ""));
+    if (missing.length) aiDmWaitingFor("waiting for initiative: " + missing.join(", ") + ".");
     if (players.every(entry => entry.initiative !== null) || now - aiDmFightSeen > 60000) {
       stepTurn(1);
       aiDmLog("Initiative is in: the fight begins.");
@@ -6625,6 +6709,7 @@ function aiDmFightStep(now) {
     aiDmTurn("Round " + combat.round + " begins. Narrate the round that just ended.", "Round " + combat.round + ": narrated the last round.");
     return true;
   }
+  if (current?.kind === "pc") aiDmWaitingFor(current.name.replace(/^The /, "") + "'s turn in the fight.");
   return false;
 }
 

@@ -28,6 +28,7 @@
     </div>
     <div class="hdr-right">
       <span id="connection" class="role-pill" aria-live="polite"></span>
+      <button id="board-voice" class="board-exit" type="button" aria-pressed="false" hidden>🔈 Read aloud</button>
       <a id="board-exit" class="board-exit" hidden>Exit board</a>
       <button id="help" class="icon-btn" type="button" aria-label="How to play" title="How to play" hidden>?</button>
       <a id="tv" class="icon-btn" target="_blank" rel="noopener" aria-label="Open the TV board" title="Open the TV board (for a big screen)" hidden>📺</a>
@@ -480,6 +481,7 @@
               <p id="ai-dm-status" class="fineprint" role="status"></p>
             </form>
             <div id="ai-dm-out" class="dm-ask-out" hidden aria-live="polite"></div>
+            <button id="ai-dm-undo" class="quiet" type="button" hidden>↩ Undo last DM turn</button>
             <ul id="ai-dm-log" class="ai-dm-log fineprint" aria-label="What the autopilot did" hidden></ul>
           </div>
         </section>
