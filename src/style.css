@@ -399,6 +399,7 @@ button.is-armed{background:var(--red-dim);border:1px solid var(--red-border);col
 .scene-to{align-items:center;margin:8px 0 4px}
 .scene-to .chip.is-on{background:var(--gold);color:var(--on-accent);border-color:var(--gold)}
 .scene-to-note{color:var(--gold);margin:0 0 6px}
+.combat-stop{width:100%;margin-top:8px}
 .quick-enemy{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:10px 0 0}
 .quick-enemy label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted2)}
 .quick-enemy-pick{flex:1 1 200px;min-width:0}
