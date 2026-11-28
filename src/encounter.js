@@ -889,3 +889,19 @@ export function correctTranscript(text, corrections = DEFAULT_CORRECTIONS) {
   const pattern = new RegExp("(?<![\\p{L}\\p{N}'])(?:" + pairs.map(([heard]) => escape(heard)).join("|") + ")(?![\\p{L}\\p{N}])", "giu");
   return String(text ?? "").replace(pattern, match => meant.get(match.toLowerCase().replace(/\s+/g, " ")) ?? match);
 }
+
+// Claude's text for the table, tidied: a missing space after a sentence
+// ("door.Practice") is put back, and a runaway tail of one- or two-word
+// sentences ("Go.Enjoy.End.Done.Fine.Okay.") is cut off.
+export function tidyModelText(text) {
+  const spaced = String(text ?? "").replace(/([a-z\)\]])\.(?=[A-Z])/g, "$1. ").trim();
+  const sentences = spaced.match(/[^.!?]+[.!?]+["”']?\s*|[^.!?]+$/g) ?? [];
+  const short = sentence => sentence.trim().split(/\s+/).length <= 2;
+  for (let start = 0; start < sentences.length; start++) {
+    let run = 0;
+    while (start + run < sentences.length && short(sentences[start + run])) run += 1;
+    if (run >= 4) return sentences.slice(0, start).join("").trim();
+    start += run;
+  }
+  return spaced;
+}

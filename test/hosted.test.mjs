@@ -205,3 +205,12 @@ test("when Claude is the DM, every open roll request waits on the AI DM card and
   assert.match(rolls, /\.roll-ask\[data-ask="' \+ action\.id \+ '"\] \.roll-ask-buttons button'\)\?\.click\(\)/);
   assert.match(app, /function drawRollAsks\(\) \{\n  drawAiDmRolls\(\);/);
 });
+
+test("the AI DM's autopilot waits for every roll still owed, not only the last turn's, and tidies Claude's text", async () => {
+  const app = await read("src/app.js");
+  const step = app.slice(app.indexOf("function aiDmStoryStep(now)"));
+  assert.match(step.slice(0, 1200), /pendingRollAsks\(index\)\.filter\(\(\{ ask \}\) => ask\.kind !== "attack"\)/);
+  assert.match(app, /turn\.hostNote = tidyModelText\(turn\.hostNote\);/);
+  const css = await read("src/style.css");
+  assert.match(css, /\.dm-ask-out,\.ai-dm-log,\.ai-dm-rolls,#scene,\.story-text\{overflow-wrap:anywhere\}/);
+});
