@@ -87,6 +87,12 @@ test("the whole-party prompt carries every sheet and the whole session, DM and p
   assert.match(prompt, /leave outcomes to the DM/);
 });
 
+test("the whole-party prompt says so when it only has the latest updates", () => {
+  const prompt = partyPrompt(shadow, [shadow], scenes(["u0"]), [], { partial: true });
+  assert.match(prompt, /earlier updates aren't included/);
+  assert.doesNotMatch(partyPrompt(shadow, [shadow], scenes(["u0"])), /earlier updates aren't included/);
+});
+
 test("everyday combat narration from real sessions reads as combat", () => {
   for (const text of [
     "The monster starts attacking everyone",

@@ -226,3 +226,19 @@ test("who's at the table: phones check in by character, never keep the table ope
   assert.equal((await post(room + "/resources", { character: 2, state: { used: { "Death successes": 1, "Death failures": 2 }, raging: false } })).status, 200);
   assert.deepEqual((await call(room)).body.resources["Logan Ninefingers"].used, { "Death successes": 1, "Death failures": 2 });
 });
+
+test("the whole session reads past the room's latest 30 updates, and reading it isn't activity", async () => {
+  const { code, host } = (await call("/api/rooms", { method: "POST", headers: { "x-table-action": "create" } })).body;
+  const room = "/api/rooms/" + code;
+  for (let index = 0; index < 35; index++) await post(room + "/scene", { text: "update " + index }, { "x-table-host": host });
+  assert.equal((await call(room)).body.scenes.length, 30);
+  const before = env.DB.prepare("SELECT last_active FROM rooms WHERE code = ?").bind(code);
+  const active = (await before.first()).last_active;
+  const log = await call(room + "/session");
+  assert.equal(log.status, 200);
+  assert.equal(log.body.scenes.length, 36);
+  assert.equal(log.body.scenes[1].text, "update 0");
+  assert.equal(log.body.scenes.at(-1).text, "update 34");
+  assert.equal((await before.first()).last_active, active);
+  assert.equal((await call("/api/rooms/" + "0".repeat(24) + "/session")).status, 404);
+});

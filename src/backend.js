@@ -56,6 +56,8 @@ function localBackend() {
       const state = await call("/" + code);
       return { ...state, isHost: Boolean(hostKey(code)) };
     },
+    // Every DM update this session (the room read keeps only the latest 30).
+    sessionLog: code => call("/" + code + "/session"),
     // Tables this browser started (it holds their host keys), newest first;
     // keys for tables that have closed are dropped.
     async myRooms() {
@@ -226,6 +228,12 @@ function hostedBackend({ url, anonKey }) {
     closeRoom: code => rpc("dnd_end_table_v2", { p_code: code, p_save_history: false }),
     endTable: (code, saveHistory) => rpc("dnd_end_table_v2", { p_code: code, p_save_history: saveHistory }),
     history: code => rpc("dnd_history", { p_code: code }),
+    // Every DM update and player action this session (the room read keeps the
+    // latest 30 and 40). Null until supabase/migrations/0020 runs.
+    async sessionLog(code) {
+      try { return await rpc("dnd_session_log", { p_code: code }); }
+      catch (error) { if (/could not find the function/i.test(error.message)) return null; throw error; }
+    },
     saveHistory: (code, text) => rpc("dnd_save_history", { p_code: code, p_history: text }),
     async dmAsk(code, mode, prompt, table = "") {
       const response = await fetch(url + "/functions/v1/dnd-advise", {

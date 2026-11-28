@@ -117,3 +117,13 @@ test("the app starts last, after every constant a cached table draws with", asyn
   // a cached snapshot is drawn at startup (round 6: the DM lost the DM tab).
   assert.doesNotMatch(app.slice(start), /^(const|let) /m);
 });
+
+test("the whole-session read needs a signed-in account and an open table", async () => {
+  const sql = await read("supabase/migrations/0020_dnd_session_log.sql");
+  assert.match(sql, /security definer/);
+  assert.match(sql, /public\.dnd_account\(\)/);
+  assert.match(sql, /public\.dnd_live_room\(p_code\)/);
+  assert.match(sql, /revoke all on function public\.dnd_session_log\(text\) from public, anon;/);
+  assert.match(sql, /grant execute on function public\.dnd_session_log\(text\) to authenticated;/);
+  assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
+});

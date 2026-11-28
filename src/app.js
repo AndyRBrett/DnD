@@ -948,10 +948,18 @@ async function copyForChat(wholeParty) {
   const character = selectedCharacter();
   if (!character || ended) return;
   const me = withoutSpent(character, spentFor(Number($("character").value)));
-  const prompt = wholeParty ? partyPrompt(me, state.party, state.scenes, state.actions ?? []) : coachingPrompt(me, state.scenes);
+  let prompt = coachingPrompt(me, state.scenes);
+  let partial = false;
+  if (wholeParty) {
+    // The room read keeps only the latest updates: fetch the whole session.
+    const log = backend.sessionLog ? await backend.sessionLog(room).catch(() => null) : null;
+    partial = !log;
+    prompt = partyPrompt(me, state.party, log?.scenes ?? state.scenes, log?.actions ?? state.actions ?? [], { partial });
+  }
   try {
     await navigator.clipboard.writeText(prompt);
-    $("coach-status").textContent = (wholeParty ? "Copied the scene and the whole party." : "Copied.") + " Paste into your D&D chat for a deeper answer.";
+    $("coach-status").textContent = (wholeParty ? "Copied the scene and the whole party" + (partial ? " (latest updates only)." : ".") : "Copied.")
+      + " Paste into your D&D chat for a deeper answer.";
   } catch {
     window.prompt("Copy this prompt into your D&D chat", prompt);
   }
@@ -1043,7 +1051,9 @@ $("export-chatgpt").onclick = async () => {
   try {
     const history = $("history-text").value.trim() || await backend.history(room) || "";
     const today = new Date().toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });
-    const updates = isPractice() ? [] : state.scenes.map(scene =>
+    // The room read keeps only the latest 30 updates: export the whole session.
+    const log = backend.sessionLog && !isPractice() ? await backend.sessionLog(room).catch(() => null) : null;
+    const updates = isPractice() ? [] : (log?.scenes ?? state.scenes).map(scene =>
       "- [" + new Date(scene.created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "] " + scene.text);
     const text = [
       "D&D CAMPAIGN EXPORT: THE ONYX JEWEL (" + today + ", from D&D Table Live)",
