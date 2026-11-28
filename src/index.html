@@ -502,6 +502,13 @@
             <div id="ai-dm-rolls" class="ai-dm-rolls" hidden aria-live="polite"></div>
             <form id="ai-dm-form" class="stack">
               <input id="ai-dm-steer" type="text" maxlength="600" aria-label="Steer the next turn (optional)" placeholder="Optional: steer the next turn (the guard grows suspicious)">
+              <div id="ai-dm-moves" class="ai-dm-moves" aria-label="One-tap DM moves">
+                <button type="button" class="chip" data-move="previously">📜 Previously on…</button>
+                <button type="button" class="chip" data-move="npc">🎭 New NPC</button>
+                <button type="button" class="chip" data-move="twist">🌀 Twist</button>
+                <button type="button" class="chip" data-move="spotlight">🔦 Spotlight</button>
+                <button type="button" class="chip" data-move="wrap">🌙 Wrap up tonight</button>
+              </div>
               <button type="submit" class="cta">DM, go</button>
               <p id="ai-dm-status" class="fineprint" role="status"></p>
             </form>

@@ -1008,3 +1008,40 @@ export function fightNarrationDue({ beats, every = 3, newlyDown = [] }) {
   if (every > 0 && beats.attacks >= every) return beats.attacks + " attacks since the last update";
   return "";
 }
+
+// Read aloud with voices: a DM update split into the narrator's lines and
+// quoted speech (an NPC talking), in order. Double quotes of either kind, and
+// single quotes that open after a space and close before punctuation or a
+// space (so "the guard's" isn't speech).
+export function splitSpeech(text) {
+  const parts = [];
+  // (No lookbehind: older iPhone Safari can't parse one.)
+  const pattern = /["“]([^"”]+)["”]|(^|\s)['‘]([^'’]+?)['’](?=[\s.,!?;:]|$)/gu;
+  let last = 0;
+  for (const match of String(text ?? "").matchAll(pattern)) {
+    const start = match.index + (match[2] ?? "").length;
+    const before = String(text).slice(last, start).trim();
+    if (before) parts.push({ text: before, quoted: false });
+    const said = (match[1] ?? match[3]).trim();
+    if (said) parts.push({ text: said, quoted: true });
+    last = match.index + match[0].length;
+  }
+  const rest = String(text ?? "").slice(last).trim();
+  if (rest) parts.push({ text: rest, quoted: false });
+  return parts;
+}
+
+// Spotlight (AI DM): who at the table has done little lately. posts: the
+// newest player posts, oldest first, each { name, declared } (declared: the
+// character tried something, as opposed to the app's own roll and damage
+// lines). Only says something once there's enough to go on.
+export function spotlightLine(present = [], posts = [], window = 15) {
+  const recent = posts.filter(post => post.declared).slice(-window);
+  if (recent.length < 6 || present.length < 2) return "";
+  const counts = new Map(present.map(name => [name, 0]));
+  for (const post of recent) if (counts.has(post.name)) counts.set(post.name, counts.get(post.name) + 1);
+  const quiet = [...counts].filter(([, count]) => count <= 1).map(([name]) => name);
+  if (!quiet.length || quiet.length === present.length) return "";
+  return "SPOTLIGHT: " + quiet.join(" and ") + (quiet.length > 1 ? " have" : " has") + " done little lately. When it fits the story, give "
+    + "them a hook, a question, or a moment that suits their sheet, without pushing anyone aside.";
+}

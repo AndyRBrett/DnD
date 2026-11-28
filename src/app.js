@@ -7,7 +7,7 @@ import { backend, storage } from "./backend.js";
 import { organizeSheet, basics, conditions, sectionMeaning, lookupRule } from "./rules.js";
 import { roll, poolExpression, rollableFrom, rollModeFrom, parse as parseDice, critExpression, keepD20, tableRoll, tablePrompt } from "./dice.js";
 import { createDie, percentileLabels } from "./dice3d.js";
-import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, AI_DM_DIFFICULTIES, enemyTargetIndex, fightBeats, fightNarrationDue, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
+import { templates as enemyTemplates, createEnemies, parseSaves, formatSaves, enemySave, saveBonus, applyHp, status as enemyStatus, standing, rollInitiative, publicEnemies, combatOrder, nextTurn, upNext, isSittingOut, sittingOut, maxHpFromSheet, changePartyHp, partyHpStatus, combatStats, acRange, concentrationDc, attackOutcome, hitReportText, hitHandledText, parseHitReport, attackAskText, parseAttackAsk, attackVerdictText, parseTypedToHit, chronicleLine, attacksFromNotes, riderText, deathSave, buildAttack, abilityMods, attackBreakdown, slotKey, resourceLeft, spendResource, rest as restResources, hitDice, HIT_DICE, castableLevels, upcastAttack, spentAbilities, pickEncounter, scenePassages, boardMoment, SKILLS, ABILITY_FULL, rollAskText, parseRollAsk, rollAskLabel, rollAskVerdict, rollAskBonus, rollAskResults, enemyTier, TIERS, enemyRoutine, swingCount, sceneAudience, addressScene, sceneFor, sceneIsFor, tidyModelText, aiDmReady, AI_DM_PACES, AI_DM_DIFFICULTIES, enemyTargetIndex, fightBeats, fightNarrationDue, splitSpeech, spotlightLine, DEFAULT_CORRECTIONS, parseCorrections, formatCorrections, correctTranscript } from "./encounter.js";
 import { party as starterParty, recap as starterRecap, sheets } from "./campaign.js";
 // Everyone can attack from hiding: advantage for that one attack (and while
 // Invisible it's on by itself).
@@ -5751,6 +5751,8 @@ document.addEventListener("keydown", event => {
 });
 function boardFlash(text, kind = "") {
   board.flashes.push({ text, kind });
+  // Big moments are called out too ("Natural 20, Roan!"), after what's being read.
+  if (boardVoiceOn() && "speechSynthesis" in window) speak(text.replace(" · ", ", ").toLowerCase().replace(/^./, c => c.toUpperCase()) + "!");
   if (board.flashing) return;
   const next = () => {
     const flash = board.flashes.shift();
@@ -5811,14 +5813,29 @@ $("board-voice").onclick = () => {
   else speechSynthesis.speak(new SpeechSynthesisUtterance("Reading the DM's updates aloud.")); // a tap unlocks speech
   drawBoardVoice();
 };
+// Two voices: the narrator, and a different one for quoted speech (an NPC
+// talking), from what this browser has; the pitch tells them apart if it has
+// only one.
+function boardVoices() {
+  const all = speechSynthesis.getVoices().filter(voice => /^en/i.test(voice.lang));
+  const narrator = all.find(voice => voice.default) ?? all[0] ?? null;
+  return { narrator, npc: all.find(voice => voice !== narrator && voice.lang === narrator?.lang) ?? all.find(voice => voice !== narrator) ?? narrator };
+}
+function speak(text, quoted = false) {
+  const voices = boardVoices();
+  const line = new SpeechSynthesisUtterance(text);
+  line.voice = quoted ? voices.npc : voices.narrator;
+  line.rate = quoted ? 1 : 0.95;
+  line.pitch = quoted ? (voices.npc === voices.narrator ? 0.7 : 0.9) : 1;
+  speechSynthesis.speak(line);
+}
+const plainSpeech = text => String(text).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").trim();
 function readAloud(scene) {
   if (!boardVoiceOn() || !("speechSynthesis" in window) || sceneAudience(scene.text)) return;
-  const text = String(scene.text).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").trim();
+  const text = plainSpeech(scene.text);
   if (!text) return;
   speechSynthesis.cancel();
-  const voice = new SpeechSynthesisUtterance(text);
-  voice.rate = 0.95;
-  speechSynthesis.speak(voice);
+  for (const part of splitSpeech(text)) speak(part.text, part.quoted);
 }
 function drawBoard() {
   if (!boardMode || !state) return;
@@ -6531,7 +6548,7 @@ async function aiDmTurn(steer = "", why = "") {
     const seen = maxActionId(); // what Claude reads: posts up to here
     const lastScene = Math.max(0, ...(state?.scenes ?? []).map(scene => Number(scene.id) || 0));
     const prevMark = readJson(AI_DM_MARK(), null);
-    const table = AI_DM_DIFFICULTIES[aiDmDifficulty()] + "\n" + dmTableState();
+    const table = [AI_DM_DIFFICULTIES[aiDmDifficulty()], state.combat ? "" : aiDmSpotlight(), dmTableState()].filter(Boolean).join("\n");
     const turn = await backend.dmAsk(room, "run", steer, table.slice(0, 3000), $("ai-dm-notes").value);
     turn.narration = tidyModelText(turn.narration) || turn.narration;
     turn.hostNote = tidyModelText(turn.hostNote);
@@ -6615,6 +6632,28 @@ $("ai-dm-undo").onclick = async () => {
     $("ai-dm-undo").disabled = false;
   }
 };
+// Who at the table has been quiet lately (out of a fight), for the AI DM.
+function aiDmSpotlight() {
+  const here = [...presentNames()];
+  const party = (state?.party ?? []).map(member => member.name);
+  const posts = (state?.actions ?? []).filter(action => party.includes(action.name)).map(action => ({ name: action.name, declared: declared(action) }));
+  return spotlightLine(here.length >= 2 ? here : party, posts);
+}
+// One-tap DM moves: each is a steer for one turn.
+const AI_DM_MOVES = {
+  previously: "Open the session: a short \"previously on\" recap of the story so far (from the campaign history and this session) in three or four sentences, then set the scene and invite the players to act.",
+  npc: "Bring in a memorable NPC who fits this scene: a clear want, a distinctive manner, and a line of speech in quotes.",
+  twist: "Introduce a twist that raises the stakes, consistent with the adventure notes and what's already been revealed.",
+  spotlight: "Give the character who has done the least lately a moment that suits their sheet: a hook, a choice, or a question only they can answer.",
+  wrap: "Bring tonight's session to a satisfying pause: resolve the current moment, start no new fight, and end on a hook for next time."
+};
+for (const button of document.querySelectorAll("#ai-dm-moves [data-move]")) {
+  button.onclick = () => {
+    if (aiDmBusy) return;
+    const steer = $("ai-dm-steer").value.trim();
+    aiDmTurn((steer ? steer + " " : "") + AI_DM_MOVES[button.dataset.move], button.textContent.trim() + ".");
+  };
+}
 $("ai-dm-form").onsubmit = event => {
   event.preventDefault();
   aiDmTurn($("ai-dm-steer").value.trim());
